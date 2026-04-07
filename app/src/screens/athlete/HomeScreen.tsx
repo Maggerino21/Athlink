@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -40,7 +40,7 @@ function formatDate() {
 }
 
 export default function HomeScreen() {
-  const { profile } = useAuth();
+  const { profile, signOut } = useAuth();
   const [activeIndex, setActiveIndex] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextMatchLabel, setNextMatchLabel] = useState<string | null>(null);
@@ -89,7 +89,7 @@ export default function HomeScreen() {
 
   const name      = profile?.full_name ?? '';
   const initials  = name ? getInitials(name) : '?';
-  const clubName  = profile?.club_id ? 'FC United' : null; // will be replaced when club name is joined
+  const clubName  = profile?.club_id ? 'FC United' : null;
 
   return (
     <View style={styles.root}>
@@ -112,11 +112,11 @@ export default function HomeScreen() {
               <Text style={styles.greeting}>{getGreeting()}</Text>
               <Text style={styles.athleteName}>{name || '—'}</Text>
             </View>
-            <View style={styles.avatarWrap}>
+            <TouchableOpacity style={styles.avatarWrap} onPress={signOut} activeOpacity={0.8}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>{initials}</Text>
               </View>
-            </View>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.metaRow}>
