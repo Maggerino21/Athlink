@@ -197,42 +197,83 @@ function LoginSheet({
 }
 
 // ─── Signup sheet ─────────────────────────────────────────────────────────────
+// Step 1: Role   →   Step 2: Credentials   →   Step 3: Club setup
 function SignupSheet({
   visible, onClose, onSwitchToLogin,
 }: { visible: boolean; onClose: () => void; onSwitchToLogin: () => void }) {
-  type Role = 'athlete' | 'staff';
-  const [role, setRole]         = useState<Role>('athlete');
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail]       = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
-  const [done, setDone]         = useState(false);
+  type Role      = 'athlete' | 'staff';
+  type StaffMode = 'create' | 'join';
+  type Step      = 1 | 2 | 3;
+
+  const [step, setStep]           = useState<Step>(1);
+  const [role, setRole]           = useState<Role>('athlete');
+  const [fullName, setFullName]   = useState('');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [clubName, setClubName]   = useState('');
+  const [staffMode, setStaffMode] = useState<StaffMode>('create');
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState('');
+  const [done, setDone]           = useState(false);
 
   useEffect(() => {
     if (visible) {
-      setFullName(''); setEmail(''); setPassword('');
-      setError(''); setDone(false);
+      setStep(1); setRole('athlete'); setFullName(''); setEmail('');
+      setPassword(''); setInviteCode(''); setClubName('');
+      setStaffMode('create'); setError(''); setDone(false);
     }
   }, [visible]);
 
-  const handleSignup = async () => {
-    if (!fullName.trim() || !email || !password) { setError('Fyll inn alle feltene.'); return; }
+  const goToStep2 = () => { setError(''); setStep(2); };
+  const goToStep3 = () => {
+    if (!fullName.trim()) { setError('Fullt navn er påkrevd.'); return; }
+    if (!email.trim())    { setError('E-post er påkrevd.'); return; }
     if (password.length < 6) { setError('Passordet må ha minst 6 tegn.'); return; }
+    setError(''); setStep(3);
+  };
+
+  const handleSignup = async () => {
+    // Validate step 3
+    if (role === 'athlete' && !inviteCode.trim()) {
+      setError('Skriv inn lagkoden din.'); return;
+    }
+    if (role === 'staff' && staffMode === 'create' && !clubName.trim()) {
+      setError('Skriv inn lagnavn.'); return;
+    }
+    if (role === 'staff' && staffMode === 'join' && !inviteCode.trim()) {
+      setError('Skriv inn lagkoden.'); return;
+    }
+
     setError(''); setLoading(true);
 
+    // Pass club info in metadata so the DB trigger handles it atomically
+    const metadata: Record<string, string> = {
+      full_name: fullName.trim(),
+      role,
+    };
+    if (role === 'athlete' || staffMode === 'join') {
+      metadata.invite_code = inviteCode.trim().toUpperCase();
+    } else {
+      metadata.club_name = clubName.trim();
+    }
+
     const { data, error: err } = await supabase.auth.signUp({
-      email, password,
+      email: email.trim(),
+      password,
       options: {
-        data: { full_name: fullName.trim(), role },
+        data: metadata,
         emailRedirectTo: 'athlink://auth/callback',
       },
     });
+
     setLoading(false);
     if (err || !data.user) { setError(err?.message ?? 'Registrering feilet.'); return; }
     if (!data.session) setDone(true);
+    // If session returned → AuthContext picks it up automatically → app navigates
   };
 
+  // ── Done screen (email confirmation required) ──────────────────────────────
   if (done) {
     return (
       <BottomSheet visible={visible} onClose={onClose} title="Sjekk e-posten din">
@@ -249,33 +290,140 @@ function SignupSheet({
     );
   }
 
-  return (
-    <BottomSheet visible={visible} onClose={onClose} title="Opprett konto">
-      <Text style={sheetStyles.roleLabel}>Jeg er...</Text>
-      <View style={sheetStyles.roleRow}>
-        {(['athlete', 'staff'] as Role[]).map(r => (
-          <TouchableOpacity
-            key={r}
-            style={[sheetStyles.roleBtn, role === r && sheetStyles.roleBtnActive]}
-            onPress={() => setRole(r)}
-            activeOpacity={0.8}
-          >
-            {role === r && <View style={sheetStyles.roleBtnSpec} />}
-            <Text style={[sheetStyles.roleBtnText, role === r && sheetStyles.roleBtnTextActive]}>
-              {r === 'athlete' ? '🏃 Utøver' : '📋 Stab / Trener'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+  // ── Step 1: Role ───────────────────────────────────────────────────────────
+  if (step === 1) {
+    return (
+      <BottomSheet visible={visible} onClose={onClose} title="Hvem er du?">
+        <View style={sheetStyles.roleCards}>
+          {(['athlete', 'staff'] as Role[]).map(r => (
+            <TouchableOpacity
+              key={r}
+              style={[sheetStyles.roleCard, role === r && sheetStyles.roleCardActive]}
+              onPress={() => setRole(r)}
+              activeOpacity={0.8}
+            >
+              <Text style={sheetStyles.roleCardEmoji}>
+                {r === 'athlete' ? '🏃' : '📋'}
+              </Text>
+              <Text style={[sheetStyles.roleCardTitle, role === r && sheetStyles.roleCardTitleActive]}>
+                {r === 'athlete' ? 'Utøver' : 'Trener / Stab'}
+              </Text>
+              <Text style={sheetStyles.roleCardSub}>
+                {r === 'athlete'
+                  ? 'Jeg er på et lag og vil se tilbakemeldinger og oppgaver.'
+                  : 'Jeg er trener, fysioterapeut eller annen støtteperson.'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      <GlassInput label="Fullt navn" value={fullName} onChangeText={setFullName}
-        placeholder="Alex Johansen" textContentType="name" autoCapitalize="words" />
-      <View style={{ height: 12 }} />
-      <GlassInput label="E-post" value={email} onChangeText={setEmail}
-        placeholder="deg@eksempel.no" keyboardType="email-address" textContentType="emailAddress" />
-      <View style={{ height: 12 }} />
-      <GlassInput label="Passord" value={password} onChangeText={setPassword}
-        placeholder="Min. 6 tegn" secure textContentType="newPassword" />
+        <TouchableOpacity style={sheetStyles.submitBtn} onPress={goToStep2} activeOpacity={0.85}>
+          <Text style={sheetStyles.submitText}>Fortsett</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={onSwitchToLogin} activeOpacity={0.7} style={sheetStyles.switchRow}>
+          <Text style={sheetStyles.switchText}>
+            Har du allerede konto?{'  '}
+            <Text style={sheetStyles.switchLink}>Logg inn</Text>
+          </Text>
+        </TouchableOpacity>
+      </BottomSheet>
+    );
+  }
+
+  // ── Step 2: Credentials ────────────────────────────────────────────────────
+  if (step === 2) {
+    return (
+      <BottomSheet visible={visible} onClose={onClose} title="Opprett konto">
+        <TouchableOpacity onPress={() => setStep(1)} style={sheetStyles.backBtn} activeOpacity={0.7}>
+          <Text style={sheetStyles.backText}>← Tilbake</Text>
+        </TouchableOpacity>
+
+        <GlassInput label="Fullt navn" value={fullName} onChangeText={setFullName}
+          placeholder="Alex Johansen" textContentType="name" autoCapitalize="words" />
+        <View style={{ height: 12 }} />
+        <GlassInput label="E-post" value={email} onChangeText={setEmail}
+          placeholder="deg@eksempel.no" keyboardType="email-address" textContentType="emailAddress" />
+        <View style={{ height: 12 }} />
+        <GlassInput label="Passord" value={password} onChangeText={setPassword}
+          placeholder="Min. 6 tegn" secure textContentType="none" />
+
+        {error ? <Text style={sheetStyles.error}>{error}</Text> : null}
+
+        <TouchableOpacity style={sheetStyles.submitBtn} onPress={goToStep3} activeOpacity={0.85}>
+          <Text style={sheetStyles.submitText}>Neste</Text>
+        </TouchableOpacity>
+      </BottomSheet>
+    );
+  }
+
+  // ── Step 3: Club setup ─────────────────────────────────────────────────────
+  return (
+    <BottomSheet
+      visible={visible}
+      onClose={onClose}
+      title={role === 'athlete' ? 'Bli med på lag' : 'Sett opp laget'}
+    >
+      <TouchableOpacity onPress={() => setStep(2)} style={sheetStyles.backBtn} activeOpacity={0.7}>
+        <Text style={sheetStyles.backText}>← Tilbake</Text>
+      </TouchableOpacity>
+
+      {role === 'athlete' ? (
+        // Athlete: just enter a code
+        <>
+          <Text style={sheetStyles.clubHint}>
+            Be treneren din om lagkoden og skriv den inn under.
+          </Text>
+          <GlassInput
+            label="Lagkode"
+            value={inviteCode}
+            onChangeText={t => setInviteCode(t.toUpperCase())}
+            placeholder="F.eks. 507EA4"
+            autoCapitalize="characters"
+          />
+        </>
+      ) : (
+        // Staff: create or join
+        <>
+          <View style={sheetStyles.roleRow}>
+            {(['create', 'join'] as StaffMode[]).map(m => (
+              <TouchableOpacity
+                key={m}
+                style={[sheetStyles.roleBtn, staffMode === m && sheetStyles.roleBtnActive]}
+                onPress={() => { setStaffMode(m); setError(''); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[sheetStyles.roleBtnText, staffMode === m && sheetStyles.roleBtnTextActive]}>
+                  {m === 'create' ? '➕ Nytt lag' : '🔗 Bli med på lag'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {staffMode === 'create' ? (
+            <GlassInput
+              label="Lagnavn"
+              value={clubName}
+              onChangeText={setClubName}
+              placeholder="F.eks. Brann FK"
+              autoCapitalize="words"
+            />
+          ) : (
+            <>
+              <Text style={sheetStyles.clubHint}>
+                Skriv inn koden du har fått fra administratoren.
+              </Text>
+              <GlassInput
+                label="Lagkode"
+                value={inviteCode}
+                onChangeText={t => setInviteCode(t.toUpperCase())}
+                placeholder="F.eks. 507EA4"
+                autoCapitalize="characters"
+              />
+            </>
+          )}
+        </>
+      )}
 
       {error ? <Text style={sheetStyles.error}>{error}</Text> : null}
 
@@ -287,15 +435,10 @@ function SignupSheet({
       >
         {loading
           ? <ActivityIndicator color="#e3d7d7" size="small" />
-          : <Text style={sheetStyles.submitText}>Opprett konto</Text>
+          : <Text style={sheetStyles.submitText}>
+              {role === 'staff' && staffMode === 'create' ? 'Opprett lag' : 'Bli med'}
+            </Text>
         }
-      </TouchableOpacity>
-
-      <TouchableOpacity onPress={onSwitchToLogin} activeOpacity={0.7} style={sheetStyles.switchRow}>
-        <Text style={sheetStyles.switchText}>
-          Har du allerede konto?{'  '}
-          <Text style={sheetStyles.switchLink}>Logg inn</Text>
-        </Text>
       </TouchableOpacity>
     </BottomSheet>
   );
@@ -350,31 +493,31 @@ function BottomSheet({
 
   return (
     <Modal visible transparent animationType="none" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      {/* Backdrop sits behind everything, absolutely */}
+      <Animated.View
+        style={[StyleSheet.absoluteFillObject, { opacity: backdropOpacity }]}
+        pointerEvents="box-none"
       >
-        {/* Backdrop — fades independently, never slides */}
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFillObject,
-            { backgroundColor: 'rgba(0,0,0,0.55)', opacity: backdropOpacity },
-          ]}
-        >
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        </Animated.View>
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+      </Animated.View>
 
-        {/* Sheet — slides up independently */}
+      {/* KAV uses flex — sheet at bottom so KAV can actually push it up */}
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: 'flex-end' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+      >
         <Animated.View
           style={[
             sheetStyles.sheet,
             { paddingBottom: Math.max(insets.bottom + 8, 24) },
             { transform: [{ translateY }] },
           ]}
+          pointerEvents="box-none"
         >
           <BlurView intensity={80} tint="systemUltraThinMaterialDark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(7,4,26,0.78)' }]} />
-          <View style={sheetStyles.sheetTopSpec} />
           <View style={sheetStyles.handle} />
           <ScrollView
             style={{ zIndex: 1 }}
@@ -497,13 +640,9 @@ const styles = StyleSheet.create({
 const sheetStyles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
   sheet: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
+    // No position:absolute — flexbox (justifyContent:'flex-end' on KAV) places it
     borderTopLeftRadius: 30, borderTopRightRadius: 30,
-    overflow: 'hidden', maxHeight: H * 0.9,
-  },
-  sheetTopSpec: {
-    position: 'absolute', top: 0, left: 40, right: 40, height: 1,
-    backgroundColor: 'rgba(180,140,255,0.2)', zIndex: 2,
+    overflow: 'hidden', maxHeight: H * 0.92,
   },
   handle: {
     width: 38, height: 4, borderRadius: 2,
@@ -561,4 +700,30 @@ const sheetStyles = StyleSheet.create({
   doneWrap: { alignItems: 'center', paddingVertical: 16 },
   doneIcon: { fontSize: 52, marginBottom: 16 },
   doneSub: { fontSize: 15, color: 'rgba(227,215,215,0.45)', textAlign: 'center', lineHeight: 24 },
+
+  // Step 1 role cards
+  roleCards: { gap: 12, marginBottom: 24 },
+  roleCard: {
+    padding: 18, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1, borderColor: 'rgba(180,140,255,0.12)',
+  },
+  roleCardActive: {
+    backgroundColor: 'rgba(108,60,220,0.25)',
+    borderColor: 'rgba(180,140,255,0.4)',
+  },
+  roleCardEmoji: { fontSize: 28, marginBottom: 8 },
+  roleCardTitle: { fontSize: 16, fontWeight: '700', color: 'rgba(227,215,215,0.5)', marginBottom: 4 },
+  roleCardTitleActive: { color: '#e3d7d7' },
+  roleCardSub: { fontSize: 13, color: 'rgba(227,215,215,0.3)', lineHeight: 18 },
+
+  // Back button
+  backBtn: { marginBottom: 20 },
+  backText: { fontSize: 14, color: 'rgba(184,156,247,0.7)', fontWeight: '500' },
+
+  // Club hint text
+  clubHint: {
+    fontSize: 13, color: 'rgba(227,215,215,0.35)',
+    lineHeight: 20, marginBottom: 16,
+  },
 });

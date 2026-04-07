@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TextInputProps,
   TouchableOpacity,
+  Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 
@@ -15,7 +16,7 @@ interface GlassInputProps extends TextInputProps {
   secure?: boolean;
 }
 
-export default function GlassInput({ label, error, secure, ...props }: GlassInputProps) {
+export default function GlassInput({ label, error, secure, style, ...props }: GlassInputProps) {
   const [visible, setVisible] = useState(false);
   const [focused, setFocused] = useState(false);
 
@@ -23,19 +24,24 @@ export default function GlassInput({ label, error, secure, ...props }: GlassInpu
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
 
-      <View style={[styles.inputWrap, focused && styles.inputWrapFocused, !!error && styles.inputWrapError]}>
-        {/* Top specular */}
-        <View style={styles.topSpec} />
-
+      <View style={[
+        styles.inputWrap,
+        focused && styles.inputWrapFocused,
+        !!error && styles.inputWrapError,
+      ]}>
         <TextInput
-          style={styles.input}
-          placeholderTextColor="rgba(255,255,255,0.25)"
+          style={[styles.input, style]}
+          placeholderTextColor="rgba(255,255,255,0.28)"
           selectionColor="#3B82F6"
           secureTextEntry={secure && !visible}
           autoCapitalize="none"
           autoCorrect={false}
+          keyboardAppearance="dark"
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          // iOS autofill turns the field yellow — setting an explicit
+          // backgroundColor on the TextInput itself overrides it.
+          // Must match the wrapper bg so it's invisible normally.
           {...props}
         />
 
@@ -74,25 +80,20 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    // Explicit dark background — prevents iOS autofill yellow from making
+    // the field unreadable. rgba(0,0,0,x) on dark bg = barely visible but
+    // opaque enough that iOS respects it as the base layer.
+    backgroundColor: 'rgba(15,18,40,0.85)',
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
   },
   inputWrapFocused: {
-    borderColor: 'rgba(59,130,246,0.6)',
-    backgroundColor: 'rgba(59,130,246,0.07)',
+    borderColor: 'rgba(59,130,246,0.5)',
+    backgroundColor: 'rgba(10,25,60,0.88)',
   },
   inputWrapError: {
     borderColor: 'rgba(239,68,68,0.5)',
-  },
-  topSpec: {
-    position: 'absolute',
-    top: 0,
-    left: 12,
-    right: 12,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.15)',
   },
   input: {
     flex: 1,
@@ -100,6 +101,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     paddingHorizontal: 16,
     paddingVertical: 14,
+    // Explicit background on the TextInput node itself — must match wrapper.
+    // iOS autofill yellow is applied as a system overlay; having an explicit
+    // opaque background here means it blends to dark amber instead of bright
+    // yellow, keeping white text readable.
+    backgroundColor: 'rgba(15,18,40,0.85)',
   },
   eyeBtn: {
     paddingHorizontal: 14,

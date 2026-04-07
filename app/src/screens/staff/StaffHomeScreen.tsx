@@ -637,22 +637,28 @@ function ModalShell({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      {/* Backdrop */}
+      <TouchableOpacity
+        style={StyleSheet.absoluteFillObject}
+        activeOpacity={1}
+        onPress={onClose}
       >
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={styles.sheet}>
-          <BlurView
-            intensity={72}
-            tint="systemUltraThinMaterialDark"
-            style={StyleSheet.absoluteFill}
-          />
+        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
+      </TouchableOpacity>
+
+      {/* KAV positions sheet at bottom and lifts it when keyboard appears */}
+      <KeyboardAvoidingView
+        style={{ flex: 1, justifyContent: 'flex-end' }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
+      >
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom + 8, 24) }]}>
+          <BlurView intensity={72} tint="systemUltraThinMaterialDark" style={StyleSheet.absoluteFill} />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(8,14,26,0.65)' }]} />
           <View style={styles.sheetHandle} />
-
           <ScrollView
             style={{ zIndex: 1 }}
             contentContainerStyle={styles.sheetContent}
@@ -802,7 +808,6 @@ const styles = StyleSheet.create({
   // Modal
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
     overflow: 'hidden',
     maxHeight: H * 0.88,

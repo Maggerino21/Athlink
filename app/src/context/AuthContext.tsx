@@ -77,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.log('[AuthContext] onAuthStateChange:', _event, newSession?.user?.id ?? 'no user');
         setSession(newSession);
         if (newSession) {
+          setLoading(true);
           await fetchProfile(newSession.user.id);
         } else {
           setProfile(null);
