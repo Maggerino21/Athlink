@@ -4,7 +4,9 @@ import {
   Modal, TextInput, KeyboardAvoidingView, Platform,
   ActivityIndicator, Dimensions, FlatList, RefreshControl,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { StaffStackParamList } from '../../navigation/RootNavigator';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +29,7 @@ interface Athlete {
 export default function StaffHomeScreen() {
   const { profile, signOut } = useAuth();
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<StaffStackParamList>>();
   const [athletes, setAthletes]             = useState<Athlete[]>([]);
   const [loading, setLoading]               = useState(true);
   const [refreshing, setRefreshing]         = useState(false);
@@ -168,6 +171,10 @@ export default function StaffHomeScreen() {
               <AthleteRow
                 key={athlete.id}
                 athlete={athlete}
+                onPress={() => navigation.navigate('StaffAthleteDetail', {
+                  athleteId: athlete.id,
+                  athleteName: athlete.full_name,
+                })}
                 onFeedback={() => openFeedback(athlete)}
                 onTask={() => openTask(athlete)}
               />
@@ -205,49 +212,53 @@ export default function StaffHomeScreen() {
 
 // ─── Athlete row ──────────────────────────────────────────────────────────────
 function AthleteRow({
-  athlete, onFeedback, onTask,
+  athlete, onPress, onFeedback, onTask,
 }: {
   athlete: Athlete;
+  onPress: () => void;
   onFeedback: () => void;
   onTask: () => void;
 }) {
   const initials = getInitials(athlete.full_name);
   return (
-    <GlassCard radius={14} padding={14} intensity={58}>
-      <View style={rowStyles.row}>
-        <View style={rowStyles.avatar}>
-          <Text style={rowStyles.avatarText}>{initials}</Text>
-        </View>
-        <View style={rowStyles.info}>
-          <Text style={rowStyles.name}>{athlete.full_name}</Text>
-          <View style={rowStyles.badges}>
-            {athlete.unread_feedback > 0 && (
-              <View style={[rowStyles.badge, rowStyles.badgeBlue]}>
-                <Text style={rowStyles.badgeText}>{athlete.unread_feedback} unread</Text>
-              </View>
-            )}
-            {athlete.pending_tasks > 0 && (
-              <View style={[rowStyles.badge, rowStyles.badgeGreen]}>
-                <Text style={rowStyles.badgeText}>{athlete.pending_tasks} tasks</Text>
-              </View>
-            )}
-            {athlete.unread_feedback === 0 && athlete.pending_tasks === 0 && (
-              <View style={rowStyles.badge}>
-                <Text style={rowStyles.badgeText}>All clear</Text>
-              </View>
-            )}
+    <TouchableOpacity onPress={onPress} activeOpacity={0.82}>
+      <GlassCard radius={14} padding={14} intensity={58}>
+        <View style={rowStyles.row}>
+          <View style={rowStyles.avatar}>
+            <Text style={rowStyles.avatarText}>{initials}</Text>
+          </View>
+          <View style={rowStyles.info}>
+            <Text style={rowStyles.name}>{athlete.full_name}</Text>
+            <View style={rowStyles.badges}>
+              {athlete.unread_feedback > 0 && (
+                <View style={[rowStyles.badge, rowStyles.badgeBlue]}>
+                  <Text style={rowStyles.badgeText}>{athlete.unread_feedback} unread</Text>
+                </View>
+              )}
+              {athlete.pending_tasks > 0 && (
+                <View style={[rowStyles.badge, rowStyles.badgeGreen]}>
+                  <Text style={rowStyles.badgeText}>{athlete.pending_tasks} tasks</Text>
+                </View>
+              )}
+              {athlete.unread_feedback === 0 && athlete.pending_tasks === 0 && (
+                <View style={rowStyles.badge}>
+                  <Text style={rowStyles.badgeText}>All clear</Text>
+                </View>
+              )}
+            </View>
+          </View>
+          <View style={rowStyles.actions}>
+            <TouchableOpacity style={rowStyles.iconBtn} onPress={onFeedback} activeOpacity={0.7}>
+              <Ionicons name="chatbubble-ellipses" size={16} color="#60A5FA" />
+            </TouchableOpacity>
+            <TouchableOpacity style={rowStyles.iconBtn} onPress={onTask} activeOpacity={0.7}>
+              <Ionicons name="checkmark-circle" size={16} color="#4ADE80" />
+            </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={14} color="rgba(255,255,255,0.2)" />
           </View>
         </View>
-        <View style={rowStyles.actions}>
-          <TouchableOpacity style={rowStyles.iconBtn} onPress={onFeedback} activeOpacity={0.7}>
-            <Ionicons name="chatbubble-ellipses" size={16} color="#60A5FA" />
-          </TouchableOpacity>
-          <TouchableOpacity style={rowStyles.iconBtn} onPress={onTask} activeOpacity={0.7}>
-            <Ionicons name="checkmark-circle" size={16} color="#4ADE80" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </GlassCard>
+      </GlassCard>
+    </TouchableOpacity>
   );
 }
 

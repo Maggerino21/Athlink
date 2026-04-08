@@ -9,6 +9,7 @@ export interface Profile {
   full_name: string;
   avatar_url: string | null;
   club_id: string | null;
+  club_name: string | null;
 }
 
 interface AuthContextType {
@@ -39,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, role, full_name, avatar_url, club_id')
+        .select('id, role, full_name, avatar_url, club_id, clubs(name)')
         .eq('id', userId)
         .single();
 
@@ -52,7 +53,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setProfileError(`${error.code}: ${error.message}`);
         setLoading(false);
       } else if (data) {
-        setProfile(data as Profile);
+        const { clubs, ...rest } = data as any;
+        setProfile({ ...rest, club_name: clubs?.name ?? null } as Profile);
         setProfileError(null);
         setLoading(false);
       } else {

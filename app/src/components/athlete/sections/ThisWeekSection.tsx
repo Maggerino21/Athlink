@@ -121,8 +121,8 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
             </View>
             <Text style={styles.matchTitle}>
               {nextMatch.is_home
-                ? `FC United vs ${nextMatch.opponent}`
-                : `${nextMatch.opponent} vs FC United`}
+                ? `${profile?.club_name ?? 'Us'} vs ${nextMatch.opponent}`
+                : `${nextMatch.opponent} vs ${profile?.club_name ?? 'Us'}`}
             </Text>
             <Text style={styles.matchSub}>
               {matchDay} · {matchTime} · {nextMatch.is_home ? 'Home' : 'Away'}
