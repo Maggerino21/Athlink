@@ -89,7 +89,7 @@ export default function HomeScreen() {
 
   const name      = profile?.full_name ?? '';
   const initials  = name ? getInitials(name) : '?';
-  const clubName  = profile?.club_id ? 'FC United' : null;
+  const clubName  = profile?.club_name ?? null;
 
   return (
     <View style={styles.root}>

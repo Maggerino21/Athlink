@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import LandingScreen from '../screens/auth/LandingScreen';
 import HomeScreen from '../screens/athlete/HomeScreen';
 import StaffHomeScreen from '../screens/staff/StaffHomeScreen';
+import StaffAthleteDetailScreen from '../screens/staff/StaffAthleteDetailScreen';
 
 // ── Stack param lists ──────────────────────────────────────────────────────
 export type AuthStackParamList = {
@@ -18,6 +19,7 @@ export type AthleteStackParamList = {
 
 export type StaffStackParamList = {
   StaffHome: undefined;
+  StaffAthleteDetail: { athleteId: string; athleteName: string };
 };
 
 // ── Individual stacks ──────────────────────────────────────────────────────
@@ -45,6 +47,11 @@ function StaffNavigator() {
   return (
     <StaffStack.Navigator screenOptions={{ headerShown: false }}>
       <StaffStack.Screen name="StaffHome" component={StaffHomeScreen} />
+      <StaffStack.Screen
+        name="StaffAthleteDetail"
+        component={StaffAthleteDetailScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
     </StaffStack.Navigator>
   );
 }
