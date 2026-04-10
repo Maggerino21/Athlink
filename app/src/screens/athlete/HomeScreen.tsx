@@ -7,8 +7,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { clubGradientOrbs } from '../../utils/theme';
 import ThisWeekSection from '../../components/athlete/sections/ThisWeekSection';
 import FeedbackSection from '../../components/athlete/sections/FeedbackSection';
+import ScheduleSection from '../../components/athlete/sections/ScheduleSection';
 import TasksSection from '../../components/athlete/sections/TasksSection';
 import ProgressSection from '../../components/athlete/sections/ProgressSection';
 import LiquidGlassTabBar from '../../components/athlete/LiquidGlassTabBar';
@@ -17,6 +19,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SECTIONS = [
   { id: 'this-week', Component: ThisWeekSection },
   { id: 'feedback',  Component: FeedbackSection },
+  { id: 'schedule',  Component: ScheduleSection },
   { id: 'tasks',     Component: TasksSection    },
   { id: 'progress',  Component: ProgressSection },
 ];
@@ -96,13 +99,16 @@ export default function HomeScreen() {
       <StatusBar style="light" />
 
       {/* Background */}
-      <View style={StyleSheet.absoluteFill}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#080C1E' }]} />
-        {/* Soft blue — top */}
-        <LinearGradient colors={['rgba(56,100,220,0.38)', 'rgba(56,100,220,0)']} style={styles.orbTopRight} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
-        {/* Soft purple — bottom */}
-        <LinearGradient colors={['rgba(100,60,200,0.28)', 'rgba(100,60,200,0)']} style={styles.orbBottomLeft} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} />
-      </View>
+      {(() => {
+        const orbs = clubGradientOrbs(profile?.club_color ?? '#3B82F6');
+        return (
+          <View style={StyleSheet.absoluteFill}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#080C1E' }]} />
+            <LinearGradient colors={orbs.top}    style={styles.orbTopRight}   start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
+            <LinearGradient colors={orbs.bottom} style={styles.orbBottomLeft} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} />
+          </View>
+        );
+      })()}
 
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         {/* Header */}

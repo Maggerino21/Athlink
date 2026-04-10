@@ -1,0 +1,217 @@
+{
+  "landing": {
+    "heroPre": "Your platform for",
+    "heroTitle": "the athlete's\neveryday.",
+    "heroSub": "Feedback, tasks and\nprogress — all in one place.",
+    "joinBtn": "Join",
+    "loginBtn": "Log in"
+  },
+  "login": {
+    "title": "Log in",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "••••••••",
+    "submit": "Log in",
+    "noAccount": "Don't have an account?",
+    "switchLink": "Join",
+    "error": "Please enter email and password."
+  },
+  "signup": {
+    "step1Title": "Who are you?",
+    "athleteTitle": "Athlete",
+    "athleteSub": "I'm on a team and want to see feedback and tasks.",
+    "staffTitle": "Coach / Staff",
+    "staffSub": "I'm a coach, physio or other support person.",
+    "continueBtn": "Continue",
+    "haveAccount": "Already have an account?",
+    "switchLink": "Log in",
+    "step2Title": "Create account",
+    "fullName": "Full name",
+    "fullNamePlaceholder": "Alex Johnson",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "Min. 6 characters",
+    "nextBtn": "Next",
+    "back": "← Back",
+    "step3AthleteTitle": "Join a team",
+    "step3StaffTitle": "Set up the team",
+    "inviteHint": "Ask your coach for the team code and enter it below.",
+    "inviteLabel": "Team code",
+    "invitePlaceholder": "e.g. 507EA4",
+    "newTeam": "➕ New team",
+    "joinTeam": "🔗 Join team",
+    "adminCodeHint": "Enter the code you received from the administrator.",
+    "teamNameLabel": "Team name",
+    "teamNamePlaceholder": "e.g. Brann FK",
+    "teamColorLabel": "Team colour",
+    "createTeamBtn": "Create team",
+    "joinBtn": "Join",
+    "confirmTitle": "Check your email",
+    "confirmSub": "We sent a confirmation link to\n{{email}}",
+    "doneBtn": "Done",
+    "errors": {
+      "inviteRequired": "Enter your team code.",
+      "clubNameRequired": "Enter a team name.",
+      "staffInviteRequired": "Enter the team code.",
+      "fullNameRequired": "Full name is required.",
+      "emailRequired": "Email is required.",
+      "passwordTooShort": "Password must be at least 6 characters.",
+      "signupFailed": "Sign up failed."
+    }
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "no": "Norsk"
+  },
+  "common": {
+    "signOut": "Sign out",
+    "loading": "Loading...",
+    "close": "Close",
+    "back": "Back",
+    "home": "Home",
+    "away": "Away",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "justNow": "Just now",
+    "minutesAgo": "{{count}}m ago",
+    "hoursAgo": "{{count}}h ago",
+    "daysAgo": "{{count}} days ago"
+  },
+  "athlete": {
+    "greeting": {
+      "morning": "Good morning",
+      "afternoon": "Good afternoon",
+      "evening": "Good evening"
+    },
+    "tabs": {
+      "home": "Home",
+      "feedback": "Feedback",
+      "tasks": "Tasks",
+      "progress": "Progress"
+    },
+    "thisWeek": {
+      "nextMatch": "Next Match",
+      "noMatches": "No matches",
+      "noUpcomingMatches": "No upcoming matches",
+      "noMatchesHint": "Check back with your coach for the schedule.",
+      "daysAway": "{{count}}d away",
+      "matchToday": "Today",
+      "newFeedback": "New\nFeedback",
+      "tasksPending": "Tasks\nPending",
+      "matchWeekLabel": "Match Week",
+      "matchDay": "Match day!",
+      "daysUntilKickoff_one": "{{count}} day until kick-off",
+      "daysUntilKickoff_other": "{{count}} days until kick-off",
+      "focusRecovery": "Focus on recovery and activation. Stay sharp.",
+      "focusPrepare": "Prepare well. Review your coach feedback before match day."
+    },
+    "feedback": {
+      "unread": "Unread",
+      "earlier": "Earlier",
+      "emptyTitle": "No feedback yet",
+      "emptySub": "Your coach and staff feedback will appear here.",
+      "actionLabel": "Action",
+      "iUnderstand": "I understand",
+      "acknowledged": "Acknowledged"
+    },
+    "tasks": {
+      "pendingLabel": "Pending",
+      "completedLabel": "Completed",
+      "emptyTitle": "No tasks yet",
+      "emptySub": "Tasks assigned by your coach will appear here.",
+      "dueToday": "Due today",
+      "dueTomorrow": "Due tomorrow",
+      "overdueLabel": "{{count}}d overdue",
+      "noDueDate": "No due date"
+    },
+    "progress": {
+      "comingSoon": "Progress tracking coming soon."
+    }
+  },
+  "staff": {
+    "dashboardLabel": "Staff dashboard",
+    "athletesLabel": "Your Athletes",
+    "noAthletes": "No athletes in your club yet.",
+    "allClear": "All clear",
+    "unreadBadge": "{{count}} unread",
+    "tasksBadge": "{{count}} tasks",
+    "actions": {
+      "feedback": "Feedback",
+      "task": "Task",
+      "match": "Match"
+    },
+    "feedback": {
+      "modalTitle": "Give Feedback",
+      "athleteLabel": "Athlete",
+      "titleLabel": "Title (optional)",
+      "titlePlaceholder": "e.g. Press triggers in transition",
+      "bodyLabel": "Feedback",
+      "bodyPlaceholder": "What did you observe? What should they focus on?",
+      "actionLabel": "Action point (optional)",
+      "actionPlaceholder": "Specific action for the athlete",
+      "sendBtn": "Send Feedback",
+      "errors": {
+        "selectAthlete": "Select an athlete.",
+        "bodyRequired": "Feedback text is required."
+      }
+    },
+    "task": {
+      "modalTitle": "Assign Task",
+      "titleLabel": "Task title",
+      "titlePlaceholder": "e.g. Recovery program — lower body",
+      "descLabel": "Description (optional)",
+      "descPlaceholder": "More detail about what needs to be done",
+      "dueDateLabel": "Due date (optional)",
+      "dueDatePlaceholder": "DD/MM/YYYY",
+      "assignBtn": "Assign Task",
+      "errors": {
+        "selectAthlete": "Select an athlete.",
+        "titleRequired": "Task title is required.",
+        "invalidDate": "Due date format: DD/MM/YYYY"
+      }
+    },
+    "match": {
+      "modalTitle": "Schedule Match",
+      "opponentLabel": "Opponent",
+      "opponentPlaceholder": "e.g. City FC",
+      "dateLabel": "Date",
+      "datePlaceholder": "DD/MM/YYYY",
+      "kickoffLabel": "Kick-off time",
+      "kickoffPlaceholder": "HH:MM  (e.g. 15:00)",
+      "locationLabel": "Location (optional)",
+      "locationPlaceholder": "e.g. Home Park",
+      "venueLabel": "Venue",
+      "addBtn": "Add Match",
+      "errors": {
+        "opponentRequired": "Opponent name is required.",
+        "dateRequired": "Date is required. Format: DD/MM/YYYY",
+        "invalidDate": "Invalid date. Use DD/MM/YYYY"
+      }
+    },
+    "detail": {
+      "title": "Athlete Profile",
+      "roleLabel": "Athlete",
+      "unreadLabel": "Unread",
+      "pendingLabel": "Pending tasks",
+      "totalLabel": "Total feedback",
+      "feedbackSection": "Feedback",
+      "tasksSection": "Tasks",
+      "noFeedback": "No feedback given yet",
+      "noTasks": "No tasks assigned yet",
+      "giveFeedback": "Give Feedback",
+      "assignTask": "Assign Task",
+      "statusRead": "Read",
+      "statusUnread": "Unread",
+      "statusDone": "Done",
+      "statusPending": "Pending",
+      "statusOverdue": "Overdue",
+      "dueToday": "Due today",
+      "dueTomorrow": "Due tomorrow",
+      "overdueLabel": "{{count}}d overdue",
+      "noDueDate": "No due date"
+    }
+  }
+}
