@@ -14,6 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import GlassCard from '../../components/ui/GlassCard';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { clubGradientOrbs } from '../../utils/theme';
 import { StaffStackParamList } from '../../navigation/RootNavigator';
 
 type RouteProps = RouteProp<StaffStackParamList, 'StaffAthleteDetail'>;
@@ -26,8 +27,12 @@ interface FeedbackItem {
   id: string;
   title: string | null;
   feedback_text: string;
+  processed_text: string | null;
   action_point: string | null;
+  is_ai_processed: boolean;
   acknowledged: boolean;
+  reaction: string | null;
+  athlete_reply: string | null;
   acknowledged_at: string | null;
   created_at: string;
   staff_name: string;
@@ -98,8 +103,9 @@ export default function StaffAthleteDetailScreen() {
       supabase
         .from('match_feedback')
         .select(`
-          id, title, feedback_text, action_point,
-          acknowledged, acknowledged_at, created_at,
+          id, title, feedback_text, processed_text, action_point,
+          is_ai_processed, acknowledged, reaction, athlete_reply,
+          acknowledged_at, created_at,
           staff:profiles!match_feedback_created_by_fkey(full_name)
         `)
         .eq('athlete_id', athleteId)
@@ -119,8 +125,12 @@ export default function StaffAthleteDetailScreen() {
         id: r.id,
         title: r.title,
         feedback_text: r.feedback_text,
+        processed_text: r.processed_text,
         action_point: r.action_point,
+        is_ai_processed: r.is_ai_processed ?? false,
         acknowledged: r.acknowledged,
+        reaction: r.reaction,
+        athlete_reply: r.athlete_reply,
         acknowledged_at: r.acknowledged_at,
         created_at: r.created_at,
         staff_name: r.staff?.full_name ?? 'Staff',
@@ -150,19 +160,16 @@ export default function StaffAthleteDetailScreen() {
       <StatusBar style="light" />
 
       {/* Background */}
-      <View style={StyleSheet.absoluteFill}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#080C1E' }]} />
-        <LinearGradient
-          colors={['rgba(56,100,220,0.35)', 'rgba(56,100,220,0)']}
-          style={styles.orbTop}
-          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-        />
-        <LinearGradient
-          colors={['rgba(100,60,200,0.25)', 'rgba(100,60,200,0)']}
-          style={styles.orbBottom}
-          start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }}
-        />
-      </View>
+      {(() => {
+        const orbs = clubGradientOrbs(profile?.club_color ?? '#3B82F6');
+        return (
+          <View style={StyleSheet.absoluteFill}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#080C1E' }]} />
+            <LinearGradient colors={orbs.top}    style={styles.orbTop}    start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
+            <LinearGradient colors={orbs.bottom} style={styles.orbBottom} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} />
+          </View>
+        );
+      })()}
 
       <SafeAreaView style={styles.safe} edges={['top']}>
         {/* Header */}
@@ -357,12 +364,35 @@ function FeedbackCard({ item }: { item: FeedbackItem }) {
       </View>
 
       {item.title && <Text style={fbStyles.title}>{item.title}</Text>}
-      <Text style={fbStyles.body}>{item.feedback_text}</Text>
+      {item.is_ai_processed && (
+        <View style={fbStyles.aiBadge}>
+          <Ionicons name="sparkles" size={10} color="#93C5FD" style={{ marginRight: 3 }} />
+          <Text style={fbStyles.aiBadgeText}>Translated by AI</Text>
+        </View>
+      )}
+      <Text style={fbStyles.body}>{item.processed_text ?? item.feedback_text}</Text>
 
       {item.action_point && (
         <View style={fbStyles.actionBox}>
           <Text style={fbStyles.actionLabel}>Action</Text>
           <Text style={fbStyles.actionText}>{item.action_point}</Text>
+        </View>
+      )}
+
+      {item.acknowledged && (
+        <View style={fbStyles.ackRow}>
+          {item.reaction
+            ? <Text style={fbStyles.reactionText}>{item.reaction}</Text>
+            : <Ionicons name="checkmark-circle" size={12} color="#4ADE80" />
+          }
+          <Text style={fbStyles.ackRowText}>Acknowledged</Text>
+        </View>
+      )}
+
+      {item.athlete_reply && (
+        <View style={fbStyles.replyBox}>
+          <Text style={fbStyles.replyLabel}>Athlete reply</Text>
+          <Text style={fbStyles.replyText}>{item.athlete_reply}</Text>
         </View>
       )}
     </GlassCard>
@@ -407,6 +437,18 @@ const fbStyles = StyleSheet.create({
   },
   actionLabel: { fontSize: 10, fontWeight: '700', color: 'rgba(147,197,253,0.7)', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
   actionText:  { fontSize: 12, color: 'rgba(147,197,253,0.8)', lineHeight: 17 },
+  aiBadge: { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
+  aiBadgeText: { fontSize: 10, color: 'rgba(147,197,253,0.5)', fontWeight: '500' },
+  ackRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
+  ackRowText: { fontSize: 12, color: 'rgba(74,222,128,0.6)', fontWeight: '500' },
+  reactionText: { fontSize: 14 },
+  replyBox: {
+    marginTop: 8, backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 8, padding: 8,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
+  },
+  replyLabel: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 },
+  replyText:  { fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 17 },
 });
 
 // ── Task Card (staff view) ─────────────────────────────────────────────────────
@@ -526,6 +568,24 @@ function QuickFeedbackModal({
     });
     setSubmitting(false);
     if (err) { setError(err.message); return; }
+
+    // Send push notification (fire-and-forget)
+    const { data: athleteProfile } = await supabase
+      .from('profiles')
+      .select('push_token')
+      .eq('id', athleteId)
+      .single();
+    if (athleteProfile?.push_token) {
+      supabase.functions.invoke('send-notification', {
+        body: {
+          tokens: [athleteProfile.push_token],
+          title: 'New feedback',
+          body: title.trim() || 'You have received new feedback from your coach.',
+          data: { type: 'feedback' },
+        },
+      });
+    }
+
     onClose();
   };
 

@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
+import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
+import i18n from '../i18n';
 
 export interface Profile {
   id: string;
@@ -10,6 +14,8 @@ export interface Profile {
   avatar_url: string | null;
   club_id: string | null;
   club_name: string | null;
+  club_color: string;
+  language: string;
 }
 
 interface AuthContextType {
@@ -40,7 +46,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, role, full_name, avatar_url, club_id, clubs(name)')
+        .select('id, role, full_name, avatar_url, club_id, language, clubs(name, primary_color)')
         .eq('id', userId)
         .single();
 
@@ -54,9 +60,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(false);
       } else if (data) {
         const { clubs, ...rest } = data as any;
-        setProfile({ ...rest, club_name: clubs?.name ?? null } as Profile);
+        const profile: Profile = {
+          ...rest,
+          club_name:  clubs?.name          ?? null,
+          club_color: clubs?.primary_color ?? '#3B82F6',
+        };
+        setProfile(profile);
         setProfileError(null);
         setLoading(false);
+        // Switch app language to match the user's preference
+        if (profile.language && profile.language !== i18n.language) {
+          i18n.changeLanguage(profile.language);
+        }
+        // Register push token (fire-and-forget)
+        registerPushToken(userId);
       } else {
         console.warn('[AuthContext] Profile fetch returned null data, no error. userId:', userId);
         setProfileError('no_data');
@@ -71,6 +88,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = async () => {
     if (session?.user.id) await fetchProfile(session.user.id);
+  };
+
+  const registerPushToken = async (userId: string) => {
+    if (!Device.isDevice) return;
+    try {
+      const { status: existing } = await Notifications.getPermissionsAsync();
+      let finalStatus = existing;
+      if (existing !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') return;
+
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default',
+          importance: Notifications.AndroidImportance.MAX,
+        });
+      }
+
+      const { data: tokenData } = await Notifications.getExpoPushTokenAsync();
+      if (tokenData) {
+        await supabase.from('profiles').update({ push_token: tokenData }).eq('id', userId);
+      }
+    } catch (e) {
+      console.warn('[AuthContext] Push token registration failed:', e);
+    }
   };
 
   useEffect(() => {

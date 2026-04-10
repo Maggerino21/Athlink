@@ -47,6 +47,12 @@ const TABS = [
     iconActive: 'chatbubble' as const,
   },
   {
+    id: 'schedule',
+    label: 'Schedule',
+    icon: 'calendar-outline' as const,
+    iconActive: 'calendar' as const,
+  },
+  {
     id: 'tasks',
     label: 'Tasks',
     icon: 'checkmark-circle-outline' as const,

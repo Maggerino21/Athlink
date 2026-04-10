@@ -9,18 +9,21 @@ import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useFonts, DMSerifDisplay_400Regular } from '@expo-google-fonts/dm-serif-display';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 import { supabase } from '../../lib/supabase';
 import GlassInput from '../../components/ui/GlassInput';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 const { width: W, height: H } = Dimensions.get('window');
 
 export default function LandingScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [loginVisible,  setLoginVisible]  = useState(false);
   const [signupVisible, setSignupVisible] = useState(false);
   const [fontsLoaded] = useFonts({ DMSerifDisplay_400Regular });
 
-  // Use system font until custom font loads — no flash
   const serifFont = fontsLoaded ? 'DMSerifDisplay_400Regular' : undefined;
 
   return (
@@ -39,33 +42,29 @@ export default function LandingScreen() {
 
         {/* Hero */}
         <View style={styles.heroWrap}>
-          <Text style={styles.heroPre}>Din plattform for</Text>
+          <Text style={styles.heroPre}>{t('landing.heroPre')}</Text>
           <Text style={[styles.heroTitle, serifFont ? { fontFamily: serifFont, fontWeight: 'normal' } : null]}>
-            utøverens{'\n'}hverdag.
+            {t('landing.heroTitle')}
           </Text>
-          <Text style={styles.heroSub}>
-            Tilbakemeldinger, oppgaver og{'\n'}fremgang – alt på ett sted.
-          </Text>
+          <Text style={styles.heroSub}>{t('landing.heroSub')}</Text>
         </View>
 
         {/* CTA buttons */}
         <View style={[styles.ctaWrap, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          {/* Primary — Bli med */}
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={() => setSignupVisible(true)}
             activeOpacity={0.88}
           >
-            <Text style={styles.primaryBtnText}>Bli med</Text>
+            <Text style={styles.primaryBtnText}>{t('landing.joinBtn')}</Text>
           </TouchableOpacity>
 
-          {/* Secondary — Logg inn */}
           <TouchableOpacity
             style={styles.secondaryBtn}
             onPress={() => setLoginVisible(true)}
             activeOpacity={0.8}
           >
-            <Text style={styles.secondaryBtnText}>Logg inn</Text>
+            <Text style={styles.secondaryBtnText}>{t('landing.loginBtn')}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -136,6 +135,7 @@ function Background() {
 function LoginSheet({
   visible, onClose, onSwitchToSignup,
 }: { visible: boolean; onClose: () => void; onSwitchToSignup: () => void }) {
+  const { t } = useTranslation();
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
@@ -146,7 +146,7 @@ function LoginSheet({
   }, [visible]);
 
   const handleLogin = async () => {
-    if (!email || !password) { setError('Fyll inn e-post og passord.'); return; }
+    if (!email || !password) { setError(t('login.error')); return; }
     setError(''); setLoading(true);
     const { error: err } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
@@ -154,21 +154,21 @@ function LoginSheet({
   };
 
   return (
-    <BottomSheet visible={visible} onClose={onClose} title="Logg inn">
+    <BottomSheet visible={visible} onClose={onClose} title={t('login.title')}>
       <GlassInput
-        label="E-post"
+        label={t('login.email')}
         value={email}
         onChangeText={setEmail}
-        placeholder="deg@eksempel.no"
+        placeholder={t('login.emailPlaceholder')}
         keyboardType="email-address"
         textContentType="emailAddress"
       />
       <View style={{ height: 12 }} />
       <GlassInput
-        label="Passord"
+        label={t('login.password')}
         value={password}
         onChangeText={setPassword}
-        placeholder="••••••••"
+        placeholder={t('login.passwordPlaceholder')}
         secure
         textContentType="password"
       />
@@ -182,14 +182,14 @@ function LoginSheet({
       >
         {loading
           ? <ActivityIndicator color="#e3d7d7" size="small" />
-          : <Text style={sheetStyles.submitText}>Logg inn</Text>
+          : <Text style={sheetStyles.submitText}>{t('login.submit')}</Text>
         }
       </TouchableOpacity>
 
       <TouchableOpacity onPress={onSwitchToSignup} activeOpacity={0.7} style={sheetStyles.switchRow}>
         <Text style={sheetStyles.switchText}>
-          Har du ikke konto?{'  '}
-          <Text style={sheetStyles.switchLink}>Bli med</Text>
+          {t('login.noAccount')}{'  '}
+          <Text style={sheetStyles.switchLink}>{t('login.switchLink')}</Text>
         </Text>
       </TouchableOpacity>
     </BottomSheet>
@@ -197,21 +197,41 @@ function LoginSheet({
 }
 
 // ─── Signup sheet ─────────────────────────────────────────────────────────────
-// Step 1: Role   →   Step 2: Credentials   →   Step 3: Club setup
+// Step 1: Role + Language   →   Step 2: Credentials   →   Step 3: Club setup
 function SignupSheet({
   visible, onClose, onSwitchToLogin,
 }: { visible: boolean; onClose: () => void; onSwitchToLogin: () => void }) {
+  const { t } = useTranslation();
+
   type Role      = 'athlete' | 'staff';
   type StaffMode = 'create' | 'join';
+
+  const CLUB_COLORS = [
+    '#3B82F6', // Blue
+    '#8B5CF6', // Purple
+    '#EC4899', // Pink
+    '#EF4444', // Red
+    '#F97316', // Orange
+    '#EAB308', // Yellow
+    '#22C55E', // Green
+    '#06B6D4', // Cyan
+    '#6366F1', // Indigo
+    '#14B8A6', // Teal
+  ];
   type Step      = 1 | 2 | 3;
+  type Lang      = 'en' | 'no';
 
   const [step, setStep]           = useState<Step>(1);
   const [role, setRole]           = useState<Role>('athlete');
+  const [language, setLanguage]   = useState<Lang>(
+    (i18n.language === 'no' ? 'no' : 'en') as Lang
+  );
   const [fullName, setFullName]   = useState('');
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
   const [inviteCode, setInviteCode] = useState('');
   const [clubName, setClubName]   = useState('');
+  const [clubColor, setClubColor] = useState('#3B82F6');
   const [staffMode, setStaffMode] = useState<StaffMode>('create');
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState('');
@@ -225,37 +245,42 @@ function SignupSheet({
     }
   }, [visible]);
 
+  const handleLanguageChange = (lang: Lang) => {
+    setLanguage(lang);
+    i18n.changeLanguage(lang);
+  };
+
   const goToStep2 = () => { setError(''); setStep(2); };
   const goToStep3 = () => {
-    if (!fullName.trim()) { setError('Fullt navn er påkrevd.'); return; }
-    if (!email.trim())    { setError('E-post er påkrevd.'); return; }
-    if (password.length < 6) { setError('Passordet må ha minst 6 tegn.'); return; }
+    if (!fullName.trim()) { setError(t('signup.errors.fullNameRequired')); return; }
+    if (!email.trim())    { setError(t('signup.errors.emailRequired')); return; }
+    if (password.length < 6) { setError(t('signup.errors.passwordTooShort')); return; }
     setError(''); setStep(3);
   };
 
   const handleSignup = async () => {
-    // Validate step 3
     if (role === 'athlete' && !inviteCode.trim()) {
-      setError('Skriv inn lagkoden din.'); return;
+      setError(t('signup.errors.inviteRequired')); return;
     }
     if (role === 'staff' && staffMode === 'create' && !clubName.trim()) {
-      setError('Skriv inn lagnavn.'); return;
+      setError(t('signup.errors.clubNameRequired')); return;
     }
     if (role === 'staff' && staffMode === 'join' && !inviteCode.trim()) {
-      setError('Skriv inn lagkoden.'); return;
+      setError(t('signup.errors.staffInviteRequired')); return;
     }
 
     setError(''); setLoading(true);
 
-    // Pass club info in metadata so the DB trigger handles it atomically
     const metadata: Record<string, string> = {
       full_name: fullName.trim(),
       role,
+      language,
     };
     if (role === 'athlete' || staffMode === 'join') {
       metadata.invite_code = inviteCode.trim().toUpperCase();
     } else {
-      metadata.club_name = clubName.trim();
+      metadata.club_name    = clubName.trim();
+      metadata.primary_color = clubColor;
     }
 
     const { data, error: err } = await supabase.auth.signUp({
@@ -268,32 +293,47 @@ function SignupSheet({
     });
 
     setLoading(false);
-    if (err || !data.user) { setError(err?.message ?? 'Registrering feilet.'); return; }
+    if (err || !data.user) { setError(err?.message ?? t('signup.errors.signupFailed')); return; }
     if (!data.session) setDone(true);
-    // If session returned → AuthContext picks it up automatically → app navigates
   };
 
-  // ── Done screen (email confirmation required) ──────────────────────────────
+  // ── Done screen ────────────────────────────────────────────────────────────
   if (done) {
     return (
-      <BottomSheet visible={visible} onClose={onClose} title="Sjekk e-posten din">
+      <BottomSheet visible={visible} onClose={onClose} title={t('signup.confirmTitle')}>
         <View style={sheetStyles.doneWrap}>
           <Text style={sheetStyles.doneIcon}>✉️</Text>
-          <Text style={sheetStyles.doneSub}>
-            Vi sendte en bekreftelseslenke til{'\n'}{email}
-          </Text>
+          <Text style={sheetStyles.doneSub}>{t('signup.confirmSub', { email })}</Text>
           <TouchableOpacity style={[sheetStyles.submitBtn, { marginTop: 24 }]} onPress={onClose} activeOpacity={0.85}>
-            <Text style={sheetStyles.submitText}>Ferdig</Text>
+            <Text style={sheetStyles.submitText}>{t('signup.doneBtn')}</Text>
           </TouchableOpacity>
         </View>
       </BottomSheet>
     );
   }
 
-  // ── Step 1: Role ───────────────────────────────────────────────────────────
+  // ── Step 1: Role + Language ────────────────────────────────────────────────
   if (step === 1) {
     return (
-      <BottomSheet visible={visible} onClose={onClose} title="Hvem er du?">
+      <BottomSheet visible={visible} onClose={onClose} title={t('signup.step1Title')}>
+        {/* Language toggle */}
+        <Text style={sheetStyles.fieldLabel}>{t('language.label')}</Text>
+        <View style={[sheetStyles.roleRow, { marginBottom: 24 }]}>
+          {(['en', 'no'] as Lang[]).map(lang => (
+            <TouchableOpacity
+              key={lang}
+              style={[sheetStyles.roleBtn, language === lang && sheetStyles.roleBtnActive]}
+              onPress={() => handleLanguageChange(lang)}
+              activeOpacity={0.8}
+            >
+              <Text style={[sheetStyles.roleBtnText, language === lang && sheetStyles.roleBtnTextActive]}>
+                {lang === 'en' ? '🇬🇧  English' : '🇳🇴  Norsk'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Role cards */}
         <View style={sheetStyles.roleCards}>
           {(['athlete', 'staff'] as Role[]).map(r => (
             <TouchableOpacity
@@ -306,25 +346,23 @@ function SignupSheet({
                 {r === 'athlete' ? '🏃' : '📋'}
               </Text>
               <Text style={[sheetStyles.roleCardTitle, role === r && sheetStyles.roleCardTitleActive]}>
-                {r === 'athlete' ? 'Utøver' : 'Trener / Stab'}
+                {r === 'athlete' ? t('signup.athleteTitle') : t('signup.staffTitle')}
               </Text>
               <Text style={sheetStyles.roleCardSub}>
-                {r === 'athlete'
-                  ? 'Jeg er på et lag og vil se tilbakemeldinger og oppgaver.'
-                  : 'Jeg er trener, fysioterapeut eller annen støtteperson.'}
+                {r === 'athlete' ? t('signup.athleteSub') : t('signup.staffSub')}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
 
         <TouchableOpacity style={sheetStyles.submitBtn} onPress={goToStep2} activeOpacity={0.85}>
-          <Text style={sheetStyles.submitText}>Fortsett</Text>
+          <Text style={sheetStyles.submitText}>{t('signup.continueBtn')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={onSwitchToLogin} activeOpacity={0.7} style={sheetStyles.switchRow}>
           <Text style={sheetStyles.switchText}>
-            Har du allerede konto?{'  '}
-            <Text style={sheetStyles.switchLink}>Logg inn</Text>
+            {t('signup.haveAccount')}{'  '}
+            <Text style={sheetStyles.switchLink}>{t('signup.switchLink')}</Text>
           </Text>
         </TouchableOpacity>
       </BottomSheet>
@@ -334,24 +372,24 @@ function SignupSheet({
   // ── Step 2: Credentials ────────────────────────────────────────────────────
   if (step === 2) {
     return (
-      <BottomSheet visible={visible} onClose={onClose} title="Opprett konto">
+      <BottomSheet visible={visible} onClose={onClose} title={t('signup.step2Title')}>
         <TouchableOpacity onPress={() => setStep(1)} style={sheetStyles.backBtn} activeOpacity={0.7}>
-          <Text style={sheetStyles.backText}>← Tilbake</Text>
+          <Text style={sheetStyles.backText}>{t('signup.back')}</Text>
         </TouchableOpacity>
 
-        <GlassInput label="Fullt navn" value={fullName} onChangeText={setFullName}
-          placeholder="Alex Johansen" textContentType="name" autoCapitalize="words" />
+        <GlassInput label={t('signup.fullName')} value={fullName} onChangeText={setFullName}
+          placeholder={t('signup.fullNamePlaceholder')} textContentType="name" autoCapitalize="words" />
         <View style={{ height: 12 }} />
-        <GlassInput label="E-post" value={email} onChangeText={setEmail}
-          placeholder="deg@eksempel.no" keyboardType="email-address" textContentType="emailAddress" />
+        <GlassInput label={t('signup.email')} value={email} onChangeText={setEmail}
+          placeholder={t('signup.emailPlaceholder')} keyboardType="email-address" textContentType="emailAddress" />
         <View style={{ height: 12 }} />
-        <GlassInput label="Passord" value={password} onChangeText={setPassword}
-          placeholder="Min. 6 tegn" secure textContentType="none" />
+        <GlassInput label={t('signup.password')} value={password} onChangeText={setPassword}
+          placeholder={t('signup.passwordPlaceholder')} secure textContentType="none" />
 
         {error ? <Text style={sheetStyles.error}>{error}</Text> : null}
 
         <TouchableOpacity style={sheetStyles.submitBtn} onPress={goToStep3} activeOpacity={0.85}>
-          <Text style={sheetStyles.submitText}>Neste</Text>
+          <Text style={sheetStyles.submitText}>{t('signup.nextBtn')}</Text>
         </TouchableOpacity>
       </BottomSheet>
     );
@@ -362,28 +400,24 @@ function SignupSheet({
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title={role === 'athlete' ? 'Bli med på lag' : 'Sett opp laget'}
+      title={role === 'athlete' ? t('signup.step3AthleteTitle') : t('signup.step3StaffTitle')}
     >
       <TouchableOpacity onPress={() => setStep(2)} style={sheetStyles.backBtn} activeOpacity={0.7}>
-        <Text style={sheetStyles.backText}>← Tilbake</Text>
+        <Text style={sheetStyles.backText}>{t('signup.back')}</Text>
       </TouchableOpacity>
 
       {role === 'athlete' ? (
-        // Athlete: just enter a code
         <>
-          <Text style={sheetStyles.clubHint}>
-            Be treneren din om lagkoden og skriv den inn under.
-          </Text>
+          <Text style={sheetStyles.clubHint}>{t('signup.inviteHint')}</Text>
           <GlassInput
-            label="Lagkode"
+            label={t('signup.inviteLabel')}
             value={inviteCode}
-            onChangeText={t => setInviteCode(t.toUpperCase())}
-            placeholder="F.eks. 507EA4"
+            onChangeText={v => setInviteCode(v.toUpperCase())}
+            placeholder={t('signup.invitePlaceholder')}
             autoCapitalize="characters"
           />
         </>
       ) : (
-        // Staff: create or join
         <>
           <View style={sheetStyles.roleRow}>
             {(['create', 'join'] as StaffMode[]).map(m => (
@@ -394,30 +428,45 @@ function SignupSheet({
                 activeOpacity={0.8}
               >
                 <Text style={[sheetStyles.roleBtnText, staffMode === m && sheetStyles.roleBtnTextActive]}>
-                  {m === 'create' ? '➕ Nytt lag' : '🔗 Bli med på lag'}
+                  {m === 'create' ? t('signup.newTeam') : t('signup.joinTeam')}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
 
           {staffMode === 'create' ? (
-            <GlassInput
-              label="Lagnavn"
-              value={clubName}
-              onChangeText={setClubName}
-              placeholder="F.eks. Brann FK"
-              autoCapitalize="words"
-            />
+            <>
+              <GlassInput
+                label={t('signup.teamNameLabel')}
+                value={clubName}
+                onChangeText={setClubName}
+                placeholder={t('signup.teamNamePlaceholder')}
+                autoCapitalize="words"
+              />
+              <Text style={sheetStyles.fieldLabel}>{t('signup.teamColorLabel')}</Text>
+              <View style={sheetStyles.swatchRow}>
+                {CLUB_COLORS.map(c => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[sheetStyles.swatch, { backgroundColor: c }, clubColor === c && sheetStyles.swatchSelected]}
+                    onPress={() => setClubColor(c)}
+                    activeOpacity={0.8}
+                  >
+                    {clubColor === c && (
+                      <Ionicons name="checkmark" size={14} color="#fff" />
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
           ) : (
             <>
-              <Text style={sheetStyles.clubHint}>
-                Skriv inn koden du har fått fra administratoren.
-              </Text>
+              <Text style={sheetStyles.clubHint}>{t('signup.adminCodeHint')}</Text>
               <GlassInput
-                label="Lagkode"
+                label={t('signup.inviteLabel')}
                 value={inviteCode}
-                onChangeText={t => setInviteCode(t.toUpperCase())}
-                placeholder="F.eks. 507EA4"
+                onChangeText={v => setInviteCode(v.toUpperCase())}
+                placeholder={t('signup.invitePlaceholder')}
                 autoCapitalize="characters"
               />
             </>
@@ -436,7 +485,9 @@ function SignupSheet({
         {loading
           ? <ActivityIndicator color="#e3d7d7" size="small" />
           : <Text style={sheetStyles.submitText}>
-              {role === 'staff' && staffMode === 'create' ? 'Opprett lag' : 'Bli med'}
+              {role === 'staff' && staffMode === 'create'
+                ? t('signup.createTeamBtn')
+                : t('signup.joinBtn')}
             </Text>
         }
       </TouchableOpacity>
@@ -717,6 +768,13 @@ const sheetStyles = StyleSheet.create({
   roleCardTitleActive: { color: '#e3d7d7' },
   roleCardSub: { fontSize: 13, color: 'rgba(227,215,215,0.3)', lineHeight: 18 },
 
+  fieldLabel: {
+    fontSize: 11, fontWeight: '600',
+    color: 'rgba(227,215,215,0.4)',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginBottom: 10,
+  },
+
   // Back button
   backBtn: { marginBottom: 20 },
   backText: { fontSize: 14, color: 'rgba(184,156,247,0.7)', fontWeight: '500' },
@@ -725,5 +783,19 @@ const sheetStyles = StyleSheet.create({
   clubHint: {
     fontSize: 13, color: 'rgba(227,215,215,0.35)',
     lineHeight: 20, marginBottom: 16,
+  },
+
+  // Club colour swatches
+  swatchRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20,
+  },
+  swatch: {
+    width: 38, height: 38, borderRadius: 19,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 2, borderColor: 'transparent',
+  },
+  swatchSelected: {
+    borderColor: '#fff',
+    shadowColor: '#fff', shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
   },
 });

@@ -15,15 +15,28 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import GlassCard from '../../components/ui/GlassCard';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { clubGradientOrbs } from '../../utils/theme';
 
 const { width: W, height: H } = Dimensions.get('window');
 
 interface Athlete {
   id: string;
   full_name: string;
+  language: string;
   pending_tasks: number;
   unread_feedback: number;
 }
+
+type EventType = 'training' | 'exercise' | 'recovery' | 'travel' | 'meeting' | 'other';
+
+const EVENT_TYPES: { type: EventType; label: string; icon: string; color: string }[] = [
+  { type: 'training', label: 'Training',  icon: 'fitness',   color: '#3B82F6' },
+  { type: 'exercise', label: 'Exercise',  icon: 'barbell',   color: '#8B5CF6' },
+  { type: 'recovery', label: 'Recovery',  icon: 'leaf',      color: '#22C55E' },
+  { type: 'travel',   label: 'Travel',    icon: 'airplane',  color: '#F59E0B' },
+  { type: 'meeting',  label: 'Meeting',   icon: 'people',    color: '#EC4899' },
+  { type: 'other',    label: 'Other',     icon: 'calendar',  color: '#6B7280' },
+];
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 export default function StaffHomeScreen() {
@@ -36,13 +49,14 @@ export default function StaffHomeScreen() {
   const [feedbackModal, setFeedbackModal]   = useState(false);
   const [taskModal, setTaskModal]           = useState(false);
   const [matchModal, setMatchModal]         = useState(false);
+  const [eventModal, setEventModal]         = useState(false);
   const [preselectedAthlete, setPreselected] = useState<Athlete | null>(null);
 
   const load = useCallback(async () => {
     if (!profile?.club_id) return;
     const { data } = await supabase
       .from('profiles')
-      .select('id, full_name')
+      .select('id, full_name, language')
       .eq('club_id', profile.club_id)
       .eq('role', 'athlete')
       .order('full_name');
@@ -67,6 +81,7 @@ export default function StaffHomeScreen() {
         return {
           id: a.id,
           full_name: a.full_name,
+          language: a.language ?? 'en',
           pending_tasks: (taskRes as any).count ?? 0,
           unread_feedback: (fbRes as any).count ?? 0,
         };
@@ -100,19 +115,16 @@ export default function StaffHomeScreen() {
       <StatusBar style="light" />
 
       {/* Background */}
-      <View style={StyleSheet.absoluteFill}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#080C1E' }]} />
-        <LinearGradient
-          colors={['rgba(56,100,220,0.38)', 'rgba(56,100,220,0)']}
-          style={styles.orbTop}
-          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-        />
-        <LinearGradient
-          colors={['rgba(100,60,200,0.28)', 'rgba(100,60,200,0)']}
-          style={styles.orbBottom}
-          start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }}
-        />
-      </View>
+      {(() => {
+        const orbs = clubGradientOrbs(profile?.club_color ?? '#3B82F6');
+        return (
+          <View style={StyleSheet.absoluteFill}>
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#080C1E' }]} />
+            <LinearGradient colors={orbs.top}    style={styles.orbTop}    start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
+            <LinearGradient colors={orbs.bottom} style={styles.orbBottom} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} />
+          </View>
+        );
+      })()}
 
       <SafeAreaView style={styles.safe} edges={['top']}>
         {/* Header */}
@@ -126,26 +138,16 @@ export default function StaffHomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Quick action buttons */}
-        <View style={styles.actionRow}>
-          <QuickAction
-            icon="chatbubble-ellipses"
-            label="Feedback"
-            color="#3B82F6"
-            onPress={() => openFeedback()}
-          />
-          <QuickAction
-            icon="checkmark-circle"
-            label="Task"
-            color="#22C55E"
-            onPress={() => openTask()}
-          />
-          <QuickAction
-            icon="football"
-            label="Match"
-            color="#F59E0B"
-            onPress={() => setMatchModal(true)}
-          />
+        {/* Quick action 2×2 grid */}
+        <View style={styles.actionGrid}>
+          <View style={styles.actionRow}>
+            <QuickAction icon="chatbubble-ellipses" label="Feedback" color="#3B82F6" onPress={() => openFeedback()} />
+            <QuickAction icon="checkmark-circle"    label="Task"     color="#22C55E" onPress={() => openTask()} />
+          </View>
+          <View style={styles.actionRow}>
+            <QuickAction icon="fitness"  label="Training" color="#8B5CF6" onPress={() => setEventModal(true)} />
+            <QuickAction icon="football" label="Match"    color="#F59E0B" onPress={() => setMatchModal(true)} />
+          </View>
         </View>
 
         {/* Athlete list */}
@@ -205,6 +207,12 @@ export default function StaffHomeScreen() {
         staffId={profile?.id ?? ''}
         clubId={profile?.club_id ?? ''}
         onClose={() => setMatchModal(false)}
+      />
+      <EventModal
+        visible={eventModal}
+        staffId={profile?.id ?? ''}
+        clubId={profile?.club_id ?? ''}
+        onClose={() => setEventModal(false)}
       />
     </View>
   );
@@ -314,9 +322,11 @@ const qaStyles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.82)' },
 });
 
-// ─── Feedback Modal ───────────────────────────────────────────────────────────
+// ─── Feedback Modal (with AI preview) ────────────────────────────────────────
+type AIStep = 'idle' | 'loading' | 'preview';
+
 function FeedbackModal({
-  visible, athletes, preselected, staffId, clubId, onClose,
+  visible, athletes, preselected, staffId, onClose,
 }: {
   visible: boolean;
   athletes: Athlete[];
@@ -325,53 +335,167 @@ function FeedbackModal({
   clubId: string;
   onClose: () => void;
 }) {
-  const [selectedAthlete, setSelected] = useState<Athlete | null>(preselected);
-  const [title, setTitle]               = useState('');
-  const [body, setBody]                 = useState('');
-  const [actionPoint, setActionPoint]   = useState('');
-  const [submitting, setSubmitting]     = useState(false);
-  const [error, setError]               = useState('');
+  const [selectedAthlete, setSelected]       = useState<Athlete | null>(preselected);
+  const [title, setTitle]                    = useState('');
+  const [body, setBody]                      = useState('');
+  const [actionPoint, setActionPoint]        = useState('');
+  const [aiStep, setAIStep]                  = useState<AIStep>('idle');
+  const [previewFeedback, setPreviewFeedback] = useState('');
+  const [previewAction, setPreviewAction]    = useState('');
+  const [submitting, setSubmitting]          = useState(false);
+  const [error, setError]                   = useState('');
 
   useEffect(() => {
     if (visible) {
       setSelected(preselected);
-      setTitle('');
-      setBody('');
-      setActionPoint('');
+      setTitle(''); setBody(''); setActionPoint('');
+      setAIStep('idle'); setPreviewFeedback(''); setPreviewAction('');
       setError('');
     }
   }, [visible, preselected]);
 
-  const submit = async () => {
+  const runAI = async () => {
     if (!selectedAthlete) { setError('Select an athlete.'); return; }
     if (!body.trim())     { setError('Feedback text is required.'); return; }
+    setError('');
+    setAIStep('loading');
+
+    const { data, error: fnErr } = await supabase.functions.invoke('process-feedback', {
+      body: {
+        feedback_text: body.trim(),
+        action_point:  actionPoint.trim() || undefined,
+        athlete_language: selectedAthlete.language ?? 'en',
+      },
+    });
+
+    if (fnErr || !data?.feedback) {
+      setAIStep('idle');
+      setError('AI processing failed — you can still send directly.');
+      return;
+    }
+    setPreviewFeedback(data.feedback);
+    setPreviewAction(data.action_point ?? '');
+    setAIStep('preview');
+  };
+
+  const submit = async () => {
+    if (!selectedAthlete) { setError('Select an athlete.'); return; }
+    const isAI    = aiStep === 'preview';
+    const fbText  = isAI ? previewFeedback.trim() : body.trim();
+    const actText = isAI ? previewAction.trim()   : actionPoint.trim();
+    if (!fbText) { setError('Feedback text is required.'); return; }
     setError('');
     setSubmitting(true);
 
     const { error: err } = await supabase.from('match_feedback').insert({
-      athlete_id: selectedAthlete.id,
-      created_by: staffId,
-      title: title.trim() || null,
-      feedback_text: body.trim(),
-      action_point: actionPoint.trim() || null,
+      athlete_id:       selectedAthlete.id,
+      created_by:       staffId,
+      title:            title.trim() || null,
+      feedback_text:    body.trim(),
+      processed_text:   isAI ? fbText  : null,
+      action_point:     actText || null,
+      athlete_language: isAI ? (selectedAthlete.language ?? 'en') : null,
+      is_ai_processed:  isAI,
     });
 
     setSubmitting(false);
     if (err) { setError(err.message); return; }
+
+    // Send push notification to athlete (fire-and-forget)
+    const { data: athleteProfile } = await supabase
+      .from('profiles')
+      .select('push_token')
+      .eq('id', selectedAthlete.id)
+      .single();
+    if (athleteProfile?.push_token) {
+      supabase.functions.invoke('send-notification', {
+        body: {
+          tokens: [athleteProfile.push_token],
+          title: 'New feedback',
+          body: title.trim() || 'You have received new feedback from your coach.',
+          data: { type: 'feedback' },
+        },
+      });
+    }
+
     onClose();
   };
 
+  // ── Loading state ──────────────────────────────────────────────────────────
+  if (aiStep === 'loading') {
+    return (
+      <ModalShell visible={visible} title="Processing…" onClose={onClose}>
+        <View style={modalStyles.aiLoadingWrap}>
+          <ActivityIndicator color="rgba(147,197,253,0.8)" size="large" />
+          <Text style={modalStyles.aiLoadingText}>Claude is structuring{'\n'}and translating your feedback…</Text>
+        </View>
+      </ModalShell>
+    );
+  }
+
+  // ── AI preview step ────────────────────────────────────────────────────────
+  if (aiStep === 'preview') {
+    return (
+      <ModalShell visible={visible} title="Review AI Draft" onClose={onClose}>
+        <TouchableOpacity
+          style={modalStyles.backLink}
+          onPress={() => setAIStep('idle')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="chevron-back" size={14} color="rgba(147,197,253,0.7)" />
+          <Text style={modalStyles.backLinkText}>Edit original</Text>
+        </TouchableOpacity>
+
+        <View style={modalStyles.aiBadge}>
+          <Ionicons name="sparkles" size={12} color="#93C5FD" style={{ marginRight: 5 }} />
+          <Text style={modalStyles.aiBadgeText}>AI-structured · translated to athlete's language</Text>
+        </View>
+
+        <Text style={modalStyles.fieldLabel}>Feedback</Text>
+        <ModalInput
+          value={previewFeedback}
+          onChangeText={setPreviewFeedback}
+          placeholder="Processed feedback"
+          multiline
+          numberOfLines={5}
+        />
+
+        {previewAction !== '' && (
+          <>
+            <Text style={modalStyles.fieldLabel}>Action point</Text>
+            <ModalInput
+              value={previewAction}
+              onChangeText={setPreviewAction}
+              placeholder="Action point"
+            />
+          </>
+        )}
+
+        {error ? <Text style={modalStyles.error}>{error}</Text> : null}
+
+        <TouchableOpacity
+          style={[modalStyles.submitBtn, submitting && { opacity: 0.6 }]}
+          onPress={submit}
+          disabled={submitting}
+          activeOpacity={0.8}
+        >
+          {submitting
+            ? <ActivityIndicator color="#fff" size="small" />
+            : <Text style={modalStyles.submitText}>Send Feedback</Text>
+          }
+        </TouchableOpacity>
+      </ModalShell>
+    );
+  }
+
+  // ── Default form ───────────────────────────────────────────────────────────
   return (
     <ModalShell visible={visible} title="Give Feedback" onClose={onClose}>
       <Text style={modalStyles.fieldLabel}>Athlete</Text>
       <AthletePicker athletes={athletes} selected={selectedAthlete} onSelect={setSelected} />
 
       <Text style={modalStyles.fieldLabel}>Title (optional)</Text>
-      <ModalInput
-        value={title}
-        onChangeText={setTitle}
-        placeholder="e.g. Press triggers in transition"
-      />
+      <ModalInput value={title} onChangeText={setTitle} placeholder="e.g. Press triggers in transition" />
 
       <Text style={modalStyles.fieldLabel}>Feedback</Text>
       <ModalInput
@@ -383,23 +507,30 @@ function FeedbackModal({
       />
 
       <Text style={modalStyles.fieldLabel}>Action point (optional)</Text>
-      <ModalInput
-        value={actionPoint}
-        onChangeText={setActionPoint}
-        placeholder="Specific action for the athlete"
-      />
+      <ModalInput value={actionPoint} onChangeText={setActionPoint} placeholder="Specific action for the athlete" />
 
       {error ? <Text style={modalStyles.error}>{error}</Text> : null}
 
+      {/* AI preview button */}
       <TouchableOpacity
-        style={[modalStyles.submitBtn, submitting && { opacity: 0.6 }]}
+        style={modalStyles.aiBtn}
+        onPress={runAI}
+        activeOpacity={0.82}
+      >
+        <Ionicons name="sparkles" size={15} color="#93C5FD" style={{ marginRight: 7 }} />
+        <Text style={modalStyles.aiBtnText}>Preview with AI</Text>
+      </TouchableOpacity>
+
+      {/* Direct send (bypass AI) */}
+      <TouchableOpacity
+        style={[modalStyles.submitBtn, { marginTop: 8 }, submitting && { opacity: 0.6 }]}
         onPress={submit}
         disabled={submitting}
         activeOpacity={0.8}
       >
         {submitting
           ? <ActivityIndicator color="#fff" size="small" />
-          : <Text style={modalStyles.submitText}>Send Feedback</Text>
+          : <Text style={modalStyles.submitText}>Send Directly</Text>
         }
       </TouchableOpacity>
     </ModalShell>
@@ -768,6 +899,145 @@ function ModalInput({
   );
 }
 
+// ─── Event Modal ──────────────────────────────────────────────────────────────
+function EventModal({
+  visible, staffId, clubId, onClose,
+}: {
+  visible: boolean; staffId: string; clubId: string; onClose: () => void;
+}) {
+  const [eventType, setEventType]   = useState<EventType>('training');
+  const [title, setTitle]           = useState('');
+  const [date, setDate]             = useState('');
+  const [time, setTime]             = useState('');
+  const [location, setLocation]     = useState('');
+  const [description, setDesc]      = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError]           = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setEventType('training'); setTitle(''); setDate('');
+      setTime(''); setLocation(''); setDesc(''); setError('');
+    }
+  }, [visible]);
+
+  const submit = async () => {
+    if (!title.trim()) { setError('Title is required.'); return; }
+    if (!date.trim())  { setError('Date is required. Format: DD/MM/YYYY'); return; }
+    setError('');
+
+    const parts = date.trim().split(/[-/]/);
+    let eventDate: Date | null = null;
+    if (parts.length === 3 && parts[2].length === 4) {
+      const [hh, mm] = (time.trim() || '12:00').split(':');
+      eventDate = new Date(
+        `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}T${(hh ?? '12').padStart(2, '0')}:${(mm ?? '00').padStart(2, '0')}:00`
+      );
+    }
+    if (!eventDate || isNaN(eventDate.getTime())) {
+      setError('Invalid date. Use DD/MM/YYYY'); return;
+    }
+
+    setSubmitting(true);
+    const { error: err } = await supabase.from('events').insert({
+      club_id:    clubId,
+      created_by: staffId,
+      type:       eventType,
+      title:      title.trim(),
+      description: description.trim() || null,
+      event_date: eventDate.toISOString(),
+      location:   location.trim() || null,
+    });
+    setSubmitting(false);
+    if (err) { setError(err.message); return; }
+    onClose();
+  };
+
+  const current = EVENT_TYPES.find(e => e.type === eventType)!;
+
+  return (
+    <ModalShell visible={visible} title="Schedule Event" onClose={onClose}>
+      {/* Type picker */}
+      <Text style={modalStyles.fieldLabel}>Type</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={pickerStyles.scroll}
+        contentContainerStyle={pickerStyles.content}
+      >
+        {EVENT_TYPES.map(e => {
+          const active = eventType === e.type;
+          return (
+            <TouchableOpacity
+              key={e.type}
+              style={[
+                eventStyles.typeChip,
+                active && { backgroundColor: `${e.color}22`, borderColor: `${e.color}55` },
+              ]}
+              onPress={() => setEventType(e.type)}
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name={e.icon as any}
+                size={13}
+                color={active ? e.color : 'rgba(255,255,255,0.3)'}
+                style={{ marginRight: 5 }}
+              />
+              <Text style={[eventStyles.typeChipText, active && { color: e.color, fontWeight: '700' }]}>
+                {e.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      <Text style={modalStyles.fieldLabel}>Title</Text>
+      <ModalInput value={title} onChangeText={setTitle} placeholder={`e.g. ${current.label} session`} />
+
+      <Text style={modalStyles.fieldLabel}>Date</Text>
+      <ModalInput value={date} onChangeText={setDate} placeholder="DD/MM/YYYY" keyboardType="numbers-and-punctuation" />
+
+      <Text style={modalStyles.fieldLabel}>Time (optional)</Text>
+      <ModalInput value={time} onChangeText={setTime} placeholder="HH:MM  (e.g. 09:00)" keyboardType="numbers-and-punctuation" />
+
+      <Text style={modalStyles.fieldLabel}>Location (optional)</Text>
+      <ModalInput value={location} onChangeText={setLocation} placeholder="e.g. Training ground" />
+
+      <Text style={modalStyles.fieldLabel}>Description (optional)</Text>
+      <ModalInput value={description} onChangeText={setDesc} placeholder="Extra details for athletes" multiline numberOfLines={3} />
+
+      {error ? <Text style={modalStyles.error}>{error}</Text> : null}
+
+      <TouchableOpacity
+        style={[
+          modalStyles.submitBtn,
+          { backgroundColor: current.color + 'CC', borderColor: current.color + '66' },
+          submitting && { opacity: 0.6 },
+        ]}
+        onPress={submit}
+        disabled={submitting}
+        activeOpacity={0.8}
+      >
+        {submitting
+          ? <ActivityIndicator color="#fff" size="small" />
+          : <Text style={modalStyles.submitText}>Add Event</Text>
+        }
+      </TouchableOpacity>
+    </ModalShell>
+  );
+}
+
+const eventStyles = StyleSheet.create({
+  typeChip: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 20, borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  typeChipText: { fontSize: 13, color: 'rgba(255,255,255,0.3)', fontWeight: '500' },
+});
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string) {
   const parts = name.trim().split(' ').filter(Boolean);
@@ -802,7 +1072,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
 
-  actionRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginBottom: 24 },
+  actionGrid: { paddingHorizontal: 20, marginBottom: 24, gap: 10 },
+  actionRow:  { flexDirection: 'row', gap: 10 },
 
   sectionLabel: {
     fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.25)',
@@ -853,6 +1124,26 @@ const modalStyles = StyleSheet.create({
     fontSize: 13, color: '#FCA5A5',
     marginBottom: 12, textAlign: 'center',
   },
+  aiBtn: {
+    borderRadius: 14, paddingVertical: 14,
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+    marginTop: 4,
+    backgroundColor: 'rgba(59,130,246,0.1)',
+    borderWidth: 1, borderColor: 'rgba(147,197,253,0.25)',
+  },
+  aiBtnText: { color: '#93C5FD', fontSize: 14, fontWeight: '600' },
+  aiLoadingWrap: { alignItems: 'center', paddingVertical: 40, gap: 16 },
+  aiLoadingText: { color: 'rgba(255,255,255,0.4)', fontSize: 14, textAlign: 'center', lineHeight: 22 },
+  aiBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(59,130,246,0.08)',
+    borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
+    borderWidth: 1, borderColor: 'rgba(147,197,253,0.18)',
+    marginBottom: 18,
+  },
+  aiBadgeText: { fontSize: 12, color: 'rgba(147,197,253,0.7)', fontWeight: '500' },
+  backLink: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
+  backLinkText: { fontSize: 13, color: 'rgba(147,197,253,0.7)', fontWeight: '500', marginLeft: 2 },
   submitBtn: {
     backgroundColor: '#1D4ED8',
     borderRadius: 14, paddingVertical: 15,

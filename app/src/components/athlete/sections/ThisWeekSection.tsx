@@ -17,19 +17,37 @@ interface NextMatch {
   location: string | null;
 }
 
+interface UpcomingEvent {
+  id: string;
+  type: string;
+  title: string;
+  event_date: string;
+  location: string | null;
+}
+
+const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
+  training: { icon: 'fitness',   color: '#3B82F6' },
+  exercise: { icon: 'barbell',   color: '#8B5CF6' },
+  recovery: { icon: 'leaf',      color: '#22C55E' },
+  travel:   { icon: 'airplane',  color: '#F59E0B' },
+  meeting:  { icon: 'people',    color: '#EC4899' },
+  other:    { icon: 'calendar',  color: '#6B7280' },
+};
+
 export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
   const { profile } = useAuth();
   const [nextMatch, setNextMatch]         = useState<NextMatch | null>(null);
   const [daysUntil, setDaysUntil]         = useState<number | null>(null);
   const [unreadCount, setUnreadCount]     = useState(0);
   const [pendingCount, setPendingCount]   = useState(0);
+  const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading]             = useState(true);
   const [refreshing, setRefreshing]       = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!profile) return;
 
-    const [matchRes, feedbackRes, tasksRes] = await Promise.all([
+    const [matchRes, feedbackRes, tasksRes, eventsRes] = await Promise.all([
       profile.club_id
         ? supabase
             .from('matches')
@@ -53,6 +71,16 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
         .select('id', { count: 'exact', head: true })
         .eq('assigned_to', profile.id)
         .eq('status', 'pending'),
+
+      profile.club_id
+        ? supabase
+            .from('events')
+            .select('id, type, title, event_date, location')
+            .eq('club_id', profile.club_id)
+            .gte('event_date', new Date().toISOString())
+            .order('event_date', { ascending: true })
+            .limit(6)
+        : Promise.resolve({ data: [] }),
     ]);
 
     if (matchRes.data) {
@@ -67,6 +95,7 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
     }
     setUnreadCount((feedbackRes as any).count ?? 0);
     setPendingCount((tasksRes as any).count ?? 0);
+    setUpcomingEvents((eventsRes.data as UpcomingEvent[]) ?? []);
     setLoading(false);
   }, [profile]);
 
@@ -190,6 +219,35 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
           </GlassCard>
         </>
       )}
+
+      {/* ── Upcoming events ── */}
+      {upcomingEvents.length > 0 && (
+        <>
+          <Text style={styles.sectionLabel}>Schedule</Text>
+          {upcomingEvents.map(evt => {
+            const meta  = EVENT_ICONS[evt.type] ?? EVENT_ICONS.other;
+            const d     = new Date(evt.event_date);
+            const dateStr = d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+            const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+            return (
+              <GlassCard key={evt.id} radius={12} padding={14} intensity={52}>
+                <View style={styles.eventRow}>
+                  <View style={[styles.eventIconWrap, { backgroundColor: meta.color + '18' }]}>
+                    <Ionicons name={meta.icon as any} size={16} color={meta.color} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.eventTitle}>{evt.title}</Text>
+                    <Text style={styles.eventMeta}>
+                      {dateStr} · {timeStr}
+                      {evt.location ? ` · ${evt.location}` : ''}
+                    </Text>
+                  </View>
+                </View>
+              </GlassCard>
+            );
+          })}
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -230,4 +288,12 @@ const styles = StyleSheet.create({
   matchWeekRow: { flexDirection: 'row', alignItems: 'flex-start' },
   matchWeekTitle: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.85)', marginBottom: 4 },
   matchWeekSub: { fontSize: 12, color: 'rgba(255,255,255,0.35)', lineHeight: 18 },
+
+  eventRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  eventIconWrap: {
+    width: 36, height: 36, borderRadius: 10,
+    justifyContent: 'center', alignItems: 'center', flexShrink: 0,
+  },
+  eventTitle: { fontSize: 14, fontWeight: '600', color: 'rgba(255,255,255,0.85)', marginBottom: 3 },
+  eventMeta:  { fontSize: 12, color: 'rgba(255,255,255,0.3)' },
 });

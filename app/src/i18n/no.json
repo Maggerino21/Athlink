@@ -1,0 +1,218 @@
+{
+  "landing": {
+    "herePre": "Din plattform for",
+    "heroPre": "Din plattform for",
+    "heroTitle": "utøverens\nhverdag.",
+    "heroSub": "Tilbakemeldinger, oppgaver og\nfremgang – alt på ett sted.",
+    "joinBtn": "Bli med",
+    "loginBtn": "Logg inn"
+  },
+  "login": {
+    "title": "Logg inn",
+    "email": "E-post",
+    "emailPlaceholder": "deg@eksempel.no",
+    "password": "Passord",
+    "passwordPlaceholder": "••••••••",
+    "submit": "Logg inn",
+    "noAccount": "Har du ikke konto?",
+    "switchLink": "Bli med",
+    "error": "Fyll inn e-post og passord."
+  },
+  "signup": {
+    "step1Title": "Hvem er du?",
+    "athleteTitle": "Utøver",
+    "athleteSub": "Jeg er på et lag og vil se tilbakemeldinger og oppgaver.",
+    "staffTitle": "Trener / Stab",
+    "staffSub": "Jeg er trener, fysioterapeut eller annen støtteperson.",
+    "continueBtn": "Fortsett",
+    "haveAccount": "Har du allerede konto?",
+    "switchLink": "Logg inn",
+    "step2Title": "Opprett konto",
+    "fullName": "Fullt navn",
+    "fullNamePlaceholder": "Alex Johansen",
+    "email": "E-post",
+    "emailPlaceholder": "deg@eksempel.no",
+    "password": "Passord",
+    "passwordPlaceholder": "Min. 6 tegn",
+    "nextBtn": "Neste",
+    "back": "← Tilbake",
+    "step3AthleteTitle": "Bli med på lag",
+    "step3StaffTitle": "Sett opp laget",
+    "inviteHint": "Be treneren din om lagkoden og skriv den inn under.",
+    "inviteLabel": "Lagkode",
+    "invitePlaceholder": "F.eks. 507EA4",
+    "newTeam": "➕ Nytt lag",
+    "joinTeam": "🔗 Bli med på lag",
+    "adminCodeHint": "Skriv inn koden du har fått fra administratoren.",
+    "teamNameLabel": "Lagnavn",
+    "teamNamePlaceholder": "F.eks. Brann FK",
+    "teamColorLabel": "Lagfarge",
+    "createTeamBtn": "Opprett lag",
+    "joinBtn": "Bli med",
+    "confirmTitle": "Sjekk e-posten din",
+    "confirmSub": "Vi sendte en bekreftelseslenke til\n{{email}}",
+    "doneBtn": "Ferdig",
+    "errors": {
+      "inviteRequired": "Skriv inn lagkoden din.",
+      "clubNameRequired": "Skriv inn lagnavn.",
+      "staffInviteRequired": "Skriv inn lagkoden.",
+      "fullNameRequired": "Fullt navn er påkrevd.",
+      "emailRequired": "E-post er påkrevd.",
+      "passwordTooShort": "Passordet må ha minst 6 tegn.",
+      "signupFailed": "Registrering feilet."
+    }
+  },
+  "language": {
+    "label": "Språk",
+    "en": "English",
+    "no": "Norsk"
+  },
+  "common": {
+    "signOut": "Logg ut",
+    "loading": "Laster...",
+    "close": "Lukk",
+    "back": "Tilbake",
+    "home": "Hjemme",
+    "away": "Borte",
+    "today": "I dag",
+    "yesterday": "I går",
+    "justNow": "Akkurat nå",
+    "minutesAgo": "{{count}}m siden",
+    "hoursAgo": "{{count}}t siden",
+    "daysAgo": "{{count}} dager siden"
+  },
+  "athlete": {
+    "greeting": {
+      "morning": "God morgen",
+      "afternoon": "God ettermiddag",
+      "evening": "God kveld"
+    },
+    "tabs": {
+      "home": "Hjem",
+      "feedback": "Tilbakemelding",
+      "tasks": "Oppgaver",
+      "progress": "Fremgang"
+    },
+    "thisWeek": {
+      "nextMatch": "Neste kamp",
+      "noMatches": "Ingen kamper",
+      "noUpcomingMatches": "Ingen kommende kamper",
+      "noMatchesHint": "Sjekk med treneren din for kampplanen.",
+      "daysAway": "{{count}}d igjen",
+      "matchToday": "I dag",
+      "newFeedback": "Ny\ntilbakemelding",
+      "tasksPending": "Oppgaver\nventende",
+      "matchWeekLabel": "Kampuke",
+      "matchDay": "Kampdag!",
+      "daysUntilKickoff_one": "{{count}} dag til avspark",
+      "daysUntilKickoff_other": "{{count}} dager til avspark",
+      "focusRecovery": "Fokus på restitusjon og aktivering. Hold deg skarp.",
+      "focusPrepare": "Forbered deg godt. Gå gjennom tilbakemeldingene fra treneren din før kampdagen."
+    },
+    "feedback": {
+      "unread": "Ulest",
+      "earlier": "Tidligere",
+      "emptyTitle": "Ingen tilbakemeldinger ennå",
+      "emptySub": "Tilbakemeldinger fra trenere og stab vil dukke opp her.",
+      "actionLabel": "Handling",
+      "iUnderstand": "Jeg forstår",
+      "acknowledged": "Bekreftet"
+    },
+    "tasks": {
+      "pendingLabel": "Ventende",
+      "completedLabel": "Fullført",
+      "emptyTitle": "Ingen oppgaver ennå",
+      "emptySub": "Oppgaver tildelt av treneren din vil dukke opp her.",
+      "dueToday": "Frist i dag",
+      "dueTomorrow": "Frist i morgen",
+      "overdueLabel": "{{count}}d forsinket",
+      "noDueDate": "Ingen frist"
+    },
+    "progress": {
+      "comingSoon": "Fremgangssporing kommer snart."
+    }
+  },
+  "staff": {
+    "dashboardLabel": "Stab-dashbord",
+    "athletesLabel": "Dine utøvere",
+    "noAthletes": "Ingen utøvere i klubben ennå.",
+    "allClear": "Alt klart",
+    "unreadBadge": "{{count}} ulest",
+    "tasksBadge": "{{count}} oppgaver",
+    "actions": {
+      "feedback": "Tilbakemelding",
+      "task": "Oppgave",
+      "match": "Kamp"
+    },
+    "feedback": {
+      "modalTitle": "Gi tilbakemelding",
+      "athleteLabel": "Utøver",
+      "titleLabel": "Tittel (valgfritt)",
+      "titlePlaceholder": "F.eks. Press i overgangene",
+      "bodyLabel": "Tilbakemelding",
+      "bodyPlaceholder": "Hva observerte du? Hva bør de fokusere på?",
+      "actionLabel": "Handlingspunkt (valgfritt)",
+      "actionPlaceholder": "Konkret handling for utøveren",
+      "sendBtn": "Send tilbakemelding",
+      "errors": {
+        "selectAthlete": "Velg en utøver.",
+        "bodyRequired": "Tilbakemeldingstekst er påkrevd."
+      }
+    },
+    "task": {
+      "modalTitle": "Tildel oppgave",
+      "titleLabel": "Oppgavetittel",
+      "titlePlaceholder": "F.eks. Restitusjonsøkt – underkropp",
+      "descLabel": "Beskrivelse (valgfritt)",
+      "descPlaceholder": "Mer detaljer om hva som skal gjøres",
+      "dueDateLabel": "Frist (valgfritt)",
+      "dueDatePlaceholder": "DD/MM/ÅÅÅÅ",
+      "assignBtn": "Tildel oppgave",
+      "errors": {
+        "selectAthlete": "Velg en utøver.",
+        "titleRequired": "Oppgavetittel er påkrevd.",
+        "invalidDate": "Datoformat: DD/MM/ÅÅÅÅ"
+      }
+    },
+    "match": {
+      "modalTitle": "Planlegg kamp",
+      "opponentLabel": "Motstander",
+      "opponentPlaceholder": "F.eks. City FK",
+      "dateLabel": "Dato",
+      "datePlaceholder": "DD/MM/ÅÅÅÅ",
+      "kickoffLabel": "Avsparktid",
+      "kickoffPlaceholder": "TT:MM  (f.eks. 15:00)",
+      "locationLabel": "Sted (valgfritt)",
+      "locationPlaceholder": "F.eks. Hjemmebanen",
+      "venueLabel": "Arena",
+      "addBtn": "Legg til kamp",
+      "errors": {
+        "opponentRequired": "Motstandernavn er påkrevd.",
+        "dateRequired": "Dato er påkrevd. Format: DD/MM/ÅÅÅÅ",
+        "invalidDate": "Ugyldig dato. Bruk DD/MM/ÅÅÅÅ"
+      }
+    },
+    "detail": {
+      "title": "Utøverprofil",
+      "roleLabel": "Utøver",
+      "unreadLabel": "Ulest",
+      "pendingLabel": "Ventende oppgaver",
+      "totalLabel": "Total tilbakemelding",
+      "feedbackSection": "Tilbakemelding",
+      "tasksSection": "Oppgaver",
+      "noFeedback": "Ingen tilbakemelding gitt ennå",
+      "noTasks": "Ingen oppgaver tildelt ennå",
+      "giveFeedback": "Gi tilbakemelding",
+      "assignTask": "Tildel oppgave",
+      "statusRead": "Lest",
+      "statusUnread": "Ulest",
+      "statusDone": "Ferdig",
+      "statusPending": "Ventende",
+      "statusOverdue": "Forsinket",
+      "dueToday": "Frist i dag",
+      "dueTomorrow": "Frist i morgen",
+      "overdueLabel": "{{count}}d forsinket",
+      "noDueDate": "Ingen frist"
+    }
+  }
+}
