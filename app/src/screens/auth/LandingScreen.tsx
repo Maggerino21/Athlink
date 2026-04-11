@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { supabase } from '../../lib/supabase';
 import GlassInput from '../../components/ui/GlassInput';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width: W, height: H } = Dimensions.get('window');
 
