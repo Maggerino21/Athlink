@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import GlassCard from '../../ui/GlassCard';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');

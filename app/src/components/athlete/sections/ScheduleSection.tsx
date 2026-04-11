@@ -4,7 +4,7 @@ import {
   ScrollView, Animated, Platform, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
