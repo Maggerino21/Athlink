@@ -8,7 +8,6 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { useFonts, DMSerifDisplay_400Regular } from '@expo-google-fonts/dm-serif-display';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { supabase } from '../../lib/supabase';
@@ -22,9 +21,6 @@ export default function LandingScreen() {
   const { t } = useTranslation();
   const [loginVisible,  setLoginVisible]  = useState(false);
   const [signupVisible, setSignupVisible] = useState(false);
-  const [fontsLoaded] = useFonts({ DMSerifDisplay_400Regular });
-
-  const serifFont = fontsLoaded ? 'DMSerifDisplay_400Regular' : undefined;
 
   return (
     <View style={styles.root}>
@@ -40,13 +36,18 @@ export default function LandingScreen() {
           <Text style={styles.wordmark}>ATHLINK</Text>
         </View>
 
-        {/* Hero */}
-        <View style={styles.heroWrap}>
+        {/* Spacer — lets gradient breathe */}
+        <View style={styles.heroWrap} />
+
+        {/* Hero text — sits directly above buttons */}
+        <View style={styles.heroTextWrap}>
           <Text style={styles.heroPre}>{t('landing.heroPre')}</Text>
-          <Text style={[styles.heroTitle, serifFont ? { fontFamily: serifFont, fontWeight: 'normal' } : null]}>
+          <Text style={styles.heroTitle}>
             {t('landing.heroTitle')}
           </Text>
-          <Text style={styles.heroSub}>{t('landing.heroSub')}</Text>
+          <Text style={styles.heroSub}>
+            {t('landing.heroSub')}
+          </Text>
         </View>
 
         {/* CTA buttons */}
@@ -83,49 +84,80 @@ export default function LandingScreen() {
   );
 }
 
-// ─── Background — vivid purple-to-indigo + real noise grain ─────────────────
+// ─── Background — inverted light-beam gradient (flipped + violet-shifted) ────
 function Background() {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Full-screen primary gradient */}
+
+      {/* Base: near-black warm-dark */}
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: '#06040A' }]} />
+
+      {/* Centre beam — widest, brightest, falls from top */}
       <LinearGradient
-        colors={['#5B2FC0', '#3D1F9E', '#1E1060', '#0D0730', '#07041A']}
-        style={StyleSheet.absoluteFill}
+        colors={[
+          'rgba(215,200,255,0.96)',  // lavender-white peak
+          'rgba(155,95,255,0.82)',   // bright violet
+          'rgba(85,28,195,0.52)',    // deep purple
+          'rgba(32,8,90,0.18)',      // dark indigo
+          'rgba(0,0,0,0)',
+        ]}
+        locations={[0, 0.16, 0.36, 0.58, 1]}
+        style={styles.beamCenter}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
-        locations={[0, 0.25, 0.5, 0.75, 1]}
       />
 
-      {/* Warm magenta shift top-right */}
+      {/* Left beam — slightly offset, cooler tint */}
       <LinearGradient
-        colors={['rgba(160,50,200,0.5)', 'rgba(160,50,200,0)']}
-        style={styles.bgMagentaRight}
-        start={{ x: 1, y: 0 }}
-        end={{ x: 0.2, y: 0.6 }}
+        colors={[
+          'rgba(175,160,255,0.80)',
+          'rgba(100,55,220,0.58)',
+          'rgba(48,12,140,0.22)',
+          'rgba(0,0,0,0)',
+        ]}
+        locations={[0, 0.20, 0.48, 1]}
+        style={styles.beamLeft}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
       />
 
-      {/* Cool blue shift top-left */}
+      {/* Right beam — slightly warmer, a touch of pink */}
       <LinearGradient
-        colors={['rgba(60,80,230,0.4)', 'rgba(60,80,230,0)']}
-        style={styles.bgCyanLeft}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0.8, y: 0.5 }}
+        colors={[
+          'rgba(200,165,255,0.75)',
+          'rgba(130,55,215,0.52)',
+          'rgba(55,10,130,0.20)',
+          'rgba(0,0,0,0)',
+        ]}
+        locations={[0, 0.20, 0.46, 1]}
+        style={styles.beamRight}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
       />
 
-      {/* Real noise grain — blurred to film grain, not digital static */}
+      {/* Very top edge — brightest glow strip */}
+      <LinearGradient
+        colors={['rgba(235,225,255,0.18)', 'rgba(0,0,0,0)']}
+        style={styles.topEdgeGlow}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
+
+      {/* Bottom darkness — content area stays readable */}
+      <LinearGradient
+        colors={['rgba(6,4,10,0)', 'rgba(6,4,10,0.55)', 'rgba(6,4,10,0.92)']}
+        locations={[0, 0.45, 1]}
+        style={styles.bottomVignette}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+      />
+
+      {/* Noise grain */}
       <Animated.Image
         source={require('../../../assets/noise.png')}
         style={styles.noiseLayer}
         resizeMode="cover"
         blurRadius={1.5}
-      />
-
-      {/* Bottom vignette */}
-      <LinearGradient
-        colors={['rgba(7,4,26,0)', 'rgba(7,4,26,0.45)', 'rgba(7,4,26,0.85)']}
-        style={styles.bgVignette}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
       />
     </View>
   );
@@ -590,7 +622,39 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   safe: { flex: 1 },
 
-  // Background layers
+  // Background layers — beam system
+  beamCenter: {
+    position: 'absolute',
+    top: 0,
+    left: W * 0.16,
+    right: W * 0.16,
+    height: H * 0.74,
+  },
+  beamLeft: {
+    position: 'absolute',
+    top: 0,
+    left: -W * 0.04,
+    width: W * 0.46,
+    height: H * 0.62,
+  },
+  beamRight: {
+    position: 'absolute',
+    top: 0,
+    right: -W * 0.04,
+    width: W * 0.46,
+    height: H * 0.62,
+  },
+  topEdgeGlow: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: 180,
+  },
+  bottomVignette: {
+    position: 'absolute',
+    bottom: 0, left: 0, right: 0,
+    height: H * 0.58,
+  },
+  // kept for reference — unused now
   bgCyanLeft: {
     position: 'absolute',
     top: -40, left: -80,
@@ -634,26 +698,30 @@ const styles = StyleSheet.create({
   },
 
   // Hero
-  heroWrap: {
-    flex: 1, paddingHorizontal: 28,
-    justifyContent: 'center',
+  heroWrap: { flex: 1 },
+
+  heroTextWrap: {
+    paddingHorizontal: 26,
+    paddingBottom: 20,
   },
   heroPre: {
-    fontSize: 16, fontWeight: '400',
-    color: 'rgba(227,215,215,0.42)',
-    letterSpacing: 0.2, marginBottom: 10,
+    fontSize: 11, fontWeight: '600',
+    color: 'rgba(200,185,255,0.45)',
+    letterSpacing: 2.2,
+    textTransform: 'uppercase',
+    marginBottom: 10,
   },
   heroTitle: {
-    fontSize: 54, fontWeight: '400',
-    color: '#e3d7d7',
-    letterSpacing: -2, lineHeight: 56,
-    marginBottom: 18,
+    fontSize: 44, fontWeight: '800',
+    color: '#EDE8FF',
+    letterSpacing: -1, lineHeight: 48,
+    marginBottom: 12,
   },
   heroSub: {
-    fontSize: 16,
-    color: 'rgba(227,215,215,0.38)',
-    lineHeight: 24, letterSpacing: 0.1,
-    marginBottom: 28,
+    fontSize: 15,
+    color: 'rgba(210,200,240,0.38)',
+    lineHeight: 22, letterSpacing: 0.1,
+    marginBottom: 24,
   },
 
   // CTA buttons
