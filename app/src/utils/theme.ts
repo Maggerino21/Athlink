@@ -17,7 +17,7 @@ export function hexToRgba(hex: string, alpha: number): string {
 /** Returns the two orb gradient colours derived from the club's primary colour. */
 export function clubGradientOrbs(primaryColor: string) {
   return {
-    top:    [hexToRgba(primaryColor, 0.35), hexToRgba(primaryColor, 0)] as [string, string],
-    bottom: [hexToRgba(primaryColor, 0.18), hexToRgba(primaryColor, 0)] as [string, string],
+    top:    [hexToRgba(primaryColor, 0.22), hexToRgba(primaryColor, 0)] as [string, string],
+    bottom: [hexToRgba(primaryColor, 0.12), hexToRgba(primaryColor, 0)] as [string, string],
   };
 }

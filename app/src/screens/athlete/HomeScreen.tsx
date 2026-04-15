@@ -103,7 +103,7 @@ export default function HomeScreen() {
         const orbs = clubGradientOrbs(profile?.club_color ?? '#3B82F6');
         return (
           <View style={StyleSheet.absoluteFill}>
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#080C1E' }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0c0a0a' }]} />
             <LinearGradient colors={orbs.top}    style={styles.orbTopRight}   start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
             <LinearGradient colors={orbs.bottom} style={styles.orbBottomLeft} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} />
           </View>
