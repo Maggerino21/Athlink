@@ -10,8 +10,7 @@
  *  4. Glass fill            — very subtle white tint
  *  5. Top specular          — 1px bright line + gradient fade (light catching top rim)
  *  6. Bottom inner shadow   — subtle darkening at bottom (glass thickness cue)
- *  7. Active indicator pill — lighter sub-glass pill behind active icon
- *  8. Icons + labels
+ *  7. Icons + labels
  */
 
 import React from 'react';
@@ -141,29 +140,6 @@ export default function LiquidGlassTabBar({ activeIndex, onTabPress, badges = {}
                 activeOpacity={0.75}
                 style={styles.tabHitArea}
               >
-                {/* Active sub-pill */}
-                {isActive && (
-                  LIQUID ? (
-                    <GlassView
-                      colorScheme="dark"
-                      glassEffectStyle="clear"
-                      style={[StyleSheet.absoluteFill, styles.activePillWrap]}
-                    >
-                      <View style={styles.activePillSpec} />
-                    </GlassView>
-                  ) : (
-                    <View style={styles.activePillWrap}>
-                      <BlurView
-                        intensity={30}
-                        tint="systemUltraThinMaterialDark"
-                        style={[StyleSheet.absoluteFill, styles.activePillBlur]}
-                      />
-                      <View style={styles.activePillSpec} />
-                      <View style={[StyleSheet.absoluteFill, styles.activePillFill]} />
-                    </View>
-                  )
-                )}
-
                 {/* Icon */}
                 <View style={styles.iconWrap}>
                   <Ionicons
@@ -261,29 +237,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 30,
     minHeight: PILL_H - 8,
-  },
-
-  // Active indicator sub-pill
-  activePillWrap: {
-    position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
-    right: 4,
-    borderRadius: 26,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-  },
-  activePillBlur: {
-    borderRadius: 26,
-  },
-  activePillFill: {
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderRadius: 26,
-  },
-  activePillSpec: {
-    // removed hard line — no visible stripe
   },
 
   iconWrap: {
