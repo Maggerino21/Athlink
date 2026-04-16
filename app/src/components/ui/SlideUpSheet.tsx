@@ -2,10 +2,10 @@
  * SlideUpSheet — a reusable bottom sheet that slides up from the bottom.
  * Covers ~60% of the screen by default. Tap the backdrop or drag to dismiss.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal, View, Text, StyleSheet, TouchableOpacity,
-  Animated, Dimensions, PanResponder, ScrollView,
+  Animated, Easing, Dimensions, PanResponder, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
@@ -22,39 +22,86 @@ interface SlideUpSheetProps {
   children: React.ReactNode;
 }
 
+// Ease-out expo — snappy start, graceful deceleration. Same curve iOS native sheets use.
+const EASE_OUT_EXPO = Easing.bezier(0.16, 1, 0.3, 1);
+const EASE_IN_CUBIC = Easing.bezier(0.4, 0, 1, 1);
+
 export default function SlideUpSheet({ visible, onClose, title, children }: SlideUpSheetProps) {
   const insets = useSafeAreaInsets();
-  const translateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+
+  // Separate from the parent's `visible` — the Modal stays mounted through the
+  // exit animation and only unmounts once it has fully slid away.
+  const [modalMounted, setModalMounted] = useState(false);
+
+  const translateY      = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const sheetScale      = useRef(new Animated.Value(0.96)).current;
+  const sheetOpacity    = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
+      // Mount first, then animate in on the next tick
+      setModalMounted(true);
+
+      translateY.setValue(SHEET_HEIGHT);
+      sheetScale.setValue(0.96);
+      sheetOpacity.setValue(0);
+      backdropOpacity.setValue(0);
+
       Animated.parallel([
-        Animated.spring(translateY, {
+        Animated.timing(translateY, {
           toValue: 0,
+          duration: 460,
+          easing: EASE_OUT_EXPO,
           useNativeDriver: true,
-          tension: 65,
-          friction: 11,
+        }),
+        Animated.timing(sheetScale, {
+          toValue: 1,
+          duration: 460,
+          easing: EASE_OUT_EXPO,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetOpacity, {
+          toValue: 1,
+          duration: 180,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 1,
-          duration: 220,
+          duration: 300,
+          easing: Easing.out(Easing.ease),
           useNativeDriver: true,
         }),
       ]).start();
-    } else {
+    } else if (modalMounted) {
+      // Animate out, then unmount the Modal once it's gone
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: SHEET_HEIGHT,
-          duration: 240,
+          duration: 320,
+          easing: EASE_IN_CUBIC,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetScale, {
+          toValue: 0.96,
+          duration: 300,
+          easing: EASE_IN_CUBIC,
+          useNativeDriver: true,
+        }),
+        Animated.timing(sheetOpacity, {
+          toValue: 0,
+          duration: 200,
+          easing: Easing.in(Easing.ease),
           useNativeDriver: true,
         }),
         Animated.timing(backdropOpacity, {
           toValue: 0,
-          duration: 200,
+          duration: 260,
+          easing: Easing.in(Easing.ease),
           useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => setModalMounted(false));
     }
   }, [visible]);
 
@@ -74,14 +121,19 @@ export default function SlideUpSheet({ visible, onClose, title, children }: Slid
           onClose();
           dragY.setValue(0);
         } else {
-          Animated.spring(dragY, { toValue: 0, useNativeDriver: true, tension: 80 }).start();
+          Animated.spring(dragY, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 180,
+            friction: 14,
+          }).start();
         }
       },
     })
   ).current;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
+    <Modal visible={modalMounted} transparent animationType="none" onRequestClose={onClose}>
       {/* Backdrop */}
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
@@ -92,7 +144,13 @@ export default function SlideUpSheet({ visible, onClose, title, children }: Slid
         style={[
           styles.sheet,
           { height: SHEET_HEIGHT + insets.bottom, paddingBottom: insets.bottom },
-          { transform: [{ translateY: Animated.add(translateY, dragY) }] },
+          {
+            opacity: sheetOpacity,
+            transform: [
+              { translateY: Animated.add(translateY, dragY) },
+              { scale: sheetScale },
+            ],
+          },
         ]}
       >
         <BlurView intensity={70} tint="dark" style={StyleSheet.absoluteFill} />
