@@ -1,26 +1,280 @@
 @import "tailwindcss";
 
+/* ── Skeleton pulse ─────────────────────────────────────────────────── */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.skeleton {
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────────────────────────────
+   Athlink design tokens
+   See DESIGN.md for the full specification and rules.
+   DO NOT write raw hex or rgba() values in components — use these tokens.
+───────────────────────────────────────────────────────────────────── */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Base */
+  --bg-base: #0B0B0D;
+
+  /* Surfaces */
+  --surface-1: rgba(255, 255, 255, 0.04);
+  --surface-2: rgba(255, 255, 255, 0.07);
+  --surface-3: rgba(255, 255, 255, 0.11);
+
+  /* Borders */
+  --border-subtle:  rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-strong:  rgba(255, 255, 255, 0.18);
+
+  /* Text */
+  --text-primary:   rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.50);
+  --text-tertiary:  rgba(255, 255, 255, 0.28);
+  --text-disabled:  rgba(255, 255, 255, 0.18);
+
+  /* Neutral accent — logged-out screens. Derived from mark gradient, no club color. */
+  --neutral-accent:        rgba(244, 241, 237, 0.72);
+  --neutral-accent-subtle: rgba(244, 241, 237, 0.07);
+  --neutral-accent-border: rgba(244, 241, 237, 0.16);
+  --neutral-accent-glow:   rgba(244, 241, 237, 0.05);
+
+  /* Semantic colors — never change with club theme */
+  --color-success:        #22C55E;
+  --color-success-subtle: rgba(34, 197, 94,  0.12);
+  --color-success-border: rgba(34, 197, 94,  0.25);
+
+  --color-warning:        #F59E0B;
+  --color-warning-subtle: rgba(245, 158, 11, 0.12);
+  --color-warning-border: rgba(245, 158, 11, 0.25);
+
+  --color-danger:         #EF4444;
+  --color-danger-subtle:  rgba(239, 68,  68, 0.12);
+  --color-danger-border:  rgba(239, 68,  68, 0.25);
+
+  --color-info:           #94A3B8;
+  --color-info-subtle:    rgba(148, 163, 184, 0.10);
+  --color-info-border:    rgba(148, 163, 184, 0.22);
+
+  /* Event type colors — calendar/schedule */
+  --event-training: #60A5FA;
+  --event-exercise: #C084FC;
+  --event-recovery: #4ADE80;
+  --event-travel:   #FBBF24;
+  --event-meeting:  #F472B6;
+  --event-other:    #9CA3AF;
+  --event-match:    #FBBF24;
+
+  /* Border radius */
+  --radius-sm:   8px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-full: 9999px;
+
+  /* Accent tokens — injected by dashboard layout for logged-in state.
+     Fallback to neutral grey so nothing shows a blue flash before club color loads. */
+  --accent:        #6B7280;
+  --accent-subtle: rgba(107, 114, 128, 0.12);
+  --accent-border: rgba(107, 114, 128, 0.28);
+  --accent-glow:   rgba(107, 114, 128, 0.12);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Base reset ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ── Typography ──────────────────────────────────────────────────── */
+.t-display    { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
+.t-heading    { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+.t-subheading { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+.t-body       { font-size: 14px; font-weight: 400; line-height: 1.6; }
+.t-body-medium { font-size: 14px; font-weight: 600; line-height: 1.5; }
+.t-small      { font-size: 13px; font-weight: 500; line-height: 1.5; }
+.t-label      { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-tertiary); }
+
+/* ── Glass containers ────────────────────────────────────────────── */
+.glass {
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.glass-strong {
+  background: var(--surface-3);
+  border: 1px solid var(--border-default);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
 }
+
+/* ── Gradient orbs ───────────────────────────────────────────────── */
+/* Dashboard — uses --accent-glow (club color) */
+.orb-top {
+  pointer-events: none; position: fixed;
+  top: -200px; right: -200px;
+  width: 60vw; height: 60vh;
+  border-radius: var(--radius-full);
+  background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+  z-index: 0;
+}
+.orb-bottom {
+  pointer-events: none; position: fixed;
+  bottom: -200px; left: -150px;
+  width: 55vw; height: 55vh;
+  border-radius: var(--radius-full);
+  background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
+  z-index: 0;
+}
+
+/* Login page — top orb warm white, bottom orb cool white (echoes the mark gradient) */
+.orb-top-neutral {
+  pointer-events: none; position: fixed;
+  top: -200px; right: -200px;
+  width: 60vw; height: 60vh;
+  border-radius: var(--radius-full);
+  background: radial-gradient(ellipse, rgba(244, 241, 237, 0.18) 0%, transparent 70%);
+  z-index: 0;
+}
+.orb-bottom-neutral {
+  pointer-events: none; position: fixed;
+  bottom: -200px; left: -150px;
+  width: 55vw; height: 55vh;
+  border-radius: var(--radius-full);
+  background: radial-gradient(ellipse, rgba(236, 233, 245, 0.14) 0%, transparent 70%);
+  z-index: 0;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: var(--radius-full); }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* ── Badge ───────────────────────────────────────────────────────── */
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  border: 1px solid var(--border-default);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.badge-success { background: var(--color-success-subtle); border-color: var(--color-success-border); color: var(--color-success); }
+.badge-warning { background: var(--color-warning-subtle); border-color: var(--color-warning-border); color: var(--color-warning); }
+.badge-danger  { background: var(--color-danger-subtle);  border-color: var(--color-danger-border);  color: var(--color-danger); }
+.badge-info    { background: var(--color-info-subtle);    border-color: var(--color-info-border);    color: var(--color-info); }
+
+/* ── Buttons ─────────────────────────────────────────────────────── */
+.btn-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent-border);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+.btn-primary:hover    { opacity: 0.88; }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Login page variant — neutral glass, warm-white border, no club color */
+.btn-primary-neutral {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: 14px; font-weight: 700; font-family: inherit;
+  background: rgba(244, 241, 237, 0.18);
+  color: rgba(244, 241, 237, 0.95);
+  border: 1px solid rgba(244, 241, 237, 0.40);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 24px rgba(244, 241, 237, 0.08), inset 0 1px 0 rgba(244, 241, 237, 0.18);
+}
+.btn-primary-neutral:hover    { background: rgba(244, 241, 237, 0.24); border-color: rgba(244, 241, 237, 0.52); box-shadow: 0 0 32px rgba(244, 241, 237, 0.12), inset 0 1px 0 rgba(244, 241, 237, 0.22); }
+.btn-primary-neutral:disabled { opacity: 0.40; cursor: not-allowed; }
+
+.btn-ghost {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500; font-family: inherit;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.btn-ghost:hover { background: var(--surface-2); color: var(--text-primary); }
+
+/* ── Input ───────────────────────────────────────────────────────── */
+.input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 14px; font-family: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--border-default);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input::placeholder { color: var(--text-tertiary); }
+.input:focus { border-color: var(--accent-border); }
+
+/* Login input — neutral focus */
+.input-neutral:focus { border-color: var(--neutral-accent-border); }
+
+/* ── Sidebar nav item ────────────────────────────────────────────── */
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  text-decoration: none;
+  border: 1px solid transparent;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+.nav-item.active {
+  background: var(--accent-subtle);
+  border-color: var(--accent-border);
+  color: var(--text-primary);
+}
+
+/* ── Data table ──────────────────────────────────────────────────── */
+.data-table { width: 100%; border-collapse: collapse; }
+.data-table th {
+  text-align: left;
+  padding: 10px 16px;
+  font-size: 11px; font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase; letter-spacing: 0.07em;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.data-table td {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.data-table tr:last-child td { border-bottom: none; }
+.data-table tbody tr { transition: background 0.12s; cursor: pointer; }
+.data-table tbody tr:hover { background: var(--surface-2); }
