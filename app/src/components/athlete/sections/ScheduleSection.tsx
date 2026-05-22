@@ -13,7 +13,7 @@ import { hexToRgba } from '../../../utils/theme';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-type EventType = 'training' | 'exercise' | 'recovery' | 'travel' | 'meeting' | 'match' | 'other';
+type EventType = 'training' | 'home' | 'rehab' | 'exercise' | 'recovery' | 'meeting' | 'match' | 'vacation' | 'other';
 
 interface CalEvent {
   id: string;
@@ -39,13 +39,15 @@ interface DayGroup {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const EVENT_META: Record<EventType, { icon: string; color: string }> = {
-  training: { icon: 'fitness',         color: '#3B82F6' },
-  exercise: { icon: 'barbell',         color: '#8B5CF6' },
-  recovery: { icon: 'leaf',            color: '#22C55E' },
-  travel:   { icon: 'airplane',        color: '#F59E0B' },
-  meeting:  { icon: 'people',          color: '#EC4899' },
-  match:    { icon: 'football',        color: '#F97316' },
-  other:    { icon: 'calendar-outline',color: '#6B7280' },
+  training: { icon: 'fitness',          color: '#3B82F6' },
+  home:     { icon: 'home',             color: '#34D399' },
+  rehab:    { icon: 'medkit',           color: '#A78BFA' },
+  exercise: { icon: 'barbell',          color: '#8B5CF6' },
+  recovery: { icon: 'leaf',             color: '#22C55E' },
+  meeting:  { icon: 'people',           color: '#EC4899' },
+  match:    { icon: 'football',         color: '#F97316' },
+  vacation: { icon: 'partly-sunny',     color: '#FBBF24' },
+  other:    { icon: 'calendar-outline', color: '#6B7280' },
 };
 
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -121,14 +123,24 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
     const from = toYMD(days[0]);
     const to   = toYMD(days[13]);
 
-    const [{ data: evData }, { data: matchData }] = await Promise.all([
-      supabase
-        .from('events')
-        .select('id, type, title, location, description, event_date')
-        .eq('club_id', profile.club_id)
-        .gte('event_date', `${from}T00:00:00`)
-        .lte('event_date', `${to}T23:59:59`)
-        .order('event_date', { ascending: true }),
+    // Fetch event IDs this athlete is assigned to, then load those events in the date range
+    const { data: assignments } = await supabase
+      .from('event_assignments')
+      .select('event_id')
+      .eq('athlete_id', profile.id);
+
+    const eventIds = (assignments ?? []).map((a: any) => a.event_id);
+
+    const [evResult, { data: matchData }] = await Promise.all([
+      eventIds.length > 0
+        ? supabase
+            .from('events')
+            .select('id, type, title, location, description, event_date')
+            .in('id', eventIds)
+            .gte('event_date', `${from}T00:00:00`)
+            .lte('event_date', `${to}T23:59:59`)
+            .order('event_date', { ascending: true })
+        : Promise.resolve({ data: [] }),
       supabase
         .from('matches')
         .select('id, opponent, match_date, location')
@@ -137,6 +149,8 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
         .lte('match_date', `${to}T23:59:59`)
         .order('match_date', { ascending: true }),
     ]);
+
+    const evData = evResult.data;
 
     const mapped: CalEvent[] = [
       ...(evData ?? []).map((e: any) => ({

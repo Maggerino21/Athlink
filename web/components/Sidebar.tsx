@@ -2,134 +2,9 @@
 
 import { createClient } from '@/lib/supabase/client';
 
-export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks';
+export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks' | 'groups' | 'new';
 
-const NAV: { tab: DashTab; label: string; icon: React.FC<{ size?: number }> }[] = [
-  { tab: 'overview',  label: 'Overview', icon: GridIcon },
-  { tab: 'athletes',  label: 'Athletes', icon: UsersIcon },
-  { tab: 'calendar',  label: 'Calendar', icon: CalendarIcon },
-  { tab: 'feedback',  label: 'Feedback', icon: ChatIcon },
-  { tab: 'tasks',     label: 'Tasks',    icon: CheckIcon },
-];
-
-export default function Sidebar({
-  staffName,
-  clubName,
-  clubColor,
-  activeTab,
-  onTabChange,
-}: {
-  staffName:    string;
-  clubName:     string;
-  clubColor:    string;
-  activeTab:    DashTab;
-  onTabChange:  (tab: DashTab) => void;
-}) {
-  const supabase = createClient();
-
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    // Hard navigation clears the Next.js server component cache so the
-    // dashboard layout's auth check runs fresh and redirects to login.
-    window.location.replace('/login');
-  };
-
-  return (
-    <aside
-      className="glass-strong flex flex-col w-[220px] shrink-0 h-full relative z-20"
-      style={{ borderRight: '1px solid var(--border-default)', borderTop: 'none', borderBottom: 'none', borderLeft: 'none', borderRadius: 0 }}
-    >
-      {/* Club header */}
-      <div style={{ padding: '24px 16px 20px', borderBottom: '1px solid var(--border-default)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 32, height: 32,
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--accent-subtle)',
-              border: '1px solid var(--accent-border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 13, fontWeight: 700,
-              color: clubColor,
-              flexShrink: 0,
-            }}
-          >
-            {clubName[0]?.toUpperCase()}
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div
-              className="t-body-medium"
-              style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            >
-              {clubName}
-            </div>
-            <div className="t-label" style={{ marginTop: 2 }}>Staff dashboard</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Nav */}
-      <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.map(({ tab, label, icon: Icon }) => (
-          <button
-            key={tab}
-            onClick={() => onTabChange(tab)}
-            className={`nav-item${activeTab === tab ? ' active' : ''}`}
-            style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' }}
-          >
-            <Icon size={16} />
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {/* Staff profile + sign out */}
-      <div style={{ padding: '14px 10px', borderTop: '1px solid var(--border-default)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div
-            style={{
-              width: 30, height: 30,
-              borderRadius: 'var(--radius-full)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border-default)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700,
-              color: 'var(--text-secondary)',
-              flexShrink: 0,
-            }}
-          >
-            {getInitials(staffName)}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              className="t-small"
-              style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            >
-              {staffName}
-            </div>
-            <div className="t-label" style={{ marginTop: 1 }}>Coach</div>
-          </div>
-          <button
-            onClick={signOut}
-            title="Sign out"
-            className="btn-ghost"
-            style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
-          >
-            <SignOutIcon size={14} />
-          </button>
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-function getInitials(name: string) {
-  const parts = name.trim().split(' ').filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
-/* ── Inline SVG icons ────────────────────────────────────────────── */
+/* ── Inline SVG icons — defined before NAV so Turbopack can resolve them ── */
 function GridIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
@@ -184,5 +59,143 @@ function SignOutIcon({ size = 14 }: { size?: number }) {
       <polyline points="16 17 21 12 16 7"/>
       <line x1="21" y1="12" x2="9" y2="12"/>
     </svg>
+  );
+}
+
+function LayersIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+      <polyline points="2 17 12 22 22 17"/>
+      <polyline points="2 12 12 17 22 12"/>
+    </svg>
+  );
+}
+
+function PlusIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  );
+}
+
+/* ── Nav items ────────────────────────────────────────────────────── */
+const NAV: { tab: DashTab; label: string; icon: React.FC<{ size?: number }>; highlight?: boolean }[] = [
+  { tab: 'overview',  label: 'Overview',   icon: GridIcon },
+  { tab: 'athletes',  label: 'Athletes',   icon: UsersIcon },
+  { tab: 'calendar',  label: 'Calendar',   icon: CalendarIcon },
+  { tab: 'feedback',  label: 'Feedback',   icon: ChatIcon },
+  { tab: 'tasks',     label: 'Tasks',      icon: CheckIcon },
+  { tab: 'groups',    label: 'Groups',     icon: LayersIcon },
+  { tab: 'new',       label: 'New event',  icon: PlusIcon, highlight: true },
+];
+
+function getInitials(name: string) {
+  const parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
+export default function Sidebar({
+  staffName,
+  clubName,
+  clubColor,
+  activeTab,
+  onTabChange,
+}: {
+  staffName:    string;
+  clubName:     string;
+  clubColor:    string;
+  activeTab:    DashTab;
+  onTabChange:  (tab: DashTab) => void;
+}) {
+  const supabase = createClient();
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    window.location.replace('/login');
+  };
+
+  return (
+    <aside
+      className="glass-strong flex flex-col w-[220px] shrink-0 h-full relative z-20"
+      style={{ borderRight: '1px solid var(--border-default)', borderTop: 'none', borderBottom: 'none', borderLeft: 'none', borderRadius: 0 }}
+    >
+      {/* Club header */}
+      <div style={{ padding: '24px 16px 20px', borderBottom: '1px solid var(--border-default)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 32, height: 32,
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--accent-subtle)',
+            border: '1px solid var(--accent-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 13, fontWeight: 700,
+            color: clubColor,
+            flexShrink: 0,
+          }}>
+            {clubName[0]?.toUpperCase()}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div className="t-body-medium" style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {clubName}
+            </div>
+            <div className="t-label" style={{ marginTop: 2 }}>Staff dashboard</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Nav */}
+      <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {NAV.map(({ tab, label, icon: Icon, highlight }) => (
+          <button
+            key={tab}
+            onClick={() => onTabChange(tab)}
+            className={`nav-item${activeTab === tab ? ' active' : ''}`}
+            style={{
+              width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+              marginTop: highlight ? 8 : 0,
+              ...(highlight && activeTab !== tab ? {
+                background:  'var(--accent-subtle)',
+                border:      '1px solid var(--accent-border)',
+                color:       'var(--accent)',
+              } : {}),
+            }}
+          >
+            <Icon size={16} />
+            {label}
+          </button>
+        ))}
+      </nav>
+
+      {/* Staff profile + sign out */}
+      <div style={{ padding: '14px 10px', borderTop: '1px solid var(--border-default)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 30, height: 30,
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--surface-2)',
+            border: '1px solid var(--border-default)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 11, fontWeight: 700,
+            color: 'var(--text-secondary)',
+            flexShrink: 0,
+          }}>
+            {getInitials(staffName)}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="t-small" style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {staffName}
+            </div>
+            <div className="t-label" style={{ marginTop: 1 }}>Coach</div>
+          </div>
+          <button onClick={signOut} title="Sign out" className="btn-ghost" style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}>
+            <SignOutIcon size={14} />
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }

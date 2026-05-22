@@ -88,7 +88,7 @@ export type Database = {
           id: string;
           club_id: string;
           created_by: string;
-          type: 'training' | 'exercise' | 'recovery' | 'travel' | 'meeting' | 'other';
+          type: 'training' | 'home' | 'rehab' | 'exercise' | 'recovery' | 'meeting' | 'vacation' | 'other';
           title: string;
           description: string | null;
           event_date: string;

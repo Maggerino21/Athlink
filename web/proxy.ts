@@ -13,9 +13,7 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) =>
-            request.cookies.set(name, value)
-          );
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           supabaseResponse = NextResponse.next({ request });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
@@ -25,17 +23,25 @@ export async function proxy(request: NextRequest) {
     }
   );
 
+  // IMPORTANT: do not add logic between createServerClient and getUser()
   const { data: { user } } = await supabase.auth.getUser();
   const { pathname } = request.nextUrl;
 
   const publicPaths = ['/login', '/signup'];
+  const isPublic = publicPaths.some(p => pathname === p || pathname.startsWith(p + '/'));
 
-  if (!user && !publicPaths.includes(pathname)) {
-    return NextResponse.redirect(new URL('/login', request.url));
+  if (!user && !isPublic) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.search = '';
+    return NextResponse.redirect(url);
   }
 
-  if (user && publicPaths.includes(pathname)) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+  if (user && isPublic) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
+    url.search = '';
+    return NextResponse.redirect(url);
   }
 
   return supabaseResponse;

@@ -66,12 +66,15 @@ interface SummaryData {
 }
 
 const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
-  training: { icon: 'fitness',  color: '#3B82F6' },
-  exercise: { icon: 'barbell',  color: '#8B5CF6' },
-  recovery: { icon: 'leaf',     color: '#22C55E' },
-  travel:   { icon: 'airplane', color: '#F59E0B' },
-  meeting:  { icon: 'people',   color: '#EC4899' },
-  other:    { icon: 'calendar', color: '#6B7280' },
+  training: { icon: 'fitness',      color: '#3B82F6' },
+  home:     { icon: 'home',         color: '#34D399' },
+  rehab:    { icon: 'medkit',       color: '#A78BFA' },
+  exercise: { icon: 'barbell',      color: '#8B5CF6' },
+  recovery: { icon: 'leaf',         color: '#22C55E' },
+  meeting:  { icon: 'people',       color: '#EC4899' },
+  match:    { icon: 'football',     color: '#F97316' },
+  vacation: { icon: 'partly-sunny', color: '#FBBF24' },
+  other:    { icon: 'calendar',     color: '#6B7280' },
 };
 
 // ── Build summary from live data ───────────────────────────────────────────────
@@ -400,15 +403,21 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
         .eq('assigned_to', profile.id)
         .eq('status', 'pending'),
 
-      profile.club_id
-        ? supabase
-            .from('events')
-            .select('id, type, title, event_date, location')
-            .eq('club_id', profile.club_id)
-            .gte('event_date', new Date().toISOString())
-            .order('event_date', { ascending: true })
-            .limit(5)
-        : Promise.resolve({ data: [] }),
+      (async () => {
+        const { data: asgn } = await supabase
+          .from('event_assignments')
+          .select('event_id')
+          .eq('athlete_id', profile.id);
+        const ids = (asgn ?? []).map((a: any) => a.event_id);
+        if (!ids.length) return { data: [] };
+        return supabase
+          .from('events')
+          .select('id, type, title, event_date, location')
+          .in('id', ids)
+          .gte('event_date', new Date().toISOString())
+          .order('event_date', { ascending: true })
+          .limit(5);
+      })(),
     ]);
 
     if (matchRes.data) {
