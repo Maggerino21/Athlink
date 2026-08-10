@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/client';
 
-export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks' | 'groups' | 'new';
+export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks' | 'groups' | 'club' | 'new';
 
 /* ── Inline SVG icons — defined before NAV so Turbopack can resolve them ── */
 function GridIcon({ size = 16 }: { size?: number }) {
@@ -72,6 +72,14 @@ function LayersIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+function ShieldIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+    </svg>
+  );
+}
+
 function PlusIcon({ size = 16 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -89,6 +97,7 @@ const NAV: { tab: DashTab; label: string; icon: React.FC<{ size?: number }>; hig
   { tab: 'feedback',  label: 'Feedback',   icon: ChatIcon },
   { tab: 'tasks',     label: 'Tasks',      icon: CheckIcon },
   { tab: 'groups',    label: 'Groups',     icon: LayersIcon },
+  { tab: 'club',      label: 'Club',       icon: ShieldIcon },
   { tab: 'new',       label: 'New event',  icon: PlusIcon, highlight: true },
 ];
 

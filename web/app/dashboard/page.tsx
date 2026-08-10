@@ -11,6 +11,9 @@ export default async function DashboardPage() {
       staffName={profile.full_name}
       clubName={profile.clubs?.name ?? 'Your Club'}
       clubColor={profile.clubs?.primary_color ?? '#6366F1'}
+      inviteCode={profile.clubs?.invite_code ?? null}
+      staffInviteCode={profile.clubs?.staff_invite_code ?? null}
+      isClubManager={profile.is_club_manager}
       staffId={profile.id}
       clubId={profile.club_id}
     />

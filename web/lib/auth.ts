@@ -6,7 +6,13 @@ type SessionProfile = {
   full_name: string;
   role: string;
   club_id: string | null;
-  clubs: { name: string; primary_color: string } | null;
+  is_club_manager: boolean;
+  clubs: {
+    name: string;
+    primary_color: string;
+    invite_code: string;
+    staff_invite_code: string;
+  } | null;
 };
 
 /**
@@ -22,7 +28,7 @@ export const getSessionProfile = cache(async (): Promise<SessionProfile | null> 
 
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, role, club_id, clubs(name, primary_color)')
+    .select('id, full_name, role, club_id, is_club_manager, clubs(name, primary_color, invite_code, staff_invite_code)')
     .eq('id', user.id)
     .single();
 

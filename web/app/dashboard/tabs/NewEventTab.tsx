@@ -87,7 +87,11 @@ function hexToRgb(hex: string): string {
 /* ── Root component ─────────────────────────────────────────────────── */
 type View = { type: 'pick' } | { type: 'form'; category: EventCategory };
 
-export default function NewEventTab({ clubId, prefilledDate }: { clubId: string; prefilledDate?: string }) {
+export default function NewEventTab({ clubId, prefilledDate, onCreatedFromCalendar }: {
+  clubId: string;
+  prefilledDate?: string;
+  onCreatedFromCalendar?: () => void;
+}) {
   const [view, setView] = useState<View>({ type: 'pick' });
 
   // Reset to picker when prefilledDate changes (new calendar tap)
@@ -100,6 +104,8 @@ export default function NewEventTab({ clubId, prefilledDate }: { clubId: string;
         clubId={clubId}
         date={prefilledDate}
         onBack={() => setView({ type: 'pick' })}
+        // Only when the flow started from a calendar day — otherwise show the success banner.
+        onCreated={prefilledDate ? onCreatedFromCalendar : undefined}
       />
     );
   }
@@ -180,8 +186,10 @@ function CategoryCard({ category, onClick }: { category: EventCategory; onClick:
 }
 
 /* ── Form router ────────────────────────────────────────────────────── */
-function EventForm({ category, clubId, date, onBack }: { category: EventCategory; clubId: string; date?: string; onBack: () => void }) {
-  const props = { clubId, date, onBack, color: category.color };
+function EventForm({ category, clubId, date, onBack, onCreated }: {
+  category: EventCategory; clubId: string; date?: string; onBack: () => void; onCreated?: () => void;
+}) {
+  const props = { clubId, date, onBack, onCreated, color: category.color };
 
   return (
     <div style={{ padding: '36px 40px', maxWidth: 640, margin: '0 auto' }}>
@@ -221,6 +229,20 @@ function EventForm({ category, clubId, date, onBack }: { category: EventCategory
 }
 
 /* ── Shared form primitives ─────────────────────────────────────────── */
+type FormProps = {
+  clubId:     string;
+  date?:      string;
+  color:      string;
+  onBack:     () => void;
+  /** Set only when the flow began on a calendar day — hands control back to the
+   *  calendar instead of showing the success banner. */
+  onCreated?: () => void;
+};
+
+function makeFinish(onCreated: (() => void) | undefined, setDone: (v: boolean) => void) {
+  return () => { if (onCreated) onCreated(); else setDone(true); };
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -540,7 +562,7 @@ function PdfUpload({ file, onChange, color }: { file: File | null; onChange: (f:
 }
 
 /* ══ FORM: Team training ════════════════════════════════════════════ */
-function TrainingForm({ clubId, date, color, onBack }: { clubId: string; date?: string; color: string; onBack: () => void }) {
+function TrainingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [eventDate, setEventDate] = useState(date ?? '');
   const [time,      setTime]      = useState('');
@@ -549,6 +571,8 @@ function TrainingForm({ clubId, date, color, onBack }: { clubId: string; date?: 
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [done,      setDone]      = useState(false);
+
+  const finish = makeFinish(onCreated, setDone);
 
   if (done) return <SuccessBanner label="Training session" onBack={onBack} />;
 
@@ -574,7 +598,7 @@ function TrainingForm({ clubId, date, color, onBack }: { clubId: string; date?: 
         description: desc,
       });
       if (evErr) throw evErr;
-      setDone(true);
+      finish();
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong.');
     } finally {
@@ -608,9 +632,7 @@ function TrainingForm({ clubId, date, color, onBack }: { clubId: string; date?: 
 }
 
 /* ══ FORM: Home training / Rehab ════════════════════════════════════ */
-function HomeProgramForm({ clubId, date, color, type, onBack }: {
-  clubId: string; date?: string; color: string; type: 'home' | 'rehab'; onBack: () => void;
-}) {
+function HomeProgramForm({ clubId, date, color, type, onBack, onCreated }: FormProps & { type: 'home' | 'rehab' }) {
   const supabase = createClient();
   const [title,        setTitle]        = useState('');
   const [eventDate,    setEventDate]    = useState(date ?? '');
@@ -622,6 +644,8 @@ function HomeProgramForm({ clubId, date, color, type, onBack }: {
   const [loading,      setLoading]      = useState(false);
   const [error,        setError]        = useState('');
   const [done,         setDone]         = useState(false);
+
+  const finish = makeFinish(onCreated, setDone);
 
   if (done) return <SuccessBanner label={type === 'home' ? 'Home program' : 'Rehab program'} onBack={onBack} />;
 
@@ -677,7 +701,7 @@ function HomeProgramForm({ clubId, date, color, type, onBack }: {
         if (aErr) throw aErr;
       }
 
-      setDone(true);
+      finish();
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong.');
     } finally {
@@ -730,7 +754,7 @@ function HomeProgramForm({ clubId, date, color, type, onBack }: {
 }
 
 /* ══ FORM: Meeting ══════════════════════════════════════════════════ */
-function MeetingForm({ clubId, date, color, onBack }: { clubId: string; date?: string; color: string; onBack: () => void }) {
+function MeetingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [title,     setTitle]     = useState('');
   const [eventDate, setEventDate] = useState(date ?? '');
@@ -741,6 +765,8 @@ function MeetingForm({ clubId, date, color, onBack }: { clubId: string; date?: s
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [done,      setDone]      = useState(false);
+
+  const finish = makeFinish(onCreated, setDone);
 
   if (done) return <SuccessBanner label="Meeting" onBack={onBack} />;
 
@@ -767,7 +793,7 @@ function MeetingForm({ clubId, date, color, onBack }: { clubId: string; date?: s
         description: desc ?? null,
       });
       if (evErr) throw evErr;
-      setDone(true);
+      finish();
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong.');
     } finally {
@@ -819,7 +845,7 @@ function MeetingForm({ clubId, date, color, onBack }: { clubId: string; date?: s
 }
 
 /* ══ FORM: Generic event ════════════════════════════════════════════ */
-function GenericForm({ clubId, date, color, onBack }: { clubId: string; date?: string; color: string; onBack: () => void }) {
+function GenericForm({ clubId, date, color, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [title,     setTitle]     = useState('');
   const [eventDate, setEventDate] = useState(date ?? '');
@@ -829,6 +855,8 @@ function GenericForm({ clubId, date, color, onBack }: { clubId: string; date?: s
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [done,      setDone]      = useState(false);
+
+  const finish = makeFinish(onCreated, setDone);
 
   if (done) return <SuccessBanner label="Event" onBack={onBack} />;
 
@@ -861,7 +889,7 @@ function GenericForm({ clubId, date, color, onBack }: { clubId: string; date?: s
         line_items: filledItems.length > 0 ? filledItems : null,
       });
       if (evErr) throw evErr;
-      setDone(true);
+      finish();
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong.');
     } finally {
@@ -935,7 +963,7 @@ function GenericForm({ clubId, date, color, onBack }: { clubId: string; date?: s
 }
 
 /* ══ FORM: Vacation / Break ═════════════════════════════════════════ */
-function VacationForm({ clubId, date, color, onBack }: { clubId: string; date?: string; color: string; onBack: () => void }) {
+function VacationForm({ clubId, date, color, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [label,     setLabel]     = useState('');
   const [startDate, setStartDate] = useState(date ?? '');
@@ -943,6 +971,8 @@ function VacationForm({ clubId, date, color, onBack }: { clubId: string; date?: 
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [done,      setDone]      = useState(false);
+
+  const finish = makeFinish(onCreated, setDone);
 
   if (done) return <SuccessBanner label="Break" onBack={onBack} />;
 
@@ -966,7 +996,7 @@ function VacationForm({ clubId, date, color, onBack }: { clubId: string; date?: 
         end_date:   endDate   + 'T00:00:00',
       });
       if (evErr) throw evErr;
-      setDone(true);
+      finish();
     } catch (err: any) {
       setError(err.message ?? 'Something went wrong.');
     } finally {

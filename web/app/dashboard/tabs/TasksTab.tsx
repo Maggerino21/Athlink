@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { AvatarCircle } from '../athletes/AthletesClient';
 
@@ -326,17 +326,7 @@ function AssignTaskModal({
         <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div>
             <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Assign to *</label>
-            <select
-              className="input"
-              value={athleteId}
-              onChange={(e) => setAthleteId(e.target.value)}
-              style={{ cursor: 'pointer' }}
-            >
-              <option value="">Select athlete…</option>
-              {athletes.map(a => (
-                <option key={a.id} value={a.id}>{a.full_name}</option>
-              ))}
-            </select>
+            <AthleteSelect athletes={athletes} value={athleteId} onChange={setAthleteId} />
           </div>
           <div>
             <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Task title *</label>
@@ -377,7 +367,123 @@ function AssignTaskModal({
   );
 }
 
+/* ── Athlete select ───────────────────────────────────────────────── */
+// Native <select> renders its option list with OS chrome, which on Windows means
+// near-white label text on a light popup — unreadable until hovered. Custom list instead.
+function AthleteSelect({
+  athletes, value, onChange,
+}: {
+  athletes: AthleteRow[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const selected = athletes.find(a => a.id === value);
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="input"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 8,
+          borderColor: open ? 'var(--accent-border)' : undefined,
+        }}
+      >
+        {selected
+          ? <><AvatarCircle name={selected.full_name} size={22} />
+              <span style={{ color: 'var(--text-primary)' }}>{selected.full_name}</span></>
+          : <span style={{ color: 'var(--text-tertiary)' }}>Select athlete…</span>
+        }
+        <span style={{ marginLeft: 'auto', display: 'flex', color: 'var(--text-tertiary)',
+                       transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+          <ChevronDownIcon />
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10,
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            maxHeight: 200, overflowY: 'auto',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.55)',
+            padding: 4,
+          }}
+        >
+          {athletes.length === 0 && (
+            <div className="t-small" style={{ color: 'var(--text-tertiary)', padding: '10px 12px' }}>
+              No athletes in this club yet
+            </div>
+          )}
+          {athletes.map(a => {
+            const active = a.id === value;
+            return (
+              <button
+                key={a.id}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => { onChange(a.id); setOpen(false); }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 9,
+                  padding: '8px 10px', borderRadius: 'var(--radius-sm)',
+                  fontFamily: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer',
+                  background: active ? 'var(--accent-subtle)' : 'transparent',
+                  border: '1px solid ' + (active ? 'var(--accent-border)' : 'transparent'),
+                  color: 'var(--text-primary)',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <AvatarCircle name={a.full_name} size={24} />
+                <span style={{ flex: 1 }}>{a.full_name}</span>
+                {active && (
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)"
+                       strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Icons ────────────────────────────────────────────────────────── */
+function ChevronDownIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
 function CloseIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

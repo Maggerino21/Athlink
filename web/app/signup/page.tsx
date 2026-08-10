@@ -35,49 +35,72 @@ const CLUB_COLORS = [
 ];
 
 type Step = 'form' | 'done';
+type Mode = 'create' | 'join';
 
 export default function SignupPage() {
   const router   = useRouter();
   const supabase = createClient();
 
   const [step, setStep] = useState<Step>('form');
+  const [mode, setMode] = useState<Mode>('create');
 
-  const [fullName,  setFullName]  = useState('');
-  const [email,     setEmail]     = useState('');
-  const [password,  setPassword]  = useState('');
-  const [clubName,  setClubName]  = useState('');
-  const [clubColor, setClubColor] = useState('#6366F1');
-  const [loading,   setLoading]   = useState(false);
-  const [error,     setError]     = useState('');
+  const [fullName,   setFullName]   = useState('');
+  const [email,      setEmail]      = useState('');
+  const [password,   setPassword]   = useState('');
+  const [clubName,   setClubName]   = useState('');
+  const [clubColor,  setClubColor]  = useState('#6366F1');
+  const [inviteCode, setInviteCode] = useState('');
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName.trim())    { setError('Full name is required.');        return; }
-    if (!email.trim())       { setError('Email is required.');            return; }
+    if (!fullName.trim())    { setError('Full name is required.');          return; }
+    if (!email.trim())       { setError('Email is required.');              return; }
     if (password.length < 6) { setError('Password must be 6+ characters.'); return; }
-    if (!clubName.trim())    { setError('Club name is required.');        return; }
+    if (mode === 'create' && !clubName.trim())   { setError('Club name is required.');   return; }
+    if (mode === 'join'   && !inviteCode.trim()) { setError('Invite code is required.'); return; }
 
     setError('');
     setLoading(true);
+
+    // Note: `role` is deliberately NOT sent. The handle_new_user trigger derives it —
+    // creating a club makes you staff; joining takes the role implied by which code
+    // matched. Anything sent from here would be client-controlled and untrusted.
+    const metadata = mode === 'create'
+      ? {
+          full_name:     fullName.trim(),
+          language:      'en',
+          club_name:     clubName.trim(),
+          primary_color: clubColor,
+        }
+      : {
+          full_name:   fullName.trim(),
+          language:    'en',
+          invite_code: inviteCode.trim().toUpperCase(),
+        };
 
     const { data, error: err } = await supabase.auth.signUp({
       email:    email.trim(),
       password,
       options: {
-        data: {
-          full_name:     fullName.trim(),
-          role:          'staff',
-          language:      'en',
-          club_name:     clubName.trim(),
-          primary_color: clubColor,
-        },
+        data: metadata,
         emailRedirectTo: `${window.location.origin}/dashboard`,
       },
     });
 
     setLoading(false);
 
-    if (err) { setError(err.message); return; }
+    if (err) {
+      // The trigger raises on a code that matches no club, which surfaces here as an
+      // opaque database error — worth translating for the common case.
+      setError(
+        mode === 'join' && /database|unexpected/i.test(err.message)
+          ? 'That invite code doesn’t match any club. Check it and try again.'
+          : err.message
+      );
+      return;
+    }
     if (data.session) { router.push('/dashboard'); return; }
     setStep('done');
   };
@@ -103,6 +126,35 @@ export default function SignupPage() {
   return (
     <PageShell>
       <form onSubmit={handleSubmit} noValidate>
+
+        {/* ── Mode switch ─────────────────────────────────────── */}
+        <div style={{
+          display: 'flex', gap: 4, padding: 4, marginBottom: 14,
+          background: 'var(--surface-1)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-md)',
+        }}>
+          {([
+            { key: 'create' as Mode, label: 'Create a club' },
+            { key: 'join'   as Mode, label: 'Join a club' },
+          ]).map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => { setMode(key); setError(''); }}
+              style={{
+                flex: 1, padding: '9px 12px', borderRadius: 'var(--radius-sm)',
+                fontSize: 13, fontWeight: mode === key ? 700 : 500, fontFamily: 'inherit',
+                cursor: 'pointer', border: 'none',
+                background: mode === key ? 'var(--surface-3)' : 'transparent',
+                color: mode === key ? 'var(--text-primary)' : 'var(--text-secondary)',
+                transition: 'background 0.12s, color 0.12s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
         {/* ── Account section ─────────────────────────────────── */}
         <div className="glass" style={{ borderRadius: 'var(--radius-xl)', padding: '28px 28px 24px', marginBottom: 14 }}>
@@ -147,7 +199,36 @@ export default function SignupPage() {
           </div>
         </div>
 
+        {/* ── Join an existing club ────────────────────────────── */}
+        {mode === 'join' && (
+          <div className="glass" style={{ borderRadius: 'var(--radius-xl)', padding: '28px 28px 24px', marginBottom: 14 }}>
+            <div className="t-label" style={{ marginBottom: 18 }}>Join a club</div>
+
+            <Field label="Invite code">
+              <input
+                className="input input-neutral"
+                type="text"
+                value={inviteCode}
+                onChange={e => setInviteCode(e.target.value.toUpperCase())}
+                placeholder="6-character code"
+                autoCapitalize="characters"
+                autoComplete="off"
+                maxLength={6}
+                style={{ letterSpacing: '0.18em', fontWeight: 700 }}
+                required
+              />
+            </Field>
+
+            <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 12, lineHeight: 1.6 }}>
+              Ask a coach at your club for the <strong style={{ color: 'var(--text-secondary)' }}>staff
+              code</strong> — they&rsquo;ll find it on their dashboard. Your role is set by the code
+              you use, so an athlete code will not grant dashboard access.
+            </div>
+          </div>
+        )}
+
         {/* ── Club section ─────────────────────────────────────── */}
+        {mode === 'create' && (
         <div className="glass" style={{ borderRadius: 'var(--radius-xl)', padding: '28px 28px 24px', marginBottom: 14 }}>
           <div className="t-label" style={{ marginBottom: 18 }}>Your club</div>
 
@@ -222,6 +303,7 @@ export default function SignupPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* ── Error + submit ───────────────────────────────────── */}
         {error && (
@@ -236,7 +318,9 @@ export default function SignupPage() {
           disabled={loading}
           style={{ width: '100%', padding: '14px 18px', fontSize: 15, fontWeight: 700 }}
         >
-          {loading ? 'Creating your club…' : 'Create club & sign up'}
+          {loading
+            ? (mode === 'create' ? 'Creating your club…' : 'Joining…')
+            : (mode === 'create' ? 'Create club & sign up' : 'Join club')}
         </button>
 
         <div className="t-small" style={{ textAlign: 'center', color: 'var(--text-tertiary)', marginTop: 20 }}>

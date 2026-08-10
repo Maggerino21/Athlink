@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
+import InvitePeople from '../InvitePeople';
 
 type MatchRow = { id: string; opponent: string; match_date: string; is_home: boolean; location: string | null };
 type EventRow = { id: string; type: string; title: string; event_date: string; location: string | null };
@@ -15,7 +16,13 @@ type State = {
   upcomingEvents:  EventRow[];
 };
 
-export default function OverviewTab({ clubId, staffName }: { clubId: string; staffName: string }) {
+export default function OverviewTab({ clubId, staffName, clubName, inviteCode, staffInviteCode }: {
+  clubId:           string;
+  staffName:        string;
+  clubName:         string;
+  inviteCode:       string | null;
+  staffInviteCode:  string | null;
+}) {
   const supabase = createClient();
   const [data, setData] = useState<State | null>(null);
 
@@ -68,6 +75,17 @@ export default function OverviewTab({ clubId, staffName }: { clubId: string; sta
           {staffName}
         </h1>
       </div>
+
+      {inviteCode && (
+        <InvitePeople
+          athleteCode={inviteCode}
+          staffCode={staffInviteCode}
+          clubName={clubName}
+          // Until the counts land, stay neutral rather than flashing the onboarding
+          // nudge at a club that already has athletes.
+          noAthletesYet={data?.athleteCount === 0}
+        />
+      )}
 
       {!data ? (
         <OverviewSkeleton />

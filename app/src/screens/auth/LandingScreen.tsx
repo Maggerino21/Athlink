@@ -287,8 +287,10 @@ function SignupSheet({
       password,
       options: {
         data: {
+          // No `role` here on purpose. The handle_new_user trigger derives it from which
+          // invite code matched (athlete code → athlete, staff code → staff). Anything
+          // sent from the client is untrusted and ignored.
           full_name:   fullName.trim(),
-          role:        'athlete',
           language,
           invite_code: inviteCode.trim().toUpperCase(),
         },
@@ -496,7 +498,7 @@ function BottomSheet({
         </View>
 
         <ScrollView
-          style={{ zIndex: 1 }}
+          style={{ flex: 1, zIndex: 1 }}
           contentContainerStyle={sheetStyles.sheetContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -630,7 +632,7 @@ const sheetStyles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
   sheet: {
     borderTopLeftRadius: 30, borderTopRightRadius: 30,
-    overflow: 'hidden', maxHeight: H * 0.92,
+    overflow: 'hidden', height: H * 0.85,
   },
   handleArea: {
     width: '100%', paddingVertical: 12,

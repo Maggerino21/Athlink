@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionProfile } from '@/lib/auth';
+import NotStaffNotice from './NotStaffNotice';
 
 function hexToRgb(hex: string): string {
   const clean = hex.replace('#', '');
@@ -18,7 +19,7 @@ function hexToRgb(hex: string): string {
 // round-trips on every tab click.
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const profile = await getSessionProfile();
-  if (!profile || profile.role !== 'staff') redirect('/login');
+  if (!profile) redirect('/login');
 
   const clubColor = profile.clubs?.primary_color ?? '#6366F1';
   const rgb       = hexToRgb(clubColor);
@@ -34,7 +35,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     <div className="flex h-full" style={accentVars}>
       <div className="orb-top" />
       <div className="orb-bottom" />
-      {children}
+      {profile.role === 'staff'
+        ? children
+        : <NotStaffNotice fullName={profile.full_name} />}
     </div>
   );
 }

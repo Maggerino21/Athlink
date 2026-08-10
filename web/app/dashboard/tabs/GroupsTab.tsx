@@ -70,8 +70,11 @@ export default function GroupsTab({ clubId }: { clubId: string }) {
   function openGroup(g: Group) { setShowCreate(false); setActiveGroup(g); }
   function closePanel()        { setActiveGroup(null); setShowCreate(false); }
 
+  // overflow:clip (not hidden) — the slide-in panels sit at translateX(100%) and would
+  // otherwise form a scrollable overflow area that the browser scrolls into view when the
+  // panel's autoFocus input mounts, shifting the page left permanently. clip never scrolls.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'clip', position: 'relative' }}>
 
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div style={{
@@ -502,7 +505,11 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button onClick={() => setEditing(e => !e)} className="btn-ghost" style={{ padding: '5px 10px', fontSize: 12 }}>
+            <button
+              onClick={() => { setEditing(e => !e); setDelConfirm(false); }}
+              className="btn-ghost"
+              style={{ padding: '5px 10px', fontSize: 12 }}
+            >
               {editing ? 'Cancel' : 'Edit'}
             </button>
             <CloseBtn onClick={onClose} />

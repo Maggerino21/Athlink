@@ -155,8 +155,10 @@ export default function CalendarTab({
   const activeDateEvents = activeDate ? events.filter(e => e.date === activeDate) : [];
   const activeD          = activeDate ? new Date(activeDate + 'T12:00:00') : null;
 
+  // overflow:clip — same reason as GroupsTab: the off-screen day panel must not create a
+  // scrollable overflow area that focus can drag into view.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'clip', position: 'relative' }}>
 
       {/* ── Header ─────────────────────────────────────────────────── */}
       <div style={{
