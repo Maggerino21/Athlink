@@ -11,6 +11,29 @@ import ClubTab     from './tabs/ClubTab';
 import FeedbackTab from './tabs/FeedbackTab';
 import TasksTab    from './tabs/TasksTab';
 
+function hexToRgb(hex: string): string {
+  const clean = hex.replace('#', '');
+  const full  = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
+  const r = parseInt(full.substring(0, 2), 16);
+  const g = parseInt(full.substring(2, 4), 16);
+  const b = parseInt(full.substring(4, 6), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return '99, 102, 241';
+  return `${r}, ${g}, ${b}`;
+}
+
+/** Rewrites the accent variables the dashboard layout set server-side. They live on
+ *  #dashboard-root rather than :root, so they must be set on that same element to win
+ *  for its descendants. Keep in sync with app/dashboard/layout.tsx. */
+function applyAccent(color: string) {
+  const root = document.getElementById('dashboard-root');
+  if (!root) return;
+  const rgb = hexToRgb(color);
+  root.style.setProperty('--accent',        color);
+  root.style.setProperty('--accent-subtle', `rgba(${rgb}, 0.12)`);
+  root.style.setProperty('--accent-border', `rgba(${rgb}, 0.28)`);
+  root.style.setProperty('--accent-glow',   `rgba(${rgb}, 0.18)`);
+}
+
 export default function DashboardShell({
   staffName,
   clubName,
@@ -32,6 +55,15 @@ export default function DashboardShell({
 }) {
   const [tab,          setTab]          = useState<DashTab>('overview');
   const [prefilledDate, setPrefilledDate] = useState<string | undefined>(undefined);
+
+  // Club name and colour can be edited on the Club tab. Holding them here lets the
+  // sidebar and theme update immediately, with no reload to knock you off the page.
+  const [club, setClub] = useState({ name: clubName, color: clubColor });
+
+  function handleClubUpdated(name: string, color: string) {
+    setClub({ name, color });
+    applyAccent(color);
+  }
 
   function handleAddEvent(date: string) {
     setPrefilledDate(date);
@@ -55,8 +87,8 @@ export default function DashboardShell({
     <>
       <Sidebar
         staffName={staffName}
-        clubName={clubName}
-        clubColor={clubColor}
+        clubName={club.name}
+        clubColor={club.color}
         activeTab={tab}
         onTabChange={handleTabChange}
       />
@@ -79,10 +111,13 @@ export default function DashboardShell({
         {tab === 'club'      && (
           <ClubTab
             clubId={clubId}
-            clubName={clubName}
-            clubColor={clubColor}
+            clubName={club.name}
+            clubColor={club.color}
             staffId={staffId}
             isClubManager={isClubManager}
+            inviteCode={inviteCode}
+            staffInviteCode={staffInviteCode}
+            onClubUpdated={handleClubUpdated}
           />
         )}
         {tab === 'new'       && (

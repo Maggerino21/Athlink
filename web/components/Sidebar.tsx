@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
 export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks' | 'groups' | 'club' | 'new';
@@ -122,7 +123,13 @@ export default function Sidebar({
 }) {
   const supabase = createClient();
 
+  // The sign-out control is a small unlabelled icon sitting next to the profile, so it is
+  // easy to hit by accident. Confirm before dropping the session.
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
+  const [signingOut,     setSigningOut]     = useState(false);
+
   const signOut = async () => {
+    setSigningOut(true);
     await supabase.auth.signOut();
     window.location.replace('/login');
   };
@@ -200,11 +207,69 @@ export default function Sidebar({
             </div>
             <div className="t-label" style={{ marginTop: 1 }}>Coach</div>
           </div>
-          <button onClick={signOut} title="Sign out" className="btn-ghost" style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}>
+          <button
+            onClick={() => setConfirmSignOut(true)}
+            title="Sign out"
+            className="btn-ghost"
+            style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
+          >
             <SignOutIcon size={14} />
           </button>
         </div>
       </div>
+
+      {confirmSignOut && (
+        <SignOutDialog
+          busy={signingOut}
+          onCancel={() => setConfirmSignOut(false)}
+          onConfirm={signOut}
+        />
+      )}
     </aside>
+  );
+}
+
+/* ── Sign out confirmation ────────────────────────────────────────── */
+function SignOutDialog({ busy, onCancel, onConfirm }: {
+  busy:      boolean;
+  onCancel:  () => void;
+  onConfirm: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  return (
+    <div
+      onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div style={{
+        width: 380, borderRadius: 'var(--radius-xl)',
+        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
+      }}>
+        <div className="t-subheading" style={{ color: 'var(--text-primary)', marginBottom: 10 }}>
+          Sign out?
+        </div>
+        <div className="t-small" style={{ color: 'var(--text-secondary)', lineHeight: 1.65, marginBottom: 22 }}>
+          You&rsquo;ll need your email and password to get back in.
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          {/* Focus the safe option: the whole point of this dialog is catching a
+              mis-click, so Enter should keep you signed in. */}
+          <button onClick={onCancel} className="btn-ghost" autoFocus>Stay signed in</button>
+          <button onClick={onConfirm} disabled={busy} className="btn-primary">
+            {busy ? 'Signing out…' : 'Sign out'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { AvatarCircle } from '../athletes/AthletesClient';
+import InvitePeople from '../InvitePeople';
 
 /**
  * Club settings and membership.
@@ -36,12 +37,16 @@ const CLUB_COLORS = [
 
 export default function ClubTab({
   clubId, clubName, clubColor, staffId, isClubManager,
+  inviteCode, staffInviteCode, onClubUpdated,
 }: {
-  clubId:        string;
-  clubName:      string;
-  clubColor:     string;
-  staffId:       string;
-  isClubManager: boolean;
+  clubId:           string;
+  clubName:         string;
+  clubColor:        string;
+  staffId:          string;
+  isClubManager:    boolean;
+  inviteCode:       string | null;
+  staffInviteCode:  string | null;
+  onClubUpdated:    (name: string, color: string) => void;
 }) {
   const supabase = createClient();
 
@@ -90,6 +95,11 @@ export default function ClubTab({
   const coaches  = active.filter(m => m.role === 'staff');
   const athletes = active.filter(m => m.role === 'athlete');
 
+  // A club must always keep at least one manager, so the last one cannot step down.
+  // Enforced in set_club_manager; mirrored here so the UI never offers an action that
+  // is guaranteed to fail.
+  const managerCount = active.filter(m => m.is_club_manager).length;
+
   return (
     <div style={{ padding: '36px 40px', maxWidth: 860, margin: '0 auto' }}>
       <div style={{ marginBottom: 32 }}>
@@ -102,6 +112,7 @@ export default function ClubTab({
         clubName={clubName}
         clubColor={clubColor}
         canEdit={isClubManager}
+        onSaved={onClubUpdated}
       />
 
       {members === null ? (
@@ -110,12 +121,22 @@ export default function ClubTab({
         </div>
       ) : (
         <>
+          {inviteCode && (
+            <InvitePeople
+              athleteCode={inviteCode}
+              staffCode={staffInviteCode}
+              clubName={clubName}
+              noAthletesYet={athletes.length === 0}
+            />
+          )}
+
           <PeopleSection
             title="Coaches"
             count={coaches.length}
             members={coaches}
             selfId={staffId}
             isClubManager={isClubManager}
+            managerCount={managerCount}
             onAction={setConfirm}
           />
           <PeopleSection
@@ -124,8 +145,9 @@ export default function ClubTab({
             members={athletes}
             selfId={staffId}
             isClubManager={isClubManager}
+            managerCount={managerCount}
             onAction={setConfirm}
-            emptyText="Nobody has joined yet. Use Add athletes on the Overview page."
+            emptyText="Nobody has joined yet. Use Add athletes above to share your code."
           />
           {removed.length > 0 && (
             <PeopleSection
@@ -134,6 +156,7 @@ export default function ClubTab({
               members={removed}
               selfId={staffId}
               isClubManager={isClubManager}
+              managerCount={managerCount}
               onAction={setConfirm}
             />
           )}
@@ -154,8 +177,9 @@ export default function ClubTab({
 }
 
 /* ── Club details ─────────────────────────────────────────────────── */
-function ClubDetails({ clubId, clubName, clubColor, canEdit }: {
+function ClubDetails({ clubId, clubName, clubColor, canEdit, onSaved }: {
   clubId: string; clubName: string; clubColor: string; canEdit: boolean;
+  onSaved: (name: string, color: string) => void;
 }) {
   const supabase = createClient();
   const [name,   setName]   = useState(clubName);
@@ -182,9 +206,9 @@ function ClubDetails({ clubId, clubName, clubColor, canEdit }: {
     setSaving(false);
     if (err) { setError('Could not save. Please try again.'); return; }
     setSaved(true);
-    // The colour drives CSS variables set on the server-rendered layout, so a reload
-    // is what makes a colour change visible everywhere at once.
-    if (color !== clubColor) window.location.reload();
+    // Hand the new values up so the sidebar and accent colour update immediately.
+    // Reloading here would reset the dashboard tab and bounce you back to Overview.
+    onSaved(name.trim(), color);
   }
 
   return (
@@ -261,13 +285,14 @@ function ClubDetails({ clubId, clubName, clubColor, canEdit }: {
 
 /* ── People ───────────────────────────────────────────────────────── */
 function PeopleSection({
-  title, count, members, selfId, isClubManager, onAction, emptyText,
+  title, count, members, selfId, isClubManager, managerCount, onAction, emptyText,
 }: {
   title:         string;
   count:         number;
   members:       Member[];
   selfId:        string;
   isClubManager: boolean;
+  managerCount:  number;
   onAction:      (c: Confirm) => void;
   emptyText?:    string;
 }) {
@@ -290,6 +315,7 @@ function PeopleSection({
               member={m}
               isSelf={m.id === selfId}
               isClubManager={isClubManager}
+              managerCount={managerCount}
               onAction={onAction}
             />
           ))}
@@ -299,19 +325,25 @@ function PeopleSection({
   );
 }
 
-function MemberRow({ member, isSelf, isClubManager, onAction }: {
+function MemberRow({ member, isSelf, isClubManager, managerCount, onAction }: {
   member:        Member;
   isSelf:        boolean;
   isClubManager: boolean;
+  managerCount:  number;
   onAction:      (c: Confirm) => void;
 }) {
   const isRemoved = !!member.removed_at;
   const isCoach   = member.role === 'staff';
 
+  // The club's only manager cannot step down or be removed — someone has to be able to
+  // manage it. set_club_manager / remove_club_member reject both; this keeps the buttons
+  // from being offered in the first place.
+  const isLastManager = member.is_club_manager && !isRemoved && managerCount <= 1;
+
   // Mirrors the database rules: coaches are manager-only, athletes are any staff.
-  const mayRemove  = !isRemoved && !isSelf && (isCoach ? isClubManager : true);
+  const mayRemove  = !isRemoved && !isSelf && !isLastManager && (isCoach ? isClubManager : true);
   const mayRestore =  isRemoved && (isCoach ? isClubManager : true);
-  const mayToggle  = !isRemoved && isCoach && isClubManager;
+  const mayToggle  = !isRemoved && isCoach && isClubManager && !isLastManager;
 
   return (
     <div className="glass" style={{
@@ -338,7 +370,12 @@ function MemberRow({ member, isSelf, isClubManager, onAction }: {
         {isRemoved && <span className="badge badge-danger">Removed</span>}
       </div>
 
-      <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexShrink: 0 }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+        {isLastManager && isClubManager && (
+          <span className="t-small" style={{ color: 'var(--text-tertiary)', textAlign: 'right' }}>
+            Make another coach a manager to change this
+          </span>
+        )}
         {mayToggle && (
           <button
             className="btn-ghost"

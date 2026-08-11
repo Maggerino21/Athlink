@@ -113,6 +113,11 @@ read an explanation longer than a sentence. Concretely:
 - Anything a coach only does once or twice a year should be discoverable at the moment they
   need it, not filed under Settings.
 
+**Fixtures should arrive, not be typed.** A core product goal, not a nice-to-have: coaches
+must not have to enter every match by hand. API-Football populates a club's fixtures and
+badge once its team is linked — see External fixture data under Known gaps for the
+integration contract and its limits.
+
 **No chat.** WhatsApp already won that. Athlink handles structured, contextual, searchable communication. If it's not discoverable and actionable, it belongs in WhatsApp.
 
 **AI = translation + structuring, never authority.** OpenAI `gpt-4o-mini` translates coach observations into clear athlete-language (What / Why / How). Coach always reviews before sending. AI is never shown to the athlete as making decisions.
@@ -308,6 +313,58 @@ SELECT name, invite_code, primary_color FROM clubs;
   rate, timeline view
 - **Mobile ↔ web event type parity** — mobile has no styling for the `home` / `rehab` /
   `vacation` types the web app creates (see Event types above)
+
+**External fixture data — API-Football (schema ready, no sync code yet)**
+
+Provider: **API-Football** (api-sports.io). Cost is not a constraint — free tier covers
+current usage, top tier is ~$39/mo.
+
+Base `https://v3.football.api-sports.io/`, key in an `x-apisports-key` header.
+**GET only, and that must be the *only* header** — their docs warn that JS/Node clients
+which add headers automatically get rejected. Calls must go through an Edge Function; the
+key must never reach the client bundle.
+
+Two calls do the job:
+
+```
+GET /teams?search={club name}      → team id, name, country
+GET /fixtures?team={id}&next=10    → upcoming matches
+```
+
+Two ids make sync safe, and the schema is built on them:
+
+| | |
+|---|---|
+| team id | stable across every competition a team plays in → `clubs.external_team_id` |
+| fixture id | never changes, per their docs → `matches.external_id` |
+
+`matches.source` is `'manual'` or `'api'`, and a **partial unique index on
+`(club_id, external_id)`** means a re-sync upserts instead of duplicating, while manual
+rows (NULL `external_id`) are unconstrained. Verified: re-syncing a fixture updates one
+row and leaves manual entries untouched.
+
+**Badges** — `https://media.api-sports.io/football/teams/{team_id}.png`, 150×150 PNG.
+Verified: no API key needed, so it can be used directly in `<img src>`; free of quota but
+rate-limited, so cache rather than hot-link at scale. Missing badges return a clean 404
+(common for newer teams — Bodø/Glimt Women has none), so **fall back to a circle in the
+club colour** — that is what `AvatarCircle` already renders. Never store the image; derive
+the URL from `external_team_id`.
+
+> Their terms state they do not own the crests and claim no IP over them, and that use
+> "may require additional authorization or licensing from the respective rights holders."
+> Showing a club its own crest is defensible identification; marketing and store listings
+> are a different use.
+
+**There is no club → teams hierarchy.** Every team is a flat, independent record — senior,
+reserve and women's sides are unrelated entries that merely share a name. Sibling teams are
+found by name search alone, which is why linking must ask **"which team do you coach"**
+before searching, and show each result's league as the disambiguator.
+
+**Norway coverage:** senior men to 3. divisjon (4th tier), 2. divisjon, 1. divisjon,
+Eliteserien, NM Cupen, plus Toppserien and 1. divisjon Women. **Youth is effectively
+absent** (one U19 competition), so an age-group coach will find only the senior side — a
+confidently wrong answer. Manual match entry stays first-class, and "my team isn't here"
+must read as a normal outcome rather than a failure.
 
 **Polish / deferred**
 

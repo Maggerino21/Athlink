@@ -12,6 +12,10 @@ export type Database = {
           club_id: string | null;
           language: string | null;
           push_token: string | null;
+          // Manager tier is a flag on top of role, not a third role value.
+          is_club_manager: boolean;
+          // Soft removal — null means still in the club.
+          removed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -22,8 +26,16 @@ export type Database = {
         Row: {
           id: string;
           name: string;
-          invite_code: string;
+          // Which code someone signs up with determines their role.
+          invite_code: string;        // athlete
+          staff_invite_code: string;  // staff — full club admin
           primary_color: string;
+          // Link to the external fixture provider. Badge is derived from
+          // external_team_id, never stored.
+          external_provider: string | null;
+          external_team_id: number | null;
+          external_team_name: string | null;
+          external_synced_at: string | null;
           created_at: string;
         };
         Insert: Omit<Database['public']['Tables']['clubs']['Row'], 'id' | 'created_at'>;
@@ -39,6 +51,10 @@ export type Database = {
           is_home: boolean;
           status: 'upcoming' | 'completed' | 'cancelled';
           created_by: string;
+          // 'manual' rows are hand-entered and must never be touched by a sync.
+          source: 'manual' | 'api';
+          // Provider fixture id. Unique per club, so a re-sync upserts.
+          external_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -48,6 +64,7 @@ export type Database = {
       match_feedback: {
         Row: {
           id: string;
+          match_id: string | null;
           athlete_id: string;
           created_by: string;
           title: string | null;
@@ -77,6 +94,7 @@ export type Database = {
           due_date: string | null;
           status: 'pending' | 'completed' | 'unable';
           completed_at: string | null;
+          group_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -92,7 +110,12 @@ export type Database = {
           title: string;
           description: string | null;
           event_date: string;
+          end_date: string | null;
           location: string | null;
+          // Home training / rehab programmes upload a PDF to the event-pdfs bucket.
+          pdf_url: string | null;
+          // Generic events carry an optional schedule: [{ label, time }, …]
+          line_items: Json | null;
           created_at: string;
           updated_at: string;
         };

@@ -220,8 +220,9 @@ export default function SignupPage() {
             </Field>
 
             <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 12, lineHeight: 1.6 }}>
-              Ask a coach at your club for the <strong style={{ color: 'var(--text-secondary)' }}>staff
-              code</strong> — they&rsquo;ll find it on their dashboard. Your role is set by the code
+              Ask a coach at your club for the{' '}
+              <strong style={{ color: 'var(--text-secondary)' }}>staff code</strong>{' '}
+              &mdash; they&rsquo;ll find it on their dashboard. Your role is set by the code
               you use, so an athlete code will not grant dashboard access.
             </div>
           </div>
