@@ -4,8 +4,10 @@ import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import {
   Dumbbell, Home, HeartPulse, Users, FileText, Umbrella,
-  CheckCircle, Wrench, Upload, File as FileIcon,
+  CheckCircle, Wrench, Upload, File as FileIcon, Swords,
 } from 'lucide-react';
+import { parseFixtures, toTimestamp, type ParsedFixture } from '@/lib/parseFixtures';
+import DateField from '@/components/DateField';
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 type EventCategory = {
@@ -25,6 +27,13 @@ type LineItem = { label: string; time: string };
 
 /* ── Categories ─────────────────────────────────────────────────────── */
 const CATEGORIES: EventCategory[] = [
+  {
+    key:         'match',
+    label:       'Match',
+    description: 'A fixture — add one, or paste your whole season at once',
+    color:       '#FB923C',
+    icon:        Swords,
+  },
   {
     key:         'training',
     label:       'Team training',
@@ -87,8 +96,9 @@ function hexToRgb(hex: string): string {
 /* ── Root component ─────────────────────────────────────────────────── */
 type View = { type: 'pick' } | { type: 'form'; category: EventCategory };
 
-export default function NewEventTab({ clubId, prefilledDate, onCreatedFromCalendar }: {
+export default function NewEventTab({ clubId, clubName, prefilledDate, onCreatedFromCalendar }: {
   clubId: string;
+  clubName: string;
   prefilledDate?: string;
   onCreatedFromCalendar?: () => void;
 }) {
@@ -102,6 +112,7 @@ export default function NewEventTab({ clubId, prefilledDate, onCreatedFromCalend
       <EventForm
         category={view.category}
         clubId={clubId}
+        clubName={clubName}
         date={prefilledDate}
         onBack={() => setView({ type: 'pick' })}
         // Only when the flow started from a calendar day — otherwise show the success banner.
@@ -186,8 +197,9 @@ function CategoryCard({ category, onClick }: { category: EventCategory; onClick:
 }
 
 /* ── Form router ────────────────────────────────────────────────────── */
-function EventForm({ category, clubId, date, onBack, onCreated }: {
-  category: EventCategory; clubId: string; date?: string; onBack: () => void; onCreated?: () => void;
+function EventForm({ category, clubId, clubName, date, onBack, onCreated }: {
+  category: EventCategory; clubId: string; clubName: string; date?: string;
+  onBack: () => void; onCreated?: () => void;
 }) {
   const props = { clubId, date, onBack, onCreated, color: category.color };
 
@@ -218,6 +230,7 @@ function EventForm({ category, clubId, date, onBack, onCreated }: {
         </div>
       )}
 
+      {category.key === 'match'    && <MatchForm         {...props} clubName={clubName} />}
       {category.key === 'training'  && <TrainingForm       {...props} />}
       {category.key === 'home'     && <HomeProgramForm    {...props} type="home" />}
       {category.key === 'rehab'    && <HomeProgramForm    {...props} type="rehab" />}
@@ -265,21 +278,27 @@ function DateChip({ date, color, bg, border }: { date: string; color: string; bg
   );
 }
 
-function SubmitBtn({ color, loading, label = 'Create event' }: { color: string; loading: boolean; label?: string }) {
+function SubmitBtn({ color, loading, label = 'Create event', onClick, disabled }: {
+  color: string; loading: boolean; label?: string;
+  /** Supplied by forms that aren't wrapped in a <form> (the match form). */
+  onClick?: () => void;
+  disabled?: boolean;
+}) {
   const rgb = hexToRgb(color);
   return (
     <button
-      type="submit"
-      disabled={loading}
+      type={onClick ? 'button' : 'submit'}
+      onClick={onClick}
+      disabled={loading || disabled}
       style={{
         width: '100%', padding: '13px 18px', fontSize: 14, fontWeight: 600,
-        fontFamily: 'inherit', cursor: loading ? 'not-allowed' : 'pointer',
+        fontFamily: 'inherit', cursor: (loading || disabled) ? 'not-allowed' : 'pointer',
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
         borderRadius: 'var(--radius-md)',
         background: `rgba(${rgb}, 0.15)`,
         border: `1px solid rgba(${rgb}, 0.35)`,
         color,
-        opacity: loading ? 0.5 : 1,
+        opacity: (loading || disabled) ? 0.5 : 1,
         transition: 'opacity 0.15s',
         marginTop: 8,
       }}
@@ -561,6 +580,290 @@ function PdfUpload({ file, onChange, color }: { file: File | null; onChange: (f:
   );
 }
 
+/* ══ FORM: Match ════════════════════════════════════════════════════
+ * Two ways in, because coaches arrive with their season in two shapes: already written
+ * down somewhere (paste it), or one fixture they just heard about (type it).
+ */
+function MatchForm({ clubId, clubName, date, color, onBack, onCreated }: FormProps & { clubName: string }) {
+  const [mode, setMode] = useState<'paste' | 'single'>('paste');
+  const [done, setDone] = useState(false);
+  const [savedCount, setSavedCount] = useState(0);
+
+  const finish = makeFinish(onCreated, setDone);
+
+  if (done) {
+    return (
+      <SuccessBanner
+        label={savedCount > 1 ? `${savedCount} matches` : 'Match'}
+        onBack={onBack}
+      />
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div style={{
+        display: 'flex', gap: 4, padding: 4,
+        background: 'var(--surface-1)', border: '1px solid var(--border-default)',
+        borderRadius: 'var(--radius-md)',
+      }}>
+        {([['paste', 'Paste a list'], ['single', 'Add one match']] as const).map(([key, label]) => (
+          <button
+            key={key} type="button" onClick={() => setMode(key)}
+            style={{
+              flex: 1, padding: '9px 12px', borderRadius: 'var(--radius-sm)',
+              fontSize: 13, fontWeight: mode === key ? 700 : 500, fontFamily: 'inherit',
+              cursor: 'pointer', border: 'none',
+              background: mode === key ? 'var(--surface-3)' : 'transparent',
+              color: mode === key ? 'var(--text-primary)' : 'var(--text-secondary)',
+              transition: 'background 0.12s, color 0.12s',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'paste'
+        ? <PasteMatches clubId={clubId} clubName={clubName} color={color}
+            onSaved={(n) => { setSavedCount(n); finish(); }} />
+        : <SingleMatch clubId={clubId} date={date} color={color}
+            onSaved={() => { setSavedCount(1); finish(); }} />}
+    </div>
+  );
+}
+
+/* ── Paste a whole season ───────────────────────────────────────────── */
+function PasteMatches({ clubId, clubName, color, onSaved }: {
+  clubId: string; clubName: string; color: string; onSaved: (n: number) => void;
+}) {
+  const supabase = createClient();
+  const [text, setText]   = useState('');
+  const [rows, setRows]   = useState<ParsedFixture[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Re-parse as they type. Cheap, and the table updating live is what makes this feel
+  // like the list is being understood rather than submitted.
+  useEffect(() => {
+    setRows(text.trim() ? parseFixtures(text, clubName) : []);
+  }, [text, clubName]);
+
+  const update = (i: number, patch: Partial<ParsedFixture>) =>
+    setRows(rs => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  const usable   = rows.filter(r => r.include && r.date && r.opponent);
+  const flagged  = rows.filter(r => r.issue).length;
+
+  async function save() {
+    if (usable.length === 0) return;
+    setSaving(true); setError('');
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setError('Not signed in.'); setSaving(false); return; }
+
+    const { error: err } = await supabase.from('matches').insert(
+      usable.map(r => ({
+        club_id:    clubId,
+        created_by: user.id,
+        opponent:   r.opponent!.trim(),
+        match_date: toTimestamp(r),
+        is_home:    r.isHome,
+        location:   r.location,
+        status:     'upcoming',
+        source:     'manual',   // never touched by a fixture sync
+      })),
+    );
+
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved(usable.length);
+  }
+
+  return (
+    <>
+      <Field label="Paste your fixture list">
+        <textarea
+          className="input"
+          value={text}
+          onChange={e => setText(e.target.value)}
+          rows={6}
+          placeholder={`Paste straight from fotball.no, an email or a spreadsheet:\n\n15.08.2026 18:00 ${clubName} - Rosenborg\n22.08.2026 20:00 Molde - ${clubName}`}
+          style={{ resize: 'vertical', minHeight: 130, fontFamily: 'inherit', lineHeight: 1.6 }}
+        />
+      </Field>
+
+      {rows.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="t-label">
+            Found {rows.length} {rows.length === 1 ? 'line' : 'lines'}
+            {flagged > 0 && ` · ${flagged} need${flagged === 1 ? 's' : ''} a look`}
+          </div>
+
+          <div style={{
+            border: '1px solid var(--border-default)', borderRadius: 'var(--radius-md)',
+            overflow: 'hidden',
+          }}>
+            {rows.map((r, i) => (
+              <div
+                key={i}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '8px 10px',
+                  borderBottom: i < rows.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                  background: r.issue ? 'var(--color-warning-subtle)' : 'transparent',
+                  opacity: r.include ? 1 : 0.5,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={r.include}
+                  onChange={e => update(i, { include: e.target.checked })}
+                  disabled={!r.date || !r.opponent}
+                  style={{ accentColor: color, width: 15, height: 15, flexShrink: 0 }}
+                />
+                <div style={{ width: 132, flexShrink: 0 }}>
+                  <DateField
+                    compact
+                    value={r.date ?? ''}
+                    onChange={v => update(i, { date: v || null, issue: undefined })}
+                  />
+                </div>
+                <input
+                  className="input" type="time" value={r.time ?? ''}
+                  onChange={e => update(i, { time: e.target.value || null })}
+                  style={{ width: 84, padding: '5px 8px', fontSize: 12 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => update(i, { isHome: !r.isHome, issue: undefined })}
+                  title="Switch home / away"
+                  style={{
+                    width: 46, flexShrink: 0, padding: '5px 0', borderRadius: 'var(--radius-sm)',
+                    fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
+                    background: 'var(--surface-2)', border: '1px solid var(--border-default)',
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  {r.isHome ? 'HOME' : 'AWAY'}
+                </button>
+                <input
+                  className="input" value={r.opponent ?? ''}
+                  onChange={e => update(i, { opponent: e.target.value, issue: undefined })}
+                  placeholder="Opponent"
+                  style={{ flex: 1, minWidth: 0, padding: '5px 8px', fontSize: 12 }}
+                />
+              </div>
+            ))}
+          </div>
+
+          {flagged > 0 && (
+            <div className="t-small" style={{ color: 'var(--color-warning)', lineHeight: 1.6 }}>
+              Highlighted rows weren&rsquo;t fully understood — check the date and which side
+              is your team before adding.
+            </div>
+          )}
+        </div>
+      )}
+
+      {error && <ErrorMsg msg={error} />}
+
+      <SubmitBtn
+        color={color}
+        loading={saving}
+        label={usable.length === 0
+          ? 'Nothing to add yet'
+          : `Add ${usable.length} ${usable.length === 1 ? 'match' : 'matches'}`}
+        onClick={save}
+        disabled={usable.length === 0}
+      />
+    </>
+  );
+}
+
+/* ── One match at a time ────────────────────────────────────────────── */
+function SingleMatch({ clubId, date, color, onSaved }: {
+  clubId: string; date?: string; color: string; onSaved: () => void;
+}) {
+  const supabase = createClient();
+  const [opponent,  setOpponent]  = useState('');
+  const [matchDate, setMatchDate] = useState(date ?? '');
+  const [time,      setTime]      = useState('');
+  const [isHome,    setIsHome]    = useState(true);
+  const [location,  setLocation]  = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [error,     setError]     = useState('');
+
+  async function save() {
+    if (!opponent.trim()) { setError('Who are you playing?'); return; }
+    if (!matchDate)       { setError('Please pick a date.');  return; }
+    setError(''); setSaving(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setError('Not signed in.'); setSaving(false); return; }
+
+    const { error: err } = await supabase.from('matches').insert({
+      club_id:    clubId,
+      created_by: user.id,
+      opponent:   opponent.trim(),
+      match_date: matchDate + (time ? `T${time}:00` : 'T00:00:00'),
+      is_home:    isHome,
+      location:   location.trim() || null,
+      status:     'upcoming',
+      source:     'manual',
+    });
+
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    onSaved();
+  }
+
+  return (
+    <>
+      <Field label="Opponent">
+        <input className="input" value={opponent} autoFocus
+          onChange={e => setOpponent(e.target.value)} placeholder="e.g. Rosenborg" />
+      </Field>
+
+      <Field label="Home or away">
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[[true, 'Home'], [false, 'Away']].map(([v, l]) => (
+            <button
+              key={String(v)} type="button" onClick={() => setIsHome(v as boolean)}
+              style={{
+                padding: '7px 18px', borderRadius: 'var(--radius-full)',
+                fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
+                background: isHome === v ? 'var(--surface-3)' : 'var(--surface-1)',
+                border: `1px solid ${isHome === v ? 'var(--border-strong)' : 'var(--border-default)'}`,
+                color: isHome === v ? 'var(--text-primary)' : 'var(--text-secondary)',
+              }}
+            >
+              {l as string}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <Field label="Date">
+          <DateField value={matchDate} onChange={setMatchDate} />
+        </Field>
+        <Field label="Kick-off (optional)">
+          <input className="input" type="time" value={time} onChange={e => setTime(e.target.value)} />
+        </Field>
+      </div>
+
+      <Field label="Ground (optional)">
+        <input className="input" value={location} onChange={e => setLocation(e.target.value)}
+          placeholder="e.g. Aspmyra Stadion" />
+      </Field>
+
+      {error && <ErrorMsg msg={error} />}
+      <SubmitBtn color={color} loading={saving} label="Add match" onClick={save} />
+    </>
+  );
+}
+
 /* ══ FORM: Team training ════════════════════════════════════════════ */
 function TrainingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
   const supabase = createClient();
@@ -610,7 +913,7 @@ function TrainingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Date">
-          <input className="input" type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+          <DateField value={eventDate} onChange={setEventDate} />
         </Field>
         <Field label="Kick-off time (optional)">
           <input className="input" type="time" value={time} onChange={e => setTime(e.target.value)} />
@@ -717,20 +1020,10 @@ function HomeProgramForm({ clubId, date, color, type, onBack, onCreated }: FormP
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Start date">
-          <input className="input" type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+          <DateField value={eventDate} onChange={setEventDate} />
         </Field>
         <Field label="End date (optional)">
-          <div style={{ position: 'relative' }}>
-            <input className="input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={{ paddingRight: endDate ? 32 : 14 }} />
-            {endDate && (
-              <button type="button" onClick={() => setEndDate('')}
-                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', padding: 2 }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            )}
-          </div>
+          <DateField value={endDate} onChange={setEndDate} min={eventDate} placeholder="No end date" />
         </Field>
       </div>
 
@@ -809,7 +1102,7 @@ function MeetingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Date">
-          <input className="input" type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+          <DateField value={eventDate} onChange={setEventDate} />
         </Field>
         <Field label="Time (optional)">
           <input className="input" type="time" value={time} onChange={e => setTime(e.target.value)} />
@@ -905,7 +1198,7 @@ function GenericForm({ clubId, date, color, onBack, onCreated }: FormProps) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Date">
-          <input className="input" type="date" value={eventDate} onChange={e => setEventDate(e.target.value)} />
+          <DateField value={eventDate} onChange={setEventDate} />
         </Field>
         <Field label="Time (optional)">
           <input className="input" type="time" value={time} onChange={e => setTime(e.target.value)} />
@@ -968,6 +1261,7 @@ function VacationForm({ clubId, date, color, onBack, onCreated }: FormProps) {
   const [label,     setLabel]     = useState('');
   const [startDate, setStartDate] = useState(date ?? '');
   const [endDate,   setEndDate]   = useState('');
+  const [note,      setNote]      = useState('');
   const [loading,   setLoading]   = useState(false);
   const [error,     setError]     = useState('');
   const [done,      setDone]      = useState(false);
@@ -988,12 +1282,13 @@ function VacationForm({ clubId, date, color, onBack, onCreated }: FormProps) {
       if (!user) throw new Error('Not authenticated');
 
       const { error: evErr } = await supabase.from('events').insert({
-        club_id:    clubId,
-        created_by: user.id,
-        type:       'vacation',
-        title:      label.trim() || 'Break',
-        event_date: startDate + 'T00:00:00',
-        end_date:   endDate   + 'T00:00:00',
+        club_id:     clubId,
+        created_by:  user.id,
+        type:        'vacation',
+        title:       label.trim() || 'Break',
+        event_date:  startDate + 'T00:00:00',
+        end_date:    endDate   + 'T00:00:00',
+        description: note.trim() || null,
       });
       if (evErr) throw evErr;
       finish();
@@ -1017,12 +1312,22 @@ function VacationForm({ clubId, date, color, onBack, onCreated }: FormProps) {
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Start date">
-          <input className="input" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <DateField value={startDate} onChange={setStartDate} />
         </Field>
         <Field label="End date">
-          <input className="input" type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          {/* min = start, so the picker opens on the start month instead of today. */}
+          <DateField value={endDate} onChange={setEndDate} min={startDate} />
         </Field>
       </div>
+
+      <Field label="Note (optional)">
+        <textarea
+          className="input" rows={2} value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder="e.g. Club closed, gym open Tuesday and Thursday"
+          style={{ resize: 'vertical' }}
+        />
+      </Field>
 
       <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)' }}>
         <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>

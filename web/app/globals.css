@@ -79,8 +79,12 @@
   --radius-full: 9999px;
 
   /* Accent tokens — injected by dashboard layout for logged-in state.
-     Fallback to neutral grey so nothing shows a blue flash before club color loads. */
-  --accent:        #6B7280;
+     Fallback to neutral grey so nothing shows a blue flash before club color loads.
+     Derived together by accentTokens() in lib/clubTheme.ts — see there for why
+     --accent and --accent-solid differ. */
+  --accent:        #6B7280;  /* readable on --bg-base: text, icon strokes, borders */
+  --accent-solid:  #6B7280;  /* true club color: fills and button backgrounds */
+  --accent-on:     #FFFFFF;  /* label color for text sitting ON --accent-solid */
   --accent-subtle: rgba(107, 114, 128, 0.12);
   --accent-border: rgba(107, 114, 128, 0.28);
   --accent-glow:   rgba(107, 114, 128, 0.12);
@@ -186,8 +190,10 @@ html, body {
   padding: 10px 18px;
   border-radius: var(--radius-md);
   font-size: 14px; font-weight: 600; font-family: inherit;
-  background: var(--accent);
-  color: #fff;
+  /* Solid club color as the fill, with a label color picked for legibility against it.
+     Hardcoding #fff here made yellow/green/cyan clubs unreadable (1.92:1 on #EAB308). */
+  background: var(--accent-solid);
+  color: var(--accent-on);
   border: 1px solid var(--accent-border);
   cursor: pointer;
   transition: opacity 0.15s;

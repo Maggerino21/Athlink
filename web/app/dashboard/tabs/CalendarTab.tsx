@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import OpponentCrest from '@/components/OpponentCrest';
+import DateField from '@/components/DateField';
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 type CalEvent = {
@@ -11,6 +13,23 @@ type CalEvent = {
   title: string;
   date:  string;
   time?: string;
+  location?: string | null;
+  description?: string | null;
+  /** Matchday detail a coach owns — never written by the fixture sync. */
+  meetTime?: string | null;
+  meetLocation?: string | null;
+  notes?: string | null;
+  opponentLogo?: string | null;
+  opponentName?: string | null;
+  /** Set on multi-day events so a pill can read "Day 3 of 10". */
+  spanDay?: number;
+  spanTotal?: number;
+  /** Real row id, without the ':date' suffix multi-day expansion adds. */
+  rowId?: string;
+  source?: string | null;
+  startDate?: string;
+  endDate?: string;
+  startTime?: string;
 };
 
 type Athlete = { id: string; full_name: string };
@@ -46,6 +65,18 @@ const DAY_LABELS   = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DAY_FULL     = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const MONTH_NAMES  = ['January','February','March','April','May','June',
                       'July','August','September','October','November','December'];
+
+
+/* Which fields each event type actually uses — mirrors the creation forms in NewEventTab.
+ * A vacation has no kick-off time and no venue; a training session has no end date. */
+const EDIT_FIELDS: Record<string, { end: boolean; time: boolean; location: boolean }> = {
+  vacation: { end: true,  time: false, location: false },
+  home:     { end: true,  time: false, location: false },
+  rehab:    { end: true,  time: false, location: false },
+  training: { end: false, time: true,  location: true  },
+  meeting:  { end: false, time: true,  location: true  },
+  other:    { end: false, time: true,  location: true  },
+};
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 function toDateStr(d: Date): string {
@@ -100,6 +131,11 @@ export default function CalendarTab({
   const [selectedId,   setSelectedId]   = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [activeDate,   setActiveDate]   = useState<string | null>(null);
+  const [editMatch,    setEditMatch]    = useState<CalEvent | null>(null);
+  const [refreshKey,   setRefreshKey]   = useState(0);
+  const [pendingDelete, setPendingDelete] = useState<CalEvent[] | null>(null);
+  const [editEvent,    setEditEvent]    = useState<CalEvent | null>(null);
+  const [hidden,       setHidden]       = useState<{ id: string; title: string; date: string }[]>([]);
 
   const year  = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -116,33 +152,78 @@ export default function CalendarTab({
     const rangeEnd   = new Date(year, month + 2, 0).toISOString();
 
     async function load() {
-      const [evRes, matchRes] = await Promise.all([
-        supabase.from('events').select('id, type, title, event_date, location, description')
+      const [evRes, matchRes, hiddenRes] = await Promise.all([
+        supabase.from('events').select('id, type, title, event_date, end_date, location, description')
           .eq('club_id', clubId).gte('event_date', rangeStart).lte('event_date', rangeEnd),
-        supabase.from('matches').select('id, opponent, match_date, is_home, location')
-          .eq('club_id', clubId).gte('match_date', rangeStart).lte('match_date', rangeEnd),
+        supabase.from('matches').select('id, opponent, match_date, is_home, location, meet_time, meet_location, notes, opponent_logo_url, source')
+          .eq('club_id', clubId).is('suppressed_at', null)
+          .gte('match_date', rangeStart).lte('match_date', rangeEnd),
+        // Removed fixtures are kept so the sync cannot resurrect them; surface them so
+        // removal is not a one-way door.
+        supabase.from('matches').select('id, opponent, match_date, is_home')
+          .eq('club_id', clubId).not('suppressed_at', 'is', null)
+          .gte('match_date', rangeStart).lte('match_date', rangeEnd),
       ]);
       if (cancelled) return;
 
-      const evs: CalEvent[] = (evRes.data ?? []).map((e: any) => ({
-        id: e.id, type: e.type, title: e.title,
-        date: isoToDateStr(e.event_date),
-        time: e.event_date.slice(11, 16),
-        location: e.location,
-        description: e.description,
-      }));
+      // Multi-day events (vacations, rehab blocks, home programmes with an end date) must
+      // appear on every day they cover, not just the first. Previously end_date was not
+      // even fetched, so a two-week break showed as a single pill.
+      const evs: CalEvent[] = (evRes.data ?? []).flatMap((e: any) => {
+        const start = isoToDateStr(e.event_date);
+        const end   = e.end_date ? isoToDateStr(e.end_date) : start;
+
+        const days: string[] = [];
+        const cursor = new Date(start + 'T12:00:00');
+        const last   = new Date(end + 'T12:00:00');
+        // Guard against a mis-entered end date turning into thousands of cells.
+        for (let i = 0; i < 400 && cursor <= last; i++) {
+          days.push(toDateStr(cursor));
+          cursor.setDate(cursor.getDate() + 1);
+        }
+        if (days.length === 0) days.push(start);
+
+        return days.map((d, i) => ({
+          id: days.length > 1 ? `${e.id}:${d}` : e.id,
+          rowId: e.id,
+          startDate: start,
+          endDate: end,
+          startTime: e.event_date.slice(11, 16),
+          type: e.type,
+          title: e.title,
+          date: d,
+          // Only the opening day carries a time; later days would imply it restarts.
+          time: i === 0 ? e.event_date.slice(11, 16) : undefined,
+          location: e.location,
+          description: e.description,
+          spanDay: days.length > 1 ? i + 1 : undefined,
+          spanTotal: days.length > 1 ? days.length : undefined,
+        }));
+      });
       const matches: CalEvent[] = (matchRes.data ?? []).map((m: any) => ({
         id: m.id, type: 'match',
         title: (m.is_home ? 'vs ' : '@ ') + m.opponent,
         date: isoToDateStr(m.match_date),
         time: m.match_date.slice(11, 16),
         location: m.location,
+        meetTime: m.meet_time,
+        meetLocation: m.meet_location,
+        notes: m.notes,
+        opponentLogo: m.opponent_logo_url,
+        opponentName: m.opponent,
+        rowId: m.id,
+        source: m.source,
       }));
+      setHidden((hiddenRes.data ?? []).map((m: any) => ({
+        id: m.id,
+        title: (m.is_home ? 'vs ' : '@ ') + m.opponent,
+        date: isoToDateStr(m.match_date),
+      })));
       setEvents([...evs, ...matches].sort((a, b) => (a.time ?? '').localeCompare(b.time ?? '')));
     }
     load();
     return () => { cancelled = true; };
-  }, [clubId, year, month, selectedId]);
+  }, [clubId, year, month, selectedId, refreshKey]);
 
   const grid    = useMemo(() => getCalendarGrid(year, month), [year, month]);
   const todayStr = toDateStr(today);
@@ -377,7 +458,14 @@ export default function CalendarTab({
                   <div className="t-small" style={{ opacity: 0.6 }}>Use the button below to add something.</div>
                 </div>
               ) : (
-                activeDateEvents.map(ev => <DetailCard key={ev.id} event={ev} />)
+                activeDateEvents.map(ev => (
+                  <DetailCard
+                    key={ev.id}
+                    event={ev}
+                    onEdit={ev.type === 'match' ? () => setEditMatch(ev) : () => setEditEvent(ev)}
+                    onDelete={() => setPendingDelete([ev])}
+                  />
+                ))
               )}
             </div>
 
@@ -407,18 +495,63 @@ export default function CalendarTab({
                 </svg>
                 Add event on this day
               </button>
+
+              <HiddenOnDay
+                items={hidden.filter(h => h.date === activeDate)}
+                onRestored={() => setRefreshKey(k => k + 1)}
+              />
+
+              {activeDateEvents.length > 0 && (
+                <button
+                  onClick={() => setPendingDelete(activeDateEvents)}
+                  className="btn-ghost"
+                  style={{
+                    width: '100%', marginTop: 8, justifyContent: 'center',
+                    color: 'var(--color-danger)', borderColor: 'var(--color-danger-border)',
+                  }}
+                >
+                  Clear this day
+                </button>
+              )}
             </div>
           </>
         )}
       </div>
+
+      {editEvent && (
+        <EventEditor
+          event={editEvent}
+          onClose={() => setEditEvent(null)}
+          onSaved={() => { setEditEvent(null); setRefreshKey(k => k + 1); }}
+        />
+      )}
+
+      {pendingDelete && (
+        <DeleteConfirm
+          items={pendingDelete}
+          onClose={() => setPendingDelete(null)}
+          onDone={() => { setPendingDelete(null); setRefreshKey(k => k + 1); }}
+        />
+      )}
+
+      {editMatch && (
+        <MatchDayEditor
+          match={editMatch}
+          onClose={() => setEditMatch(null)}
+          onSaved={() => { setEditMatch(null); setRefreshKey(k => k + 1); }}
+        />
+      )}
     </div>
   );
 }
 
 /* ── Detail card — full event info ──────────────────────────────────── */
-function DetailCard({ event }: { event: any }) {
+function DetailCard({ event, onEdit, onDelete }: { event: any; onEdit?: () => void; onDelete?: () => void }) {
   const color = COLOR[event.type] ?? COLOR.other;
   const rgb   = hexToRgb(color);
+  const meetTime = event.meetTime
+    ? new Date(event.meetTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    : null;
   return (
     <div style={{
       borderRadius: 'var(--radius-md)',
@@ -442,10 +575,23 @@ function DetailCard({ event }: { event: any }) {
               🕐 {event.time}
             </span>
           )}
+          {event.spanTotal && (
+            <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>
+              Day {event.spanDay} of {event.spanTotal}
+            </span>
+          )}
         </div>
         {/* Title */}
-        <div className="t-body-medium" style={{ color: 'var(--text-primary)', marginBottom: event.location || event.description ? 8 : 0 }}>
-          {event.title}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 10,
+          marginBottom: event.location || event.description ? 8 : 0,
+        }}>
+          {event.type === 'match' && (
+            <OpponentCrest url={event.opponentLogo} name={event.opponentName ?? event.title} size={26} />
+          )}
+          <span className="t-body-medium" style={{ color: 'var(--text-primary)' }}>
+            {event.title}
+          </span>
         </div>
         {/* Location */}
         {event.location && (
@@ -459,6 +605,152 @@ function DetailCard({ event }: { event: any }) {
             {event.description}
           </div>
         )}
+
+        {/* Matchday detail — what an athlete actually opens the app to check. */}
+        {(meetTime || event.meetLocation || event.notes) && (
+          <div style={{
+            marginTop: 10, paddingTop: 10,
+            borderTop: `1px solid rgba(${rgb}, 0.20)`,
+            display: 'flex', flexDirection: 'column', gap: 4,
+          }}>
+            {(meetTime || event.meetLocation) && (
+              <div className="t-small" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                Meet {meetTime ?? ''}{meetTime && event.meetLocation ? ' · ' : ''}{event.meetLocation ?? ''}
+              </div>
+            )}
+            {event.notes && (
+              <div className="t-small" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+                {event.notes}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(onEdit || onDelete) && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+            {onEdit && (
+              <button onClick={onEdit} className="btn-ghost" style={{ padding: '5px 12px', fontSize: 12 }}>
+                {event.type !== 'match'
+                  ? 'Edit'
+                  : (meetTime || event.meetLocation || event.notes) ? 'Edit matchday info' : 'Add meeting time'}
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                className="btn-ghost"
+                title="Remove from calendar"
+                style={{
+                  padding: '5px 10px', fontSize: 12, marginLeft: 'auto',
+                  color: 'var(--color-danger)', borderColor: 'var(--color-danger-border)',
+                }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Matchday editor ────────────────────────────────────────────────── */
+// Only club-owned fields are editable here. Opponent, kick-off and home/away come from the
+// fixture provider and are overwritten on every sync, so letting a coach edit them would
+// silently lose their work.
+function MatchDayEditor({ match, onClose, onSaved }: {
+  match: any; onClose: () => void; onSaved: () => void;
+}) {
+  const supabase = createClient();
+
+  // Default the meeting to 90 minutes before kick-off — the usual convention, so a coach
+  // normally confirms rather than types.
+  const kickOff = match.date && match.time ? new Date(`${match.date}T${match.time}:00`) : null;
+  const defaultMeet = kickOff ? new Date(kickOff.getTime() - 90 * 60 * 1000) : null;
+  const asTime = (d: Date | null) =>
+    d ? `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}` : '';
+
+  const [meetTime, setMeetTime] = useState<string>(
+    match.meetTime
+      ? asTime(new Date(match.meetTime))
+      : asTime(defaultMeet),
+  );
+  const [meetLocation, setMeetLocation] = useState<string>(match.meetLocation ?? '');
+  const [notes,        setNotes]        = useState<string>(match.notes ?? '');
+  const [saving,       setSaving]       = useState(false);
+  const [error,        setError]        = useState('');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function save() {
+    setSaving(true); setError('');
+    const { error: err } = await supabase.from('matches').update({
+      meet_time:     meetTime ? new Date(`${match.date}T${meetTime}:00`).toISOString() : null,
+      meet_location: meetLocation.trim() || null,
+      notes:         notes.trim() || null,
+    }).eq('id', match.id);
+    setSaving(false);
+    if (err) { setError('Could not save. Please try again.'); return; }
+    onSaved();
+  }
+
+  return (
+    <div
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div style={{
+        width: 460, borderRadius: 'var(--radius-xl)',
+        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
+      }}>
+        <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>{match.title}</div>
+        <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3, marginBottom: 20 }}>
+          Kick-off {match.time}{match.location ? ` · ${match.location}` : ''}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Meet at</label>
+            <input className="input" type="time" value={meetTime}
+              onChange={e => setMeetTime(e.target.value)} style={{ width: 140 }} />
+          </div>
+
+          <div>
+            <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Meeting point</label>
+            <input className="input" value={meetLocation}
+              onChange={e => setMeetLocation(e.target.value)}
+              placeholder="e.g. Clubhouse car park" />
+          </div>
+
+          <div>
+            <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Anything else</label>
+            <textarea className="input" rows={3} value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Bus leaves sharp, bring passports…"
+              style={{ resize: 'vertical' }} />
+          </div>
+        </div>
+
+        {error && (
+          <div className="t-small" style={{ color: 'var(--color-danger)', marginTop: 14 }}>{error}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 22 }}>
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving} className="btn-primary">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -476,6 +768,7 @@ function EventPill({ event }: { event: CalEvent }) {
       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4,
     }}>
       {event.time && event.time !== '00:00' ? `${event.time} ` : ''}{event.title}
+      {event.spanTotal ? ` · ${event.spanDay}/${event.spanTotal}` : ''}
     </div>
   );
 }
@@ -522,5 +815,304 @@ function DropItem({ label, active, onClick }: { label: string; active: boolean; 
     >
       {label}
     </button>
+  );
+}
+
+/* ── Delete confirmation ────────────────────────────────────────────
+ * Scope is spelled out rather than implied. Removing a vacation from its fifth day
+ * deletes the entire block, and a coach has no way to know that from the card alone.
+ */
+function DeleteConfirm({ items, onClose, onDone }: {
+  items: any[]; onClose: () => void; onDone: () => void;
+}) {
+  const supabase = createClient();
+  const [busy,  setBusy]  = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const bulk    = items.length > 1;
+  const spanned = items.filter(i => i.spanTotal);
+  const synced  = items.filter(i => i.type === 'match' && i.source === 'api');
+
+  async function run() {
+    setBusy(true); setError('');
+    for (const it of items) {
+      const { error: err } = await supabase.rpc('delete_calendar_item', {
+        p_kind: it.type === 'match' ? 'match' : 'event',
+        p_id: it.rowId ?? it.id,
+      });
+      if (err) { setError(err.message.replace(/^.*?:\s*/, '')); setBusy(false); return; }
+    }
+    onDone();
+  }
+
+  const fmt = (d?: string) =>
+    d ? new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long' }) : '';
+
+  return (
+    <div
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 320,
+        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div style={{
+        width: 460, borderRadius: 'var(--radius-xl)',
+        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
+      }}>
+        <div className="t-subheading" style={{ color: 'var(--text-primary)', marginBottom: 14 }}>
+          {bulk ? `Remove ${items.length} things from this day?` : `Remove ${items[0].title}?`}
+        </div>
+
+        {bulk && (
+          <ul style={{ margin: '0 0 14px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {items.map(i => (
+              <li key={i.id} className="t-small" style={{ color: 'var(--text-secondary)' }}>
+                · {i.title}
+                {i.spanTotal ? ` — the whole ${i.spanTotal}-day block` : ''}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {spanned.length > 0 && (
+          <div style={{
+            padding: '12px 14px', marginBottom: 14, borderRadius: 'var(--radius-md)',
+            background: 'var(--color-warning-subtle)', border: '1px solid var(--color-warning-border)',
+          }}>
+            <div className="t-small" style={{ color: 'var(--color-warning)', lineHeight: 1.6 }}>
+              {bulk ? 'Some of these run across several days.' : 'This runs across several days.'}{' '}
+              Removing it takes out the whole block
+              {spanned.length === 1 && spanned[0].startDate
+                ? ` — ${fmt(spanned[0].startDate)} to ${fmt(spanned[0].endDate)}`
+                : ''}, not just this day. To keep it but change the dates, edit it instead.
+            </div>
+          </div>
+        )}
+
+        {synced.length > 0 && (
+          <div className="t-small" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6, marginBottom: 14 }}>
+            {synced.length === 1 ? 'This match came from your fixture list' : 'Some of these came from your fixture list'} —
+            it will stay hidden and will not come back on the next update.
+          </div>
+        )}
+
+        {error && (
+          <div className="t-small" style={{ color: 'var(--color-danger)', marginBottom: 14 }}>{error}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} className="btn-ghost" autoFocus>Cancel</button>
+          <button
+            onClick={run}
+            disabled={busy}
+            className="btn-primary"
+            style={{ background: 'var(--color-danger)', borderColor: 'var(--color-danger-border)', color: '#fff', boxShadow: 'none' }}
+          >
+            {busy ? 'Removing…' : bulk ? `Remove ${items.length}` : 'Remove'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Event editor ───────────────────────────────────────────────────
+ * Editing the dates is the answer to "I want to shorten this break" — the alternative
+ * would be splitting a row in two, which is a lot of machinery for something coaches
+ * are unlikely to want.
+ *
+ * Type is deliberately not editable: it drives the colour and the athletes' view, and
+ * changing a vacation into a training session is almost always a mistake rather than
+ * an intention.
+ */
+function EventEditor({ event, onClose, onSaved }: {
+  event: any; onClose: () => void; onSaved: () => void;
+}) {
+  const supabase = createClient();
+
+  const [title,   setTitle]   = useState<string>(event.title ?? '');
+  const [start,   setStart]   = useState<string>(event.startDate ?? event.date);
+  const [end,     setEnd]     = useState<string>(
+    event.endDate && event.endDate !== event.startDate ? event.endDate : '',
+  );
+  const [time,    setTime]    = useState<string>(
+    event.startTime && event.startTime !== '00:00' ? event.startTime : '',
+  );
+  const [location, setLocation]    = useState<string>(event.location ?? '');
+  const [description, setDescription] = useState<string>(event.description ?? '');
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function save() {
+    if (!title.trim()) { setError('This needs a name.'); return; }
+    if (!start)        { setError('Pick a start date.'); return; }
+    if (end && end < start) { setError('The end date is before the start date.'); return; }
+
+    setSaving(true); setError('');
+    const { error: err } = await supabase.from('events').update({
+      title:       title.trim(),
+      event_date:  start + (time ? `T${time}:00` : 'T00:00:00'),
+      end_date:    end ? end + 'T00:00:00' : null,
+      location:    location.trim() || null,
+      description: description.trim() || null,
+    }).eq('id', event.rowId ?? event.id);
+
+    setSaving(false);
+    if (err) { setError('Could not save. Please try again.'); return; }
+    onSaved();
+  }
+
+  // Never hide a field that already holds a value, or existing data becomes unreachable.
+  const allowed = EDIT_FIELDS[event.type] ?? { end: true, time: true, location: true };
+  const showEnd      = allowed.end      || !!end;
+  const showTime     = allowed.time     || !!time;
+  const showLocation = allowed.location || !!location;
+
+  const spans = !!end && end !== start;
+  const dayCount = spans
+    ? Math.round((new Date(end + 'T12:00:00').getTime() - new Date(start + 'T12:00:00').getTime()) / 86400000) + 1
+    : 1;
+
+  return (
+    <div
+      onMouseDown={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 310,
+        background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(3px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      }}
+    >
+      <div style={{
+        width: 480, maxHeight: '88vh', overflowY: 'auto',
+        borderRadius: 'var(--radius-xl)',
+        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
+      }}>
+        <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>Edit</div>
+        <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3, marginBottom: 20 }}>
+          {TYPE_LABEL[event.type] ?? event.type}
+          {spans ? ` · ${dayCount} days` : ''}
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Name</label>
+            <input className="input" value={title} onChange={e => setTitle(e.target.value)} />
+          </div>
+
+          {showEnd ? (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Starts</label>
+                <DateField value={start} onChange={setStart} />
+              </div>
+              <div>
+                <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Ends</label>
+                {/* min = start, so the picker opens on the right month and cannot go backwards. */}
+                <DateField value={end} onChange={setEnd} min={start} placeholder="Same day" />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Date</label>
+              <DateField value={start} onChange={setStart} />
+            </div>
+          )}
+
+          {showTime && (
+            <div>
+              <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Time (optional)</label>
+              <input className="input" type="time" value={time}
+                onChange={e => setTime(e.target.value)} style={{ width: 140 }} />
+            </div>
+          )}
+
+          {showLocation && (
+            <div>
+              <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Location (optional)</label>
+              <input className="input" value={location} onChange={e => setLocation(e.target.value)} />
+            </div>
+          )}
+
+          <div>
+            <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Notes (optional)</label>
+            <textarea className="input" rows={3} value={description}
+              onChange={e => setDescription(e.target.value)} style={{ resize: 'vertical' }} />
+          </div>
+        </div>
+
+        {error && (
+          <div className="t-small" style={{ color: 'var(--color-danger)', marginTop: 14 }}>{error}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 22 }}>
+          <button onClick={onClose} className="btn-ghost">Cancel</button>
+          <button onClick={save} disabled={saving} className="btn-primary">
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Hidden fixtures on a day ───────────────────────────────────────
+ * A removed provider fixture is only hidden, never deleted. Without this it would be
+ * unrecoverable from the interface, which makes "Remove" feel more final than it is.
+ */
+function HiddenOnDay({ items, onRestored }: {
+  items: { id: string; title: string }[];
+  onRestored: () => void;
+}) {
+  const supabase = createClient();
+  const [busy, setBusy] = useState<string | null>(null);
+
+  if (items.length === 0) return null;
+
+  async function restore(id: string) {
+    setBusy(id);
+    const { error } = await supabase.rpc('restore_calendar_match', { p_id: id });
+    setBusy(null);
+    if (!error) onRestored();
+  }
+
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
+      <div className="t-label" style={{ marginBottom: 8 }}>
+        Removed from this day · {items.length}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {items.map(h => (
+          <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="t-small" style={{ color: 'var(--text-tertiary)', flex: 1, minWidth: 0 }}>
+              {h.title}
+            </span>
+            <button
+              onClick={() => restore(h.id)}
+              disabled={busy === h.id}
+              className="btn-ghost"
+              style={{ padding: '4px 10px', fontSize: 11, flexShrink: 0 }}
+            >
+              {busy === h.id ? 'Adding…' : 'Add back'}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

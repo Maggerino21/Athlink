@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import AthletesClient from '../athletes/AthletesClient';
+import InvitePeople from '../InvitePeople';
 
 type Athlete = {
   id: string;
@@ -15,7 +16,15 @@ type Athlete = {
   total_feedback: number;
 };
 
-export default function AthletesTab({ staffId, clubId }: { staffId: string; clubId: string }) {
+export default function AthletesTab({
+  staffId, clubId, clubName, inviteCode, staffInviteCode,
+}: {
+  staffId:          string;
+  clubId:           string;
+  clubName:         string;
+  inviteCode:       string | null;
+  staffInviteCode:  string | null;
+}) {
   const supabase = createClient();
   const [athletes, setAthletes] = useState<Athlete[] | null>(null);
 
@@ -61,7 +70,26 @@ export default function AthletesTab({ staffId, clubId }: { staffId: string; club
   }, [clubId]);
 
   if (!athletes) return <AthletesLoadingSkeleton />;
-  return <AthletesClient athletes={athletes} staffId={staffId} clubId={clubId} />;
+
+  // Adding athletes belongs where the squad is, not only on Overview — this is the page a
+  // coach is on when they notice someone missing.
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      {inviteCode && (
+        <div style={{ padding: '20px 20px 0', flexShrink: 0 }}>
+          <InvitePeople
+            athleteCode={inviteCode}
+            staffCode={staffInviteCode}
+            clubName={clubName}
+            noAthletesYet={athletes.length === 0}
+          />
+        </div>
+      )}
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <AthletesClient athletes={athletes} staffId={staffId} clubId={clubId} />
+      </div>
+    </div>
+  );
 }
 
 function AthletesLoadingSkeleton() {

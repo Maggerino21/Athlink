@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client';
  *
  * Codes are deliberately NOT shown on the dashboard at rest — a bare 6-character string
  * tells a coach nothing about what to do with it. They live behind "Add athletes" /
- * "Add coaches", where the dialog can explain the how and the why alongside the code.
+ * "Add staff", where the dialog can explain the how and the why alongside the code.
  *
  * "Get a new code" lives inside that same dialog rather than in a settings screen: the
  * moment a coach realises the code went to the wrong person is the moment they are looking
@@ -54,7 +54,7 @@ export default function InvitePeople({
         {codes.staff && (
           <button onClick={() => setOpen('staff')} className="btn-ghost">
             <PersonPlusIcon />
-            Add coaches
+            Add staff
           </button>
         )}
 
@@ -156,7 +156,7 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
         }}>
           <div>
             <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>
-              {isStaff ? 'Add coaches' : 'Add athletes'}
+              {isStaff ? 'Add staff' : 'Add athletes'}
             </div>
             <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>
               {clubName}
@@ -177,7 +177,7 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
           />
         ) : (
           <div style={{ padding: 24 }}>
-            {/* Why it matters — coaches only */}
+            {/* Why it matters — staff only */}
             {isStaff && (
               <div style={{
                 padding: '12px 14px', marginBottom: 20,
@@ -186,7 +186,7 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
                 border: '1px solid var(--color-warning-border)',
               }}>
                 <div className="t-small" style={{ color: 'var(--color-warning)', lineHeight: 1.6 }}>
-                  Anyone who uses this code becomes a coach. They can send feedback, set tasks,
+                  Anyone who uses this code becomes staff. They can send feedback, set tasks,
                   change the calendar and see every athlete. Only share it with people you trust.
                 </div>
               </div>
@@ -197,9 +197,9 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
             <ol style={{ margin: '0 0 22px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {(isStaff
                 ? [
-                    'Send the code below to your coach.',
+                    'Send the code below to the person joining.',
                     'They open the Athlink staff site and choose “Join a club”.',
-                    'They enter the code when they sign up — that makes them a coach here.',
+                    'They enter the code when they sign up — that makes them staff here.',
                   ]
                 : [
                     'Send the code below to your players.',
@@ -231,7 +231,7 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
             }}>
               <div>
                 <div className="t-label" style={{ marginBottom: 6 }}>
-                  {isStaff ? 'Coach code' : 'Athlete code'}
+                  {isStaff ? 'Staff code' : 'Athlete code'}
                 </div>
                 <div
                   title="Select to copy"
@@ -291,7 +291,7 @@ function ConfirmNewCode({ kind, code, error, onCancel, onConfirm }: {
   onCancel:  () => void;
   onConfirm: () => void;
 }) {
-  const who = kind === 'staff' ? 'Coaches' : 'Athletes';
+  const who = kind === 'staff' ? 'Staff' : 'Athletes';
 
   return (
     <div style={{ padding: 24 }}>
@@ -321,7 +321,7 @@ function ConfirmNewCode({ kind, code, error, onCancel, onConfirm }: {
         <div className="t-small" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--text-primary)' }}>Trying to remove someone?</strong>{' '}
           A new code will not do that. It only stops new people joining —
-          {kind === 'staff' ? ' a coach' : ' an athlete'} who has already joined keeps their
+          {kind === 'staff' ? ' a staff member' : ' an athlete'} who has already joined keeps their
           access.
         </div>
       </div>

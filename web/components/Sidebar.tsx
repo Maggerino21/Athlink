@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 
-export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks' | 'groups' | 'club' | 'new';
+// 'profile' is a real tab but deliberately not in NAV — it is reached by clicking your
+// own name at the bottom of the sidebar, where people look for it.
+export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks' | 'groups' | 'club' | 'new' | 'profile';
 
 /* ── Inline SVG icons — defined before NAV so Turbopack can resolve them ── */
 function GridIcon({ size = 16 }: { size?: number }) {
@@ -188,25 +190,37 @@ export default function Sidebar({
 
       {/* Staff profile + sign out */}
       <div style={{ padding: '14px 10px', borderTop: '1px solid var(--border-default)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 30, height: 30,
-            borderRadius: 'var(--radius-full)',
-            background: 'var(--surface-2)',
-            border: '1px solid var(--border-default)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 11, fontWeight: 700,
-            color: 'var(--text-secondary)',
-            flexShrink: 0,
-          }}>
-            {getInitials(staffName)}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="t-small" style={{ fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {staffName}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          {/* The whole name/avatar block opens your profile — a name is the one thing
+              everyone tries to click, so it has to lead somewhere. */}
+          <button
+            onClick={() => onTabChange('profile')}
+            title="Your profile"
+            className={`nav-item${activeTab === 'profile' ? ' active' : ''}`}
+            style={{
+              flex: 1, minWidth: 0, gap: 10, padding: '6px 6px',
+              textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            <div style={{
+              width: 30, height: 30,
+              borderRadius: 'var(--radius-full)',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border-default)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 11, fontWeight: 700,
+              color: 'var(--text-secondary)',
+              flexShrink: 0,
+            }}>
+              {getInitials(staffName)}
             </div>
-            <div className="t-label" style={{ marginTop: 1 }}>Coach</div>
-          </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="t-small" style={{ fontWeight: 600, color: 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {staffName}
+              </div>
+              <div className="t-label" style={{ marginTop: 1 }}>Staff</div>
+            </div>
+          </button>
           <button
             onClick={() => setConfirmSignOut(true)}
             title="Sign out"

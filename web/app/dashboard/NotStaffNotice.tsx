@@ -28,7 +28,7 @@ export default function NotStaffNotice({ fullName }: { fullName: string }) {
       }}>
         <div className="t-label" style={{ marginBottom: 10 }}>Staff dashboard</div>
         <h1 className="t-heading" style={{ color: 'var(--text-primary)', margin: '0 0 12px' }}>
-          This area is for coaches
+          This area is for staff
         </h1>
         <p className="t-body" style={{ color: 'var(--text-secondary)', margin: '0 0 24px' }}>
           You&rsquo;re signed in as <strong style={{ color: 'var(--text-primary)' }}>{fullName}</strong>,

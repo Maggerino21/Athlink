@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { AvatarCircle } from '../athletes/AthletesClient';
 import InvitePeople from '../InvitePeople';
+import { CLUB_COLORS } from '@/lib/clubTheme';
 
 /**
  * Club settings and membership.
@@ -28,12 +29,6 @@ type Confirm =
   | { kind: 'promote'; member: Member }
   | { kind: 'demote';  member: Member }
   | { kind: 'restore'; member: Member };
-
-const CLUB_COLORS = [
-  '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7',
-  '#EC4899', '#F43F5E', '#EF4444', '#F97316',
-  '#EAB308', '#22C55E', '#14B8A6', '#06B6D4',
-];
 
 export default function ClubTab({
   clubId, clubName, clubColor, staffId, isClubManager,
@@ -92,7 +87,7 @@ export default function ClubTab({
 
   const active  = (members ?? []).filter(m => !m.removed_at);
   const removed = (members ?? []).filter(m =>  m.removed_at);
-  const coaches  = active.filter(m => m.role === 'staff');
+  const staffMembers = active.filter(m => m.role === 'staff');
   const athletes = active.filter(m => m.role === 'athlete');
 
   // A club must always keep at least one manager, so the last one cannot step down.
@@ -131,9 +126,9 @@ export default function ClubTab({
           )}
 
           <PeopleSection
-            title="Coaches"
-            count={coaches.length}
-            members={coaches}
+            title="Staff"
+            count={staffMembers.length}
+            members={staffMembers}
             selfId={staffId}
             isClubManager={isClubManager}
             managerCount={managerCount}
@@ -189,6 +184,12 @@ function ClubDetails({ clubId, clubName, clubColor, canEdit, onSaved }: {
   const [error,  setError]  = useState('');
 
   const dirty = name.trim() !== clubName || color !== clubColor;
+
+  // Clubs created before the curated palette may hold a colour that is no longer offered.
+  // Show it as an extra swatch so their current choice still reads as selected.
+  const swatches = CLUB_COLORS.some(c => c.hex.toLowerCase() === clubColor.toLowerCase())
+    ? CLUB_COLORS
+    : [{ name: 'Current colour', hex: clubColor }, ...CLUB_COLORS];
 
   useEffect(() => {
     if (!saved) return;
@@ -247,18 +248,19 @@ function ClubDetails({ clubId, clubName, clubColor, canEdit, onSaved }: {
           <div>
             <label className="t-label" style={{ display: 'block', marginBottom: 10 }}>Club colour</label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 9 }}>
-              {CLUB_COLORS.map(c => (
+              {swatches.map(c => (
                 <button
-                  key={c}
+                  key={c.hex}
                   type="button"
-                  onClick={() => setColor(c)}
-                  aria-label={c}
+                  onClick={() => setColor(c.hex)}
+                  title={c.name}
+                  aria-label={c.name}
                   style={{
-                    width: 30, height: 30, borderRadius: '50%', background: c,
+                    width: 30, height: 30, borderRadius: '50%', background: c.hex,
                     border: 'none', cursor: 'pointer',
-                    outline: color === c ? '2px solid rgba(255,255,255,0.85)' : '2px solid transparent',
+                    outline: color === c.hex ? '2px solid rgba(255,255,255,0.85)' : '2px solid transparent',
                     outlineOffset: 2,
-                    transform: color === c ? 'scale(1.12)' : 'scale(1)',
+                    transform: color === c.hex ? 'scale(1.12)' : 'scale(1)',
                     transition: 'transform 0.12s, outline-color 0.12s',
                   }}
                 />
@@ -333,7 +335,7 @@ function MemberRow({ member, isSelf, isClubManager, managerCount, onAction }: {
   onAction:      (c: Confirm) => void;
 }) {
   const isRemoved = !!member.removed_at;
-  const isCoach   = member.role === 'staff';
+  const isStaff   = member.role === 'staff';
 
   // The club's only manager cannot step down or be removed — someone has to be able to
   // manage it. set_club_manager / remove_club_member reject both; this keeps the buttons
@@ -341,9 +343,9 @@ function MemberRow({ member, isSelf, isClubManager, managerCount, onAction }: {
   const isLastManager = member.is_club_manager && !isRemoved && managerCount <= 1;
 
   // Mirrors the database rules: coaches are manager-only, athletes are any staff.
-  const mayRemove  = !isRemoved && !isSelf && !isLastManager && (isCoach ? isClubManager : true);
-  const mayRestore =  isRemoved && (isCoach ? isClubManager : true);
-  const mayToggle  = !isRemoved && isCoach && isClubManager && !isLastManager;
+  const mayRemove  = !isRemoved && !isSelf && !isLastManager && (isStaff ? isClubManager : true);
+  const mayRestore =  isRemoved && (isStaff ? isClubManager : true);
+  const mayToggle  = !isRemoved && isStaff && isClubManager && !isLastManager;
 
   return (
     <div className="glass" style={{
@@ -358,7 +360,7 @@ function MemberRow({ member, isSelf, isClubManager, managerCount, onAction }: {
           {member.full_name}
         </div>
         <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 1 }}>
-          {isCoach ? 'Coach' : 'Athlete'} · {member.language.toUpperCase()}
+          {isStaff ? 'Staff' : 'Athlete'} · {member.language.toUpperCase()}
         </div>
       </div>
 
@@ -373,7 +375,7 @@ function MemberRow({ member, isSelf, isClubManager, managerCount, onAction }: {
       <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
         {isLastManager && isClubManager && (
           <span className="t-small" style={{ color: 'var(--text-tertiary)', textAlign: 'right' }}>
-            Make another coach a manager to change this
+            Make another staff member a manager to change this
           </span>
         )}
         {mayToggle && (
@@ -424,7 +426,7 @@ function ConfirmDialog({ confirm, busy, error, onCancel, onConfirm }: {
 }) {
   const { kind, member } = confirm;
   const who     = member.full_name;
-  const isCoach = member.role === 'staff';
+  const isStaffMember = member.role === 'staff';
 
   const copy: Record<Confirm['kind'], { title: string; body: React.ReactNode; cta: string; danger: boolean }> = {
     remove: {
@@ -432,10 +434,10 @@ function ConfirmDialog({ confirm, busy, error, onCancel, onConfirm }: {
       body: (
         <>
           <p style={{ margin: '0 0 10px' }}>
-            {who} loses access to Athlink straight away and drops off your {isCoach ? 'coaching staff' : 'squad'}.
+            {who} loses access to Athlink straight away and drops off your {isStaffMember ? 'staff list' : 'squad'}.
           </p>
           <p style={{ margin: 0 }}>
-            Nothing is deleted. {isCoach
+            Nothing is deleted. {isStaffMember
               ? 'Feedback and tasks they created stay exactly where they are.'
               : 'Their feedback, tasks and history stay in the club records.'} You can add
             them back at any time.
@@ -447,7 +449,7 @@ function ConfirmDialog({ confirm, busy, error, onCancel, onConfirm }: {
     },
     restore: {
       title: `Add ${who} back?`,
-      body: <p style={{ margin: 0 }}>They get access again as {isCoach ? 'a coach' : 'an athlete'}, exactly as before.</p>,
+      body: <p style={{ margin: 0 }}>They get access again as {isStaffMember ? 'a staff member' : 'an athlete'}, exactly as before.</p>,
       cta: 'Add back',
       danger: false,
     },
@@ -456,7 +458,7 @@ function ConfirmDialog({ confirm, busy, error, onCancel, onConfirm }: {
       body: (
         <>
           <p style={{ margin: '0 0 10px' }}>
-            Club managers can edit the club, remove coaches, and decide who else manages the club.
+            Club managers can edit the club, remove staff, and decide who else manages the club.
           </p>
           <p style={{ margin: 0 }}>That includes being able to remove you.</p>
         </>
@@ -466,7 +468,7 @@ function ConfirmDialog({ confirm, busy, error, onCancel, onConfirm }: {
     },
     demote: {
       title: `Remove ${who}’s manager role?`,
-      body: <p style={{ margin: 0 }}>They stay a coach and keep working with athletes, but can no longer edit the club or remove other coaches.</p>,
+      body: <p style={{ margin: 0 }}>They stay staff and keep working with athletes, but can no longer edit the club or remove other staff.</p>,
       cta: 'Remove manager role',
       danger: true,
     },

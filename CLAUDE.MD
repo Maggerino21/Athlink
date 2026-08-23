@@ -83,18 +83,66 @@ web/
       page.tsx
       DashboardShell.tsx  # Client tab switcher — all tabs live here, no route changes
       tabs/               # OverviewTab, AthletesTab, CalendarTab, FeedbackTab,
-                          # TasksTab, GroupsTab, NewEventTab
+                          # TasksTab, GroupsTab, ClubTab, NewEventTab
       athletes/AthletesClient.tsx   # also exports AvatarCircle, reused by other tabs
-  components/Sidebar.tsx
+      InvitePeople.tsx    # Add athletes / Add staff dialogs + "get a new code"
+      NotStaffNotice.tsx  # shown to non-staff; must NOT redirect (see below)
+  components/
+    Sidebar.tsx
+    DateField.tsx         # replaces <input type="date"> everywhere
+    OpponentCrest.tsx     # badge with initials fallback
   lib/
     auth.ts               # getSessionProfile() — React cache(), one profile fetch/request
-    database.types.ts
+    clubTheme.ts          # palette + accentTokens() + nearestClubColor()
+    badgeColor.ts         # samples a club badge to suggest a palette colour (browser only)
+    parseFixtures.ts      # parses a pasted fixture list (37 unit-tested cases)
+    syncFixtures.ts       # pulls provider fixtures, writes via RPC
+    database.types.ts     # hand-maintained — update when you add columns
     supabase/{client,server}.ts
+
+supabase/
+  rls.sql
+  functions/football/     # Sportmonks proxy
 ```
+
+**Do not redirect non-staff away from `/dashboard`.** `proxy.ts` bounces any signed-in user
+from `/login` back to `/dashboard`, so redirecting produces an infinite loop. `NotStaffNotice`
+renders an explanation with a sign-out button instead — signing out is the only exit that
+resolves the state.
 
 **Web navigation is tab state, not routing.** `DashboardShell` holds a `DashTab` in
 `useState` and conditionally renders one tab component. The `/dashboard/*` route folders
 exist but the sidebar does not navigate to them — it calls `onTabChange`.
+
+`'profile'` is a `DashTab` like any other but is deliberately **absent from `NAV`** — it is
+reached by clicking your own name at the foot of the sidebar, where people look for it,
+rather than sitting in the list beside Athletes and Calendar.
+
+**Name and club name live in `DashboardShell` state, not in the props they arrive as.**
+Both are editable (Profile and Club respectively) and the sidebar has to pick a change up
+without a reload — a reload would reset the active tab and bounce you to Overview. Any
+future editable identity field needs the same treatment.
+
+## Launch bar
+
+The first sellable version is **deliberately not a conventional MVP.** The plan is to
+approach established clubs directly rather than grow from hobby users, so it has to read as
+a finished product on first contact — something rough-but-functional loses on credibility
+before anyone evaluates the features.
+
+Two non-negotiables:
+
+- **Near-zero friction for staff.** A coach should never be asked to type something the
+  system could already know. Fixture sync is the highest-leverage example of this.
+- **The mobile app must feel like a consumer social app**, not an enterprise tool — gesture
+  navigation, real transitions, nothing that stutters or drops frames. Athletes are the
+  daily users and have no patience for admin software.
+
+Order of work: finish the staff web app (incl. signup and club creation with fixture sync)
+→ bring the mobile app to launch standard → marketing site (Framer + template) → sales.
+
+**Implication for day-to-day decisions: when polish and feature count compete, cut
+features.** Breadth is not what this product has to win on.
 
 ## Key architectural decisions
 
@@ -114,7 +162,7 @@ read an explanation longer than a sentence. Concretely:
   need it, not filed under Settings.
 
 **Fixtures should arrive, not be typed.** A core product goal, not a nice-to-have: coaches
-must not have to enter every match by hand. API-Football populates a club's fixtures and
+must not have to enter every match by hand. Sportmonks populates a club's fixtures and
 badge once its team is linked — see External fixture data under Known gaps for the
 integration contract and its limits.
 
@@ -134,11 +182,11 @@ integration contract and its limits.
 
 | Table | Purpose |
 |---|---|
-| `profiles` | Extends `auth.users`. Has `role`, `club_id`, `language`, `push_token`, `avatar_url` |
-| `clubs` | `name`, `invite_code` (6-char), `primary_color` |
+| `profiles` | Extends `auth.users`. Has `role`, `club_id`, `language`, `push_token`, `avatar_url`, `is_club_manager`, `removed_at` |
+| `clubs` | `name`, `sport`, `invite_code` + `staff_invite_code` (6-char), `primary_color`, and the provider link: `external_provider`, `external_team_id`, `external_team_name`, `external_badge_url`, `external_synced_at` |
 | `match_feedback` | Coach → athlete feedback. Has `title`, `feedback_text`, `processed_text` (AI), `is_ai_processed`, `action_point`, `athlete_language`, `acknowledged`, `reaction` (emoji), `athlete_reply` |
 | `tasks` | Assigned tasks. `title`, `description`, `due_date`, `status`, `assigned_to`, `created_by`, `club_id`, `completed_at` |
-| `matches` | Match calendar entries (`opponent`, `match_date`, `is_home`, `location`, `status`) |
+| `matches` | Fixtures. Provider-owned: `opponent`, `opponent_logo_url`, `match_date`, `is_home`, `location`. Club-owned: `meet_time`, `meet_location`, `notes`. Plus `source` ('manual'\|'api'), `external_id`, `suppressed_at` |
 | `events` | Generic events. `type`, `title`, `event_date`, `end_date`, `location`, `description`, `pdf_url`, `line_items` (jsonb) |
 | `event_assignments` | Joins `event_id` → `athlete_id`. Absent rows = whole squad |
 | `groups` | Athlete groupings — `name`, `color`, `description`, `club_id`, `created_by` |
@@ -148,6 +196,40 @@ integration contract and its limits.
 
 RLS is enabled on every table. PDF uploads go to the **`event-pdfs`** storage bucket
 (path `{club_id}/{timestamp}_{filename}`), read back via `getPublicUrl`.
+
+### Match fields have owners — do not blur them
+
+| Owner | Fields | Sync behaviour |
+|---|---|---|
+| Provider | `opponent`, `opponent_logo_url`, `match_date`, `is_home` | overwritten every sync — that is how postponements arrive |
+| Provider *if supplied* | `location` (the ground) | `COALESCE(EXCLUDED, existing)` — a null from the provider must never clear it |
+| **Club** | `meet_time`, `meet_location`, `notes` | never in the update list at all |
+
+This cost a real bug once: `location` was overwritten unconditionally while the provider
+returned no venue, so every sync silently reset a coach's typed meeting point to NULL. Any
+new coach-entered column must stay out of `sync_external_fixtures`' `DO UPDATE`.
+
+### Deleting from the calendar
+
+`delete_calendar_item(p_kind, p_id)` is the single entry point, because matches and events
+delete differently:
+
+- **Events** and **manual matches** are really deleted — nothing can bring them back.
+- **Provider matches set `suppressed_at`** instead. A real DELETE is useless: the sync
+  upserts on `(club_id, external_id)` and would re-create the row within six hours, so the
+  coach would watch a deleted fixture reappear. The row stays, hidden, and the sync keeps
+  updating it without ever un-suppressing.
+
+**Every read of `matches` must filter `suppressed_at IS NULL`.** `restore_calendar_match(id)`
+reverses it; the Calendar day panel surfaces removed fixtures with an "Add back" action.
+
+### Multi-day events
+
+A vacation is **one row** with `event_date` + `end_date`, not many rows. `CalendarTab`
+expands it across days for display only (capped at 400), tagging each with `spanDay` /
+`spanTotal`. Deleting or editing from any day therefore affects the whole block — the
+confirm dialog says so explicitly. Partial-span deletion is deliberately not supported;
+shortening the block by editing its end date is the intended path.
 
 ### Event types
 Mobile documents: `training` · `exercise` · `recovery` · `travel` · `meeting` · `other`
@@ -228,6 +310,7 @@ no policy changes at all.**
 |---|---|
 | `process-feedback` | Takes `feedback_text`, `action_point`, `athlete_language` → calls `gpt-4o-mini` → returns structured + translated `{ feedback, action_point }` |
 | `send-notification` | Takes `{ tokens, title, body, data }` → calls Expo Push API |
+| `football` | Sportmonks proxy — `ping` / `search` / `fixtures`. Holds `sportsmonks_api_key`; returns our own `{ teams }` / `{ fixtures }` shape |
 
 ## Athlete app — tabs
 
@@ -254,11 +337,13 @@ All tabs are built and backed by live Supabase queries (no mock data).
 |---|---|
 | Overview | KPI cards (athletes, unread feedback, pending/overdue tasks) + upcoming matches & events |
 | Athletes | Athlete list with per-athlete task/feedback counts → `AthletesClient` detail |
-| Calendar | Month grid, events + matches, athlete filter, day panel. "Add event on this day" hands a prefilled date to the New event tab |
+| Calendar | Month grid, events + matches, athlete filter, day panel. Add / edit / remove per item, "Clear this day", matchday editor (meet time, meeting point, notes), restore for hidden fixtures |
 | Feedback | Athlete list → history; compose modal with AI process-and-preview before sending |
 | Tasks | Table with filters/search, complete/delete inline, assign-task modal |
 | Groups | Create/edit/delete groups, manage members, slide-in side panels |
-| New event | Category picker → per-type form (training / home / rehab / meeting / generic / vacation) |
+| New event | Category picker → per-type form (**match** / training / home / rehab / meeting / generic / vacation) |
+| Club | Club name + colour (manager only), staff and athlete lists, promote/demote, soft removal, invite codes |
+| Profile | Your own account — name, email, role, club, joined date. Name and language are editable |
 
 ### Web UI conventions
 
@@ -269,6 +354,21 @@ All tabs are built and backed by live Supabase queries (no mock data).
   browser scroll it into view, permanently shifting the page sideways.
 - **Avoid native `<select>`** — the OS-rendered option list ignores the dark theme and is
   unreadable on Windows. Use a custom dropdown (see `AthleteSelect` in `TasksTab.tsx`).
+- **Never use `<input type="date">`** — same problem, an OS-drawn popup that ignores the
+  theme. Use `components/DateField.tsx`. Its `min` prop both disables earlier days *and*
+  decides the opening month, so an end-date field lands on the start date's month rather
+  than today.
+- **Club colour is three tokens, not one.** `--accent-solid` is the true colour (fills,
+  button backgrounds), `--accent` is a lightened variant guaranteed readable on the dark
+  background (text, icon strokes), `--accent-on` is black or white for labels sitting on
+  the solid colour. All derived by `accentTokens()` in `lib/clubTheme.ts`, called by both
+  the server layout and `DashboardShell` so they cannot drift. Hardcoding `#fff` on an
+  accent background made yellow clubs unreadable at 1.92:1.
+- **The palette is curated, not free-form** — 18 football-informed colours in
+  `lib/clubTheme.ts`. `nearestClubColor()` maps an arbitrary hex (e.g. sampled from a club
+  badge) onto the nearest one using CIELAB distance.
+- **Say "staff", never "coaches"** in UI copy — physios and analysts need dashboard access
+  without being coaches. The `role` value is `'staff'`; the wording follows it.
 
 ## UI system
 
@@ -299,72 +399,120 @@ SELECT name, invite_code, primary_color FROM clubs;
 
 ## Known gaps / next priorities
 
-**Missing surfaces**
+> **Nothing in the staff web app has been verified signed in.** Everything below the login
+> is built, typechecked and production-built, but Claude cannot enter a password, so the
+> whole authenticated surface — club creation, Club page, Calendar editing and deletion,
+> the Match paste form — has only ever been exercised at the database layer or rendered
+> statically. Assume UI-level bugs remain until a human clicks through.
 
-- **Mobile has no invite-code display** — only the web Overview tab surfaces the codes, so a
-  coach working purely from mobile still can't onboard anyone.
-- **Mobile ignores `removed_at`** — the web dashboard is gated by RLS, but the mobile app has
-  no UI telling a removed athlete what happened; their queries simply return nothing.
-- **`InvitePeople.tsx` "get a new code" copy** now understates things: removal *does* exist
-  on the Club page, so that dialog could point there instead of saying access is permanent.
-- **Settings** — no UI in either app to change language post-signup, rename a club, or
-  update `primary_color`
-- **Progress tab (mobile)** — placeholder. Needs feedback themes over time, task completion
-  rate, timeline view
-- **Mobile ↔ web event type parity** — mobile has no styling for the `home` / `rehab` /
-  `vacation` types the web app creates (see Event types above)
+**Web — highest value next**
 
-**External fixture data — API-Football (schema ready, no sync code yet)**
+- **The Match paste form has never rendered.** `lib/parseFixtures.ts` has 37 passing unit
+  tests, but the confirm table and the insert are unexercised. Most likely place for a bug.
+- **`database.types.ts` drifts** — it is hand-maintained and was already missing five
+  columns once. Sweep it against the live schema when touching data code.
+- **Fixture sync has no visible state.** It is silent by design, but the Club page should
+  show "Fixtures updated 5 minutes ago · Refresh" so a coach can retry after an outage.
+- **Cancelled fixtures linger.** If a match disappears from the provider feed entirely,
+  nothing prunes the stored row.
+- **Sportmonks is on the free plan** — Danish Superliga and Scottish leagues only. Norwegian
+  clubs return nothing from search until the plan is upgraded.
 
-Provider: **API-Football** (api-sports.io). Cost is not a constraint — free tier covers
-current usage, top tier is ~$39/mo.
+**Mobile — untouched this cycle, and now behind the web app**
 
-Base `https://v3.football.api-sports.io/`, key in an `x-apisports-key` header.
-**GET only, and that must be the *only* header** — their docs warn that JS/Node clients
-which add headers automatically get rejected. Calls must go through an Edge Function; the
-key must never reach the client bundle.
+- **No invite-code display** — a coach working purely from mobile cannot onboard anyone.
+- **Ignores `removed_at`** — a removed athlete just sees empty queries, with no explanation.
+- **No styling for `home` / `rehab` / `vacation`** event types the web app creates.
+- **Knows nothing about the new match fields** — `meet_time`, `meet_location`, `notes` and
+  `opponent_logo_url` are the whole point of matchday for an athlete, and the app does not
+  read them yet. This is the biggest single gap between what the staff app produces and
+  what athletes see.
+- **Progress tab** — still a placeholder.
 
-Two calls do the job:
+**Both apps**
+
+- **Settings** — mobile still has no UI to change language post-signup. The web Profile
+  tab now does, and signup hardcodes `en`, so web is currently the only way to set `no`.
+- **GDPR / minors** — no retention policy, no deletion path, no processor agreement. Not a
+  polish item: it is the sort of thing a professional club's safeguarding officer asks about
+  before signing, and athletes may be under 18.
+
+**External fixture data — Sportmonks (integrated, plan-gated)**
+
+Provider: **Sportmonks** (`api.sportmonks.com/v3/football`). Chosen after API-Football
+suspended the account with no reachable support — an unacceptable dependency risk — and
+because its Norwegian coverage is deeper: 3. divisjon (4th tier) groups, Junior, both
+women's tiers, women's cup and U19 cup.
+
+Key lives in the Supabase secret **`sportsmonks_api_key`** (note that spelling). Auth is
+`?api_token=` or an `Authorization` header — either works, unlike API-Football's
+"x-apisports-key must be the only header" rule.
+
+All calls go through `supabase/functions/football/index.ts`, which returns our own
+`{ teams }` / `{ fixtures }` shape. **That seam is the reason swapping provider cost one
+file** — the wizard, colour extraction, schema and UI never see provider types.
 
 ```
-GET /teams?search={club name}      → team id, name, country
-GET /fixtures?team={id}&next=10    → upcoming matches
+GET /teams/search/{name}?include=country
+GET /fixtures/between/{from}/{to}/{teamId}?include=participants;league
 ```
 
-Two ids make sync safe, and the schema is built on them:
+There is no "next N fixtures" endpoint; a date range from today is the documented approach.
+Home/away comes from `participants[].meta.location`, not field order.
 
-| | |
+| Field | Use |
 |---|---|
-| team id | stable across every competition a team plays in → `clubs.external_team_id` |
-| fixture id | never changes, per their docs → `matches.external_id` |
+| team `id` | → `clubs.external_team_id` |
+| team `image_path` | → `clubs.external_badge_url` (**must be stored** — not derivable from the id, unlike API-Football) |
+| team `gender` | distinguishes women's sides without guessing from the name |
+| fixture `id` | → `matches.external_id`, so a re-sync upserts |
 
-`matches.source` is `'manual'` or `'api'`, and a **partial unique index on
-`(club_id, external_id)`** means a re-sync upserts instead of duplicating, while manual
-rows (NULL `external_id`) are unconstrained. Verified: re-syncing a fixture updates one
-row and leaves manual entries untouched.
+**Free plan is Danish Superliga only.** Verified: `brondby` returns Brøndby IF with current-season
+fixtures; `glimt` and `rosenborg` return nothing. Norwegian clubs need a paid plan. Current
+seasons *are* available on free within that one league, which API-Football's free tier could
+not do at all.
 
-**Badges** — `https://media.api-sports.io/football/teams/{team_id}.png`, 150×150 PNG.
-Verified: no API key needed, so it can be used directly in `<img src>`; free of quota but
-rate-limited, so cache rather than hot-link at scale. Missing badges return a clean 404
-(common for newer teams — Bodø/Glimt Women has none), so **fall back to a circle in the
-club colour** — that is what `AvatarCircle` already renders. Never store the image; derive
-the URL from `external_team_id`.
+**Badges** — `cdn.sportmonks.com`, 150×150 PNG. Verified: the host sends CORS headers, so
+`badgeColor.ts` can read pixels off a canvas client-side (a control fetch to a non-CORS host
+is blocked in the same context, so the pass is real). Missing crest → fall back to a circle
+in the club colour. Never store the image itself.
 
-> Their terms state they do not own the crests and claim no IP over them, and that use
-> "may require additional authorization or licensing from the respective rights holders."
-> Showing a club its own crest is defensible identification; marketing and store listings
-> are a different use.
+**There is still no club → teams hierarchy.** Senior, reserve, youth and women's sides are
+separate records sharing a name, so linking must ask **"which team do you coach"** before
+searching. `gender` helps; nothing identifies age group, so a youth coach may still see only
+the senior side.
 
-**There is no club → teams hierarchy.** Every team is a flat, independent record — senior,
-reserve and women's sides are unrelated entries that merely share a name. Sibling teams are
-found by name search alone, which is why linking must ask **"which team do you coach"**
-before searching, and show each result's league as the disambiguator.
+**How the sync actually runs.** `DashboardShell` triggers it on mount when the club has an
+`external_team_id` and the last sync is over 6h old (`isSyncStale`). It is deliberately
+silent and un-awaited so a provider outage cannot block the dashboard. The edge function
+returns fixtures; the `sync_external_fixtures(jsonb)` RPC writes them, taking the club from
+the caller's own profile so a client cannot push fixtures into someone else's club.
 
-**Norway coverage:** senior men to 3. divisjon (4th tier), 2. divisjon, 1. divisjon,
-Eliteserien, NM Cupen, plus Toppserien and 1. divisjon Women. **Youth is effectively
-absent** (one U19 competition), so an age-group coach will find only the senior side — a
-confidently wrong answer. Manual match entry stays first-class, and "my team isn't here"
-must read as a normal outcome rather than a failure.
+Consequences worth knowing: the throttle lives on the club row, so ten staff opening the
+dashboard produce **one** request between them — a ceiling of 4/club/day. Squad size and
+staff count are irrelevant; it scales with clubs only. But it only runs when a staff member
+opens the **web** dashboard, so athletes on mobile never trigger it. A scheduled job is the
+eventual fix and would *reduce* requests (1/club/day) while improving freshness.
+
+Sportmonks limits are **per entity, per hour** (Free 3,000 · Starter 2,000 · Growth 2,500 ·
+Pro 3,000), with no monthly quota. Tiers buy *leagues*, not calls: Starter 5, Growth 30,
+Pro 120, plus extra leagues from €4/mo. Full Norwegian coverage is ~16 leagues.
+
+**Manual entry stays first-class.** Coverage will never be complete, so `NewEventTab`'s Match
+category offers paste-a-fixture-list (parsed by `lib/parseFixtures.ts`, confirmed row by row)
+alongside single-match entry. Everything it writes is `source = 'manual'` and is therefore
+untouchable by a sync.
+
+**Mobile feel — blocking the launch bar**
+
+The app has `react-native-reanimated` v4 installed but **does not use it for gestures**.
+`SlideUpSheet.tsx` and the `BottomSheet` in `LandingScreen.tsx` both drive drag with
+`PanResponder` + the legacy `Animated` API, which runs on the JS thread — that is the gap
+between "works" and "feels native", and it will not reach the bar set above.
+
+Also absent: **`react-native-gesture-handler`** (needed for swipeable rows, drag-to-dismiss
+and any real gesture work — it runs on the UI thread) and **`expo-haptics`** (cheap to add,
+disproportionate effect on perceived quality).
 
 **Polish / deferred**
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Sidebar, { type DashTab } from '@/components/Sidebar';
 import OverviewTab  from './tabs/OverviewTab';
 import AthletesTab from './tabs/AthletesTab';
@@ -8,57 +8,78 @@ import CalendarTab from './tabs/CalendarTab';
 import NewEventTab from './tabs/NewEventTab';
 import GroupsTab   from './tabs/GroupsTab';
 import ClubTab     from './tabs/ClubTab';
+import { accentTokens } from '@/lib/clubTheme';
+import { syncFixtures, isSyncStale } from '@/lib/syncFixtures';
 import FeedbackTab from './tabs/FeedbackTab';
 import TasksTab    from './tabs/TasksTab';
-
-function hexToRgb(hex: string): string {
-  const clean = hex.replace('#', '');
-  const full  = clean.length === 3 ? clean.split('').map(c => c + c).join('') : clean;
-  const r = parseInt(full.substring(0, 2), 16);
-  const g = parseInt(full.substring(2, 4), 16);
-  const b = parseInt(full.substring(4, 6), 16);
-  if (isNaN(r) || isNaN(g) || isNaN(b)) return '99, 102, 241';
-  return `${r}, ${g}, ${b}`;
-}
+import ProfileTab  from './tabs/ProfileTab';
 
 /** Rewrites the accent variables the dashboard layout set server-side. They live on
  *  #dashboard-root rather than :root, so they must be set on that same element to win
- *  for its descendants. Keep in sync with app/dashboard/layout.tsx. */
+ *  for its descendants. Uses the same accentTokens() as the layout, so the two cannot
+ *  produce different results. */
 function applyAccent(color: string) {
   const root = document.getElementById('dashboard-root');
   if (!root) return;
-  const rgb = hexToRgb(color);
-  root.style.setProperty('--accent',        color);
-  root.style.setProperty('--accent-subtle', `rgba(${rgb}, 0.12)`);
-  root.style.setProperty('--accent-border', `rgba(${rgb}, 0.28)`);
-  root.style.setProperty('--accent-glow',   `rgba(${rgb}, 0.18)`);
+  for (const [key, value] of Object.entries(accentTokens(color))) {
+    root.style.setProperty(key, value);
+  }
 }
 
 export default function DashboardShell({
   staffName,
+  staffEmail,
+  staffRole,
+  staffLanguage,
+  staffJoinedAt,
   clubName,
   clubColor,
   inviteCode,
   staffInviteCode,
   isClubManager,
+  externalTeamId,
+  externalSyncedAt,
   staffId,
   clubId,
 }: {
-  staffName:       string;
-  clubName:        string;
-  clubColor:       string;
-  inviteCode:      string | null;
-  staffInviteCode: string | null;
-  isClubManager:   boolean;
-  staffId:         string;
-  clubId:          string;
+  staffName:        string;
+  staffEmail:       string;
+  staffRole:        string;
+  staffLanguage:    string;
+  staffJoinedAt:    string;
+  clubName:         string;
+  clubColor:        string;
+  inviteCode:       string | null;
+  staffInviteCode:  string | null;
+  isClubManager:    boolean;
+  externalTeamId:   number | null;
+  externalSyncedAt: string | null;
+  staffId:          string;
+  clubId:           string;
 }) {
   const [tab,          setTab]          = useState<DashTab>('overview');
+  // Editable on the profile tab, so it lives here rather than being read straight from
+  // the prop — the sidebar has to pick a rename up without a reload.
+  const [name,         setName]         = useState(staffName);
   const [prefilledDate, setPrefilledDate] = useState<string | undefined>(undefined);
 
   // Club name and colour can be edited on the Club tab. Holding them here lets the
   // sidebar and theme update immediately, with no reload to knock you off the page.
   const [club, setClub] = useState({ name: clubName, color: clubColor });
+
+  // Fixtures are pulled in here rather than at signup: at signup there may be no session
+  // yet (email confirmation), and a club can link a team later from the Club page. Running
+  // on dashboard mount covers both, and refreshes a stale season without being asked.
+  const syncedOnce = useRef(false);
+  useEffect(() => {
+    if (syncedOnce.current) return;
+    if (!externalTeamId) return;
+    if (!isSyncStale(externalSyncedAt)) return;
+    syncedOnce.current = true;
+    // Deliberately un-awaited and silent: a failed sync must never block the dashboard,
+    // and the calendar simply shows whatever is already there.
+    void syncFixtures(externalTeamId);
+  }, [externalTeamId, externalSyncedAt]);
 
   function handleClubUpdated(name: string, color: string) {
     setClub({ name, color });
@@ -86,7 +107,7 @@ export default function DashboardShell({
   return (
     <>
       <Sidebar
-        staffName={staffName}
+        staffName={name}
         clubName={club.name}
         clubColor={club.color}
         activeTab={tab}
@@ -97,13 +118,21 @@ export default function DashboardShell({
         {tab === 'overview'  && (
           <OverviewTab
             clubId={clubId}
-            staffName={staffName}
+            staffName={name}
             clubName={clubName}
             inviteCode={inviteCode}
             staffInviteCode={staffInviteCode}
           />
         )}
-        {tab === 'athletes'  && <AthletesTab staffId={staffId} clubId={clubId} />}
+        {tab === 'athletes'  && (
+          <AthletesTab
+            staffId={staffId}
+            clubId={clubId}
+            clubName={club.name}
+            inviteCode={inviteCode}
+            staffInviteCode={staffInviteCode}
+          />
+        )}
         {tab === 'calendar'  && <CalendarTab clubId={clubId} onAddEvent={handleAddEvent} />}
         {tab === 'feedback'  && <FeedbackTab staffId={staffId} clubId={clubId} />}
         {tab === 'tasks'     && <TasksTab    staffId={staffId} clubId={clubId} />}
@@ -120,9 +149,23 @@ export default function DashboardShell({
             onClubUpdated={handleClubUpdated}
           />
         )}
+        {tab === 'profile'   && (
+          <ProfileTab
+            profileId={staffId}
+            fullName={name}
+            email={staffEmail}
+            role={staffRole}
+            isClubManager={isClubManager}
+            language={staffLanguage}
+            joinedAt={staffJoinedAt}
+            clubName={club.name}
+            onNameChanged={setName}
+          />
+        )}
         {tab === 'new'       && (
           <NewEventTab
             clubId={clubId}
+            clubName={club.name}
             prefilledDate={prefilledDate}
             onCreatedFromCalendar={handleCreatedFromCalendar}
           />

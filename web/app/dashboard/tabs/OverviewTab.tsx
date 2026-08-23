@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import InvitePeople from '../InvitePeople';
+import OpponentCrest from '@/components/OpponentCrest';
 
-type MatchRow = { id: string; opponent: string; match_date: string; is_home: boolean; location: string | null };
+type MatchRow = { id: string; opponent: string; match_date: string; is_home: boolean; location: string | null; opponent_logo_url: string | null };
 type EventRow = { id: string; type: string; title: string; event_date: string; location: string | null };
 
 type State = {
@@ -45,7 +46,7 @@ export default function OverviewTab({ clubId, staffName, clubName, inviteCode, s
         supabase.from('match_feedback').select('id', { count: 'exact', head: true }).in('athlete_id', safeIds).eq('acknowledged', false),
         supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('club_id', clubId).eq('status', 'pending'),
         supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('club_id', clubId).eq('status', 'pending').lt('due_date', now),
-        supabase.from('matches').select('id,opponent,match_date,is_home,location').eq('club_id', clubId).eq('status', 'upcoming').gte('match_date', now).order('match_date').limit(3),
+        supabase.from('matches').select('id,opponent,match_date,is_home,location,opponent_logo_url').eq('club_id', clubId).is('suppressed_at', null).eq('status', 'upcoming').gte('match_date', now).order('match_date').limit(3),
         supabase.from('events').select('id,type,title,event_date,location').eq('club_id', clubId).gte('event_date', now).order('event_date').limit(5),
       ]);
 
@@ -103,9 +104,7 @@ export default function OverviewTab({ clubId, staffName, clubName, inviteCode, s
               {data.upcomingMatches.length === 0 ? <Empty text="No upcoming matches" /> : (
                 data.upcomingMatches.map((m) => (
                   <div key={m.id} className="glass" style={{ borderRadius: 'var(--radius-md)', padding: '12px 14px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-sm)', flexShrink: 0, background: 'var(--color-warning-subtle)', border: '1px solid var(--color-warning-border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/></svg>
-                    </div>
+                    <OpponentCrest url={m.opponent_logo_url} name={m.opponent} size={36} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div className="t-body-medium" style={{ color: 'var(--text-primary)', marginBottom: 2 }}>{m.is_home ? 'vs' : '@'} {m.opponent}</div>
                       <div className="t-small" style={{ color: 'var(--text-tertiary)' }}>{formatDate(m.match_date)}{m.location ? ` · ${m.location}` : ''}</div>

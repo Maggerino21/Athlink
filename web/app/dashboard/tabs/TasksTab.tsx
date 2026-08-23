@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { AvatarCircle } from '../athletes/AthletesClient';
+import DateField from '@/components/DateField';
 
 type AthleteRow = { id: string; full_name: string; language: string };
 
@@ -351,7 +352,7 @@ function AssignTaskModal({
           </div>
           <div>
             <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Due date (optional)</label>
-            <input type="date" className="input" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+            <DateField value={dueDate} onChange={setDueDate} placeholder="No deadline" />
           </div>
           {error && <div className="t-small" style={{ color: 'var(--color-danger)' }}>{error}</div>}
         </div>
