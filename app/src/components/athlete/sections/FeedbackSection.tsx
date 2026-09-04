@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, RefreshControl } from 'react-native';
+import haptics from '../../../utils/haptics';
+import PressableScale from '../../ui/PressableScale';
 import { Ionicons } from '@expo/vector-icons';
 import GlassCard from '../../ui/GlassCard';
 import { supabase } from '../../../lib/supabase';
@@ -100,13 +102,24 @@ export default function FeedbackSection({ isActive }: { isActive?: boolean }) {
   }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const react = async (id: string, emoji: string) => {
+    const previous = items.find(f => f.id === id);
+    // Optimistic — reacting should feel instantaneous, not like submitting a form.
+    haptics.success();
+    setItems(prev => prev.map(f =>
+      f.id === id ? { ...f, acknowledged: true, reaction: emoji } : f
+    ));
+
     const { error } = await supabase
       .from('match_feedback')
       .update({ acknowledged: true, acknowledged_at: new Date().toISOString(), reaction: emoji })
       .eq('id', id);
-    if (!error) {
+
+    if (error && previous) {
+      haptics.error();
       setItems(prev => prev.map(f =>
-        f.id === id ? { ...f, acknowledged: true, reaction: emoji } : f
+        f.id === id
+          ? { ...f, acknowledged: previous.acknowledged, reaction: previous.reaction }
+          : f
       ));
     }
   };
@@ -117,11 +130,14 @@ export default function FeedbackSection({ isActive }: { isActive?: boolean }) {
       .from('match_feedback')
       .update({ athlete_reply: text.trim() })
       .eq('id', id);
-    if (!error) {
-      setItems(prev => prev.map(f =>
-        f.id === id ? { ...f, athlete_reply: text.trim() } : f
-      ));
+    if (error) {
+      haptics.error();
+      return;
     }
+    haptics.success();
+    setItems(prev => prev.map(f =>
+      f.id === id ? { ...f, athlete_reply: text.trim() } : f
+    ));
   };
 
   if (loading) {
@@ -245,15 +261,16 @@ function FeedbackCard({
           <Text style={styles.reactPrompt}>How did you receive this?</Text>
           <View style={styles.reactionRow}>
             {REACTIONS.map(r => (
-              <TouchableOpacity
+              <PressableScale
                 key={r.emoji}
                 style={styles.reactionBtn}
                 onPress={() => onReact(item.id, r.emoji)}
-                activeOpacity={0.75}
+                scaleTo={0.9}
+                haptic="none"
               >
                 <Text style={styles.reactionEmoji}>{r.emoji}</Text>
                 <Text style={styles.reactionLabel}>{r.label}</Text>
-              </TouchableOpacity>
+              </PressableScale>
             ))}
           </View>
         </>

@@ -1,30 +1,25 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
-  ScrollView, Animated, Platform, Modal,
+  View, Text, StyleSheet, TouchableOpacity, Image,
+  ScrollView, Platform, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming, Easing,
+} from 'react-native-reanimated';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
-import SlideUpSheet from '../../ui/SlideUpSheet';
+import PressableScale from '../../ui/PressableScale';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
+import { EVENT_META, type EventType, type CalEvent } from '../eventTypes';
 import { hexToRgba } from '../../../utils/theme';
+import haptics from '../../../utils/haptics';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-type EventType = 'training' | 'home' | 'rehab' | 'exercise' | 'recovery' | 'meeting' | 'match' | 'vacation' | 'other';
-
-interface CalEvent {
-  id: string;
-  type: EventType;
-  title: string;
-  start_time: string | null;
-  location: string | null;
-  description: string | null;
-  date: string; // YYYY-MM-DD
-  source: 'event' | 'match';
-}
 
 interface DayGroup {
   dateStr: string;       // YYYY-MM-DD
@@ -38,20 +33,25 @@ interface DayGroup {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const EVENT_META: Record<EventType, { icon: string; color: string }> = {
-  training: { icon: 'fitness',          color: '#3B82F6' },
-  home:     { icon: 'home',             color: '#34D399' },
-  rehab:    { icon: 'medkit',           color: '#A78BFA' },
-  exercise: { icon: 'barbell',          color: '#8B5CF6' },
-  recovery: { icon: 'leaf',             color: '#22C55E' },
-  meeting:  { icon: 'people',           color: '#EC4899' },
-  match:    { icon: 'football',         color: '#F97316' },
-  vacation: { icon: 'partly-sunny',     color: '#FBBF24' },
-  other:    { icon: 'calendar-outline', color: '#6B7280' },
-};
-
 const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/**
+ * Local wall-clock time from a timestamptz.
+ *
+ * This used to be `iso.slice(11, 16)`, which reads the UTC portion of the
+ * string straight off the wire: a 20:00 Oslo kick-off stored as 18:00Z
+ * rendered as "18:00". Home and Schedule then disagreed by two hours about the
+ * same fixture, because Home happened to use toLocaleTimeString.
+ */
+function localTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/** Local calendar day from a timestamptz — `.slice(0, 10)` has the same UTC bug. */
+function localYMD(iso: string): string {
+  return toYMD(new Date(iso));
+}
 
 function toYMD(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -94,6 +94,57 @@ function buildTwoWeekRange(anchor: Date): Date[] {
   return Array.from({ length: 14 }, (_, i) => addDays(monday, i));
 }
 
+/**
+ * A vacation or camp is ONE row with `event_date` + `end_date`, not many rows.
+ * Expanded across days for display only. Without this a week-long block showed
+ * on its first day and vanished — which reads as "my holiday disappeared".
+ *
+ * Capped so a bad `end_date` can't lock the UI thread building rows forever.
+ */
+const MAX_SPAN_DAYS = 60;
+
+function expandEvent(e: any): CalEvent[] {
+  const base = {
+    id: e.id,
+    type: e.type as EventType,
+    title: e.title,
+    location: e.location ?? null,
+    description: e.description ?? null,
+    source: 'event' as const,
+  };
+
+  const startYMD = localYMD(e.event_date);
+  if (!e.end_date) {
+    return [{ ...base, start_time: localTime(e.event_date), date: startYMD }];
+  }
+
+  const start = new Date(e.event_date);
+  const end   = new Date(e.end_date);
+  const days: CalEvent[] = [];
+
+  const cursor = new Date(start);
+  cursor.setHours(0, 0, 0, 0);
+  const last = new Date(end);
+  last.setHours(0, 0, 0, 0);
+
+  let i = 0;
+  while (cursor <= last && i < MAX_SPAN_DAYS) {
+    const ymd = toYMD(cursor);
+    days.push({
+      ...base,
+      // A start time only makes sense on the first day of the block.
+      start_time: i === 0 ? localTime(e.event_date) : null,
+      date: ymd,
+      spanDay: i + 1,
+      spanTotal: 0, // filled in below, once the total is known
+    });
+    cursor.setDate(cursor.getDate() + 1);
+    i++;
+  }
+
+  return days.map(d => ({ ...d, spanTotal: days.length }));
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function ScheduleSection({ isActive }: { isActive: boolean }) {
@@ -109,7 +160,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   const [expandedDay, setExpanded]  = useState<string>(toYMD(today));
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerDate, setPickerDate] = useState(today);
-  const [selectedEvent, setSelectedEvent] = useState<CalEvent | null>(null);
+  const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
 
   const isDefaultView = toYMD(startOfWeek(anchor)) === toYMD(startOfWeek(today));
 
@@ -120,58 +171,47 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
     setLoading(true);
 
     const days = buildTwoWeekRange(anchor);
-    const from = toYMD(days[0]);
-    const to   = toYMD(days[13]);
+    const from = days[0];
+    const to   = addDays(days[13], 1);   // exclusive upper bound, local
 
-    // Fetch event IDs this athlete is assigned to, then load those events in the date range
-    const { data: assignments } = await supabase
-      .from('event_assignments')
-      .select('event_id')
-      .eq('athlete_id', profile.id);
-
-    const eventIds = (assignments ?? []).map((a: any) => a.event_id);
-
-    const [evResult, { data: matchData }] = await Promise.all([
-      eventIds.length > 0
-        ? supabase
-            .from('events')
-            .select('id, type, title, location, description, event_date')
-            .in('id', eventIds)
-            .gte('event_date', `${from}T00:00:00`)
-            .lte('event_date', `${to}T23:59:59`)
-            .order('event_date', { ascending: true })
-        : Promise.resolve({ data: [] }),
+    const [{ data: evData }, { data: matchData }] = await Promise.all([
+      // Server-side resolution of "which events am I supposed to see".
+      // An absent event_assignments row means WHOLE SQUAD, but RLS only lets an
+      // athlete read their own assignment rows — so the client genuinely cannot
+      // tell "unassigned" from "assigned to someone else". Filtering client-side
+      // hid every squad-wide event.
+      supabase.rpc('visible_events_for_me', {
+        p_from: from.toISOString(),
+        p_to: to.toISOString(),
+      }),
       supabase
         .from('matches')
-        .select('id, opponent, match_date, location')
+        .select('id, opponent, match_date, location, is_home, meet_time, meet_location, notes, opponent_logo_url')
         .eq('club_id', profile.club_id)
-        .gte('match_date', `${from}T00:00:00`)
-        .lte('match_date', `${to}T23:59:59`)
+        // Provider fixtures a coach removed are hidden, not deleted — the sync
+        // would recreate them. Every read of `matches` must filter this.
+        .is('suppressed_at', null)
+        .gte('match_date', from.toISOString())
+        .lt('match_date', to.toISOString())
         .order('match_date', { ascending: true }),
     ]);
 
-    const evData = evResult.data;
-
     const mapped: CalEvent[] = [
-      ...(evData ?? []).map((e: any) => ({
-        id: e.id,
-        type: e.type as EventType,
-        title: e.title,
-        start_time: e.event_date ? e.event_date.slice(11, 16) : null,  // HH:MM from timestamp
-        location: e.location ?? null,
-        description: e.description ?? null,
-        date: e.event_date.slice(0, 10),
-        source: 'event' as const,
-      })),
+      ...(evData ?? []).flatMap((e: any) => expandEvent(e)),
       ...(matchData ?? []).map((m: any) => ({
         id: m.id,
         type: 'match' as EventType,
-        title: `vs ${m.opponent}`,
-        start_time: m.match_date.slice(11, 16),
+        title: `${m.is_home === false ? 'Away vs' : 'vs'} ${m.opponent}`,
+        start_time: localTime(m.match_date),
         location: m.location ?? null,
         description: null,
-        date: m.match_date.slice(0, 10),
+        date: localYMD(m.match_date),
         source: 'match' as const,
+        meet_time: m.meet_time ? localTime(m.meet_time) : null,
+        meet_location: m.meet_location ?? null,
+        notes: m.notes ?? null,
+        opponent_logo_url: m.opponent_logo_url ?? null,
+        is_home: m.is_home,
       })),
     ];
 
@@ -251,8 +291,11 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
             key={day.dateStr}
             day={day}
             expanded={expandedDay === day.dateStr}
-            onToggle={() => setExpanded(expandedDay === day.dateStr ? '' : day.dateStr)}
-            onEventPress={setSelectedEvent}
+            onToggle={() => {
+              haptics.selection();
+              setExpanded(expandedDay === day.dateStr ? '' : day.dateStr);
+            }}
+            onEventPress={(e: CalEvent) => navigation.navigate('EventDetail', { event: e })}
             clubColor={profile?.club_color ?? '#3B82F6'}
           />
         ))}
@@ -296,11 +339,6 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
       )}
 
       {/* Event detail sheet */}
-      <EventDetailSheet
-        event={selectedEvent}
-        onClose={() => setSelectedEvent(null)}
-        clubColor={profile?.club_color ?? '#3B82F6'}
-      />
     </View>
   );
 }
@@ -316,15 +354,36 @@ function DayRow({
   onEventPress: (e: CalEvent) => void;
   clubColor: string;
 }) {
-  const anim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+  // Drives both the chevron and the reveal. Reanimated applies these on the UI
+  // thread — the old `Animated` version ran with useNativeDriver:false, which
+  // meant every single frame of this expand crossed the bridge.
+  const progress = useSharedValue(expanded ? 1 : 0);
+  // Natural height of the event list, captured on first layout. Animating to a
+  // measured height rather than a hardcoded maxHeight means the reveal takes the
+  // same time regardless of how many events a day holds — and days with more
+  // than the old 800px cap no longer get silently clipped.
+  const measured = useSharedValue(0);
 
   useEffect(() => {
-    Animated.timing(anim, {
-      toValue: expanded ? 1 : 0,
-      duration: 260,
-      useNativeDriver: false,
-    }).start();
-  }, [expanded]);
+    progress.value = withTiming(expanded ? 1 : 0, {
+      duration: 300,
+      easing: Easing.bezier(0.22, 1, 0.36, 1),
+    });
+  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${progress.value * 180}deg` }],
+    opacity: 0.3 + progress.value * 0.25,
+  }));
+
+  const listStyle = useAnimatedStyle(() => {
+    // Before the first layout pass we don't know the natural height yet, so
+    // fall back to auto (expanded) or zero (collapsed) to avoid a one-frame pop.
+    if (measured.value === 0) {
+      return { height: progress.value > 0.5 ? undefined : 0, opacity: progress.value };
+    }
+    return { height: measured.value * progress.value, opacity: progress.value };
+  });
 
   const isEmpty = day.events.length === 0;
   const isMuted = day.isPast && !day.isToday;
@@ -361,10 +420,7 @@ function DayRow({
 
         {/* Chevron — only when events exist */}
         {!isEmpty && (
-          <Animated.View style={{
-            transform: [{ rotate: anim.interpolate({ inputRange: [0,1], outputRange: ['0deg','180deg'] }) }],
-            opacity: 0.3,
-          }}>
+          <Animated.View style={chevronStyle}>
             <Ionicons name="chevron-down" size={20} color="#fff" />
           </Animated.View>
         )}
@@ -372,12 +428,13 @@ function DayRow({
 
       {/* Expanded event list */}
       {!isEmpty && (
-        <Animated.View style={{
-          opacity: anim,
-          maxHeight: anim.interpolate({ inputRange: [0, 1], outputRange: [0, 800] }),
-          overflow: 'hidden',
-        }}>
-          <View style={styles.eventList}>
+        <Animated.View style={[{ overflow: 'hidden' }, listStyle]}>
+          {/* Inner view lays out at its natural height regardless of the clipped
+              parent, which is what makes it measurable. */}
+          <View
+            style={styles.eventList}
+            onLayout={(e) => { measured.value = e.nativeEvent.layout.height; }}
+          >
             {day.events.map((ev, i) => (
               <EventRow
                 key={ev.id}
@@ -401,10 +458,11 @@ function DayRow({
 function EventRow({ event, onPress, isLast }: { event: CalEvent; onPress: () => void; isLast: boolean }) {
   const meta = EVENT_META[event.type];
   return (
-    <TouchableOpacity
+    <PressableScale
       style={[styles.eventRow, isLast && styles.eventRowLast]}
       onPress={onPress}
-      activeOpacity={0.65}
+      scaleTo={0.975}
+      haptic="medium"
     >
       {/* Coloured left strip */}
       <View style={[styles.eventStrip, { backgroundColor: meta.color }]} />
@@ -423,59 +481,7 @@ function EventRow({ event, onPress, isLast }: { event: CalEvent; onPress: () => 
       {event.start_time
         ? <Text style={styles.eventTime}>{event.start_time.slice(0, 5)}</Text>
         : null}
-    </TouchableOpacity>
-  );
-}
-
-// ── EventDetailSheet ───────────────────────────────────────────────────────────
-
-function EventDetailSheet({
-  event, onClose, clubColor,
-}: {
-  event: CalEvent | null;
-  onClose: () => void;
-  clubColor: string;
-}) {
-  if (!event) return null;
-  const meta = EVENT_META[event.type];
-
-  return (
-    <SlideUpSheet visible={!!event} onClose={onClose} title={event.title}>
-      {/* Type badge */}
-      <View style={[detailStyles.typeBadge, { backgroundColor: hexToRgba(meta.color, 0.12), borderColor: hexToRgba(meta.color, 0.25) }]}>
-        <Ionicons name={meta.icon as any} size={14} color={meta.color} style={{ marginRight: 6 }} />
-        <Text style={[detailStyles.typeText, { color: meta.color }]}>
-          {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
-        </Text>
-      </View>
-
-      {/* Meta rows */}
-      {event.start_time && (
-        <View style={detailStyles.metaRow}>
-          <Ionicons name="time-outline" size={16} color="rgba(255,255,255,0.3)" style={detailStyles.metaIcon} />
-          <Text style={detailStyles.metaText}>{event.start_time.slice(0,5)}</Text>
-        </View>
-      )}
-      {event.location && (
-        <View style={detailStyles.metaRow}>
-          <Ionicons name="location-outline" size={16} color="rgba(255,255,255,0.3)" style={detailStyles.metaIcon} />
-          <Text style={detailStyles.metaText}>{event.location}</Text>
-        </View>
-      )}
-
-      {/* Divider */}
-      <View style={detailStyles.divider} />
-
-      {/* Description */}
-      {event.description ? (
-        <Text style={detailStyles.description}>{event.description}</Text>
-      ) : (
-        <Text style={detailStyles.noDesc}>No additional details.</Text>
-      )}
-
-      {/* Accent line at bottom */}
-      <View style={[detailStyles.accentLine, { backgroundColor: hexToRgba(clubColor, 0.4) }]} />
-    </SlideUpSheet>
+    </PressableScale>
   );
 }
 
@@ -587,28 +593,4 @@ const styles = StyleSheet.create({
   pickerCancel: { fontSize: 15, color: 'rgba(255,255,255,0.4)' },
   pickerDone:   { fontSize: 15, fontWeight: '700', color: '#60A5FA' },
   picker:       { height: 200 },
-});
-
-const detailStyles = StyleSheet.create({
-  typeBadge: {
-    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,
-    borderWidth: 1, marginBottom: 20,
-  },
-  typeText: { fontSize: 13, fontWeight: '600' },
-
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  metaIcon: { marginRight: 10 },
-  metaText: { fontSize: 14, color: 'rgba(255,255,255,0.6)' },
-
-  divider: {
-    height: 1, backgroundColor: 'rgba(255,255,255,0.07)',
-    marginVertical: 16,
-  },
-  description: { fontSize: 14, color: 'rgba(255,255,255,0.5)', lineHeight: 21 },
-  noDesc:      { fontSize: 13, color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' },
-
-  accentLine: {
-    height: 2, borderRadius: 1, marginTop: 24, width: 40,
-  },
 });

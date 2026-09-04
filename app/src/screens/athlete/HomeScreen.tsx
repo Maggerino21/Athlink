@@ -1,29 +1,59 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+/**
+ * HomeScreen — the athlete's five tabs.
+ *
+ * ── Why this uses a native tab bar ──
+ *
+ * `BottomTabs` from react-native-screens wraps a real `UITabBarController`. On
+ * iOS 26 that means Apple's own Liquid Glass tab bar, with the selection lens
+ * that magnifies and displaces content behind it, chromatic edge fringing, the
+ * lens merging into the bar as it travels, and scroll-edge/minimize behaviour.
+ *
+ * None of that is available from `expo-glass-effect` alone. `GlassView` gives
+ * the *material* (`UIGlassEffect`); the tab bar is a *control* Apple built on
+ * top of it, and the control contributes every one of those behaviours. The
+ * previous hand-built pill applied the material and reimplemented the control,
+ * which is why it kept reading as a copy no matter how it was tuned.
+ *
+ * `tabBarTintColor` is not merely a text colour — from iOS 26 it drives the
+ * glow of the Liquid Glass selection view, so the club colour flows into the
+ * real effect.
+ *
+ * Consequences worth knowing:
+ *  - The bar is Apple's, so it is edge-to-edge and bottom-anchored. The custom
+ *    floating pill is gone; `LiquidGlassTabBar` is retained only for GlassLab.
+ *  - `UITabBarController` owns full-screen children, so each tab draws its own
+ *    background and header via `AthleteFrame` rather than sharing one above a
+ *    pager.
+ *  - Tabs are tapped, not swiped. That is how iOS tab bars work.
+ */
+import React, { useState, useEffect, useCallback } from 'react';
+import { Alert, InteractionManager, Modal, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { LinearGradient } from 'expo-linear-gradient';
+import { BottomTabs, BottomTabsScreen } from 'react-native-screens';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
-import { clubGradientOrbs } from '../../utils/theme';
+import haptics from '../../utils/haptics';
+import AthleteFrame from '../../components/athlete/AthleteFrame';
 import ThisWeekSection from '../../components/athlete/sections/ThisWeekSection';
 import FeedbackSection from '../../components/athlete/sections/FeedbackSection';
 import ScheduleSection from '../../components/athlete/sections/ScheduleSection';
 import TasksSection from '../../components/athlete/sections/TasksSection';
 import ProgressSection from '../../components/athlete/sections/ProgressSection';
-import LiquidGlassTabBar from '../../components/athlete/LiquidGlassTabBar';
+import GlassLab from '../dev/GlassLab';
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+/**
+ * SF Symbols rather than Ionicons — the native tab bar renders these itself, at
+ * the exact weight and optical size iOS uses for its own bars, and they inherit
+ * the Liquid Glass treatment. A bitmap icon would not.
+ */
 const SECTIONS = [
-  { id: 'this-week', Component: ThisWeekSection },
-  { id: 'feedback',  Component: FeedbackSection },
-  { id: 'schedule',  Component: ScheduleSection },
-  { id: 'tasks',     Component: TasksSection    },
-  { id: 'progress',  Component: ProgressSection },
-];
-const TAB_BAR_CLEARANCE = 110;
+  { id: 'this-week', label: 'Home',     sf: 'house',                      sfActive: 'house.fill',            Component: ThisWeekSection },
+  { id: 'feedback',  label: 'Feedback', sf: 'bubble.left',                sfActive: 'bubble.left.fill',      Component: FeedbackSection },
+  { id: 'schedule',  label: 'Schedule', sf: 'calendar',                   sfActive: 'calendar',              Component: ScheduleSection },
+  { id: 'tasks',     label: 'Tasks',    sf: 'checkmark.circle',           sfActive: 'checkmark.circle.fill', Component: TasksSection    },
+  { id: 'progress',  label: 'Progress', sf: 'chart.line.uptrend.xyaxis',  sfActive: 'chart.line.uptrend.xyaxis', Component: ProgressSection },
+] as const;
 
 function getInitials(name: string) {
   const parts = name.trim().split(' ').filter(Boolean);
@@ -44,16 +74,21 @@ function formatDate() {
 
 export default function HomeScreen() {
   const { profile, signOut } = useAuth();
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [activeKey, setActiveKey] = useState<string>(SECTIONS[0].id);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextMatchLabel, setNextMatchLabel] = useState<string | null>(null);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const insets = useSafeAreaInsets();
+  const [glassLabOpen, setGlassLabOpen] = useState(false);
+
+  // Tabs mount on first visit and stay mounted. Previously all five mounted at
+  // launch and each fired its own query batch, saturating JS exactly as the app
+  // became visible.
+  const [visited, setVisited] = useState<Set<string>>(() => new Set([SECTIONS[0].id]));
+
+  const clubColor = profile?.club_color ?? '#3B82F6';
 
   const loadHeaderData = useCallback(async () => {
     if (!profile) return;
 
-    // Unread feedback count → tab badge
     supabase
       .from('match_feedback')
       .select('id', { count: 'exact', head: true })
@@ -61,13 +96,14 @@ export default function HomeScreen() {
       .eq('acknowledged', false)
       .then(({ count }) => setUnreadCount(count ?? 0));
 
-    // Next match → accent chip
     if (profile.club_id) {
       supabase
         .from('matches')
         .select('match_date')
         .eq('club_id', profile.club_id)
         .eq('status', 'upcoming')
+        // Removed fixtures are suppressed, not deleted — see CLAUDE.md.
+        .is('suppressed_at', null)
         .gte('match_date', new Date().toISOString())
         .order('match_date', { ascending: true })
         .limit(1)
@@ -82,111 +118,97 @@ export default function HomeScreen() {
     }
   }, [profile]);
 
-  // Re-run whenever this screen comes into focus (e.g. coming back from background)
   useFocusEffect(useCallback(() => { loadHeaderData(); }, [loadHeaderData]));
 
-  const handleTabPress = (index: number) => {
-    scrollViewRef.current?.scrollTo({ x: index * SCREEN_WIDTH, animated: true });
-    setActiveIndex(index);
-  };
+  // Once the first paint is done, quietly mount the rest so switching tabs
+  // never pays a mount cost in front of the user.
+  useEffect(() => {
+    const task = InteractionManager.runAfterInteractions(() => {
+      setVisited(new Set(SECTIONS.map(s => s.id)));
+    });
+    return () => task.cancel();
+  }, []);
 
-  const name      = profile?.full_name ?? '';
-  const initials  = name ? getInitials(name) : '?';
-  const clubName  = profile?.club_name ?? null;
+  const onFocusChange = useCallback((key: string) => {
+    setActiveKey(key);
+    setVisited(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
+    haptics.selection();
+  }, []);
+
+  // Tapping your own avatar used to sign you out outright, with no confirmation
+  // and nothing else on screen doing anything similar. Until there is a real
+  // account screen to put this behind, at least ask.
+  const confirmSignOut = useCallback(() => {
+    haptics.selection();
+    Alert.alert(
+      'Sign out?',
+      'You will need your email and password to get back in.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+      ]
+    );
+  }, [signOut]);
+
+  const name     = profile?.full_name ?? '';
+  const initials = name ? getInitials(name) : '?';
+
+  const frameProps = {
+    clubColor,
+    greeting: getGreeting(),
+    name,
+    initials,
+    clubName: profile?.club_name ?? null,
+    dateLabel: formatDate(),
+    nextMatchLabel,
+    onAvatarPress: confirmSignOut,
+    onAvatarLongPress: __DEV__
+      ? () => { haptics.medium(); setGlassLabOpen(true); }
+      : undefined,
+  };
 
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
 
-      {/* Background */}
-      {(() => {
-        const orbs = clubGradientOrbs(profile?.club_color ?? '#3B82F6');
-        return (
-          <View style={StyleSheet.absoluteFill}>
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0c0a0a' }]} />
-            <LinearGradient colors={orbs.top}    style={styles.orbTopRight}   start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
-            <LinearGradient colors={orbs.bottom} style={styles.orbBottomLeft} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} />
-          </View>
-        );
-      })()}
+      <BottomTabs
+        // From iOS 26 this also drives the glow of the Liquid Glass selection
+        // lens, so the club colour lands inside Apple's own effect.
+        tabBarTintColor={clubColor}
+        // iOS 26 behaviour: the bar shrinks out of the way as content scrolls.
+        tabBarMinimizeBehavior="onScrollDown"
+        onNativeFocusChange={({ nativeEvent }) => onFocusChange(nativeEvent.tabKey)}
+      >
+        {SECTIONS.map(({ id, label, sf, sfActive, Component }) => (
+          <BottomTabsScreen
+            key={id}
+            tabKey={id}
+            isFocused={activeKey === id}
+            title={label}
+            icon={{ sfSymbolName: sf }}
+            selectedIcon={{ sfSymbolName: sfActive }}
+            badgeValue={id === 'feedback' && unreadCount > 0 ? String(unreadCount) : undefined}
+            // Deliberately no `freezeContents`. Freezing was only ever needed
+            // because each tab drew its own full-screen backdrop; now there is
+            // one backdrop behind the whole tab controller, a hidden tab costs
+            // little and freezing it bought a flash instead of speed.
+          >
+            <AthleteFrame {...frameProps}>
+              {visited.has(id) ? <Component isActive={activeKey === id} /> : null}
+            </AthleteFrame>
+          </BottomTabsScreen>
+        ))}
+      </BottomTabs>
 
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.greeting}>{getGreeting()}</Text>
-              <Text style={styles.athleteName}>{name || '—'}</Text>
-            </View>
-            <TouchableOpacity style={styles.avatarWrap} onPress={signOut} activeOpacity={0.8}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{initials}</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.metaRow}>
-            {clubName && <GlassChip label={clubName} />}
-            <GlassChip label={formatDate()} />
-            {nextMatchLabel && <GlassChip label={nextMatchLabel} accent />}
-          </View>
-        </View>
-
-        {/* Swipeable sections */}
-        <ScrollView
-          ref={scrollViewRef}
-          horizontal pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          bounces={false} scrollEventThrottle={32}
-          style={styles.contentScroll}
-          onMomentumScrollEnd={(e) => {
-            setActiveIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH));
-          }}
-        >
-          {SECTIONS.map(({ id, Component }, i) => (
-            <View key={id} style={[styles.sectionPage, { paddingBottom: TAB_BAR_CLEARANCE + insets.bottom }]}>
-              <Component isActive={activeIndex === i} />
-            </View>
-          ))}
-        </ScrollView>
-      </SafeAreaView>
-
-      <LiquidGlassTabBar
-        activeIndex={activeIndex}
-        onTabPress={handleTabPress}
-        badges={unreadCount > 0 ? { 1: unreadCount } : {}}
-      />
-    </View>
-  );
-}
-
-function GlassChip({ label, accent = false }: { label: string; accent?: boolean }) {
-  return (
-    <View style={[styles.chip, accent && styles.chipAccent]}>
-      <View style={styles.chipSpec} />
-      <Text style={[styles.chipText, accent && styles.chipTextAccent]}>{label}</Text>
+      {__DEV__ && glassLabOpen && (
+        <Modal visible animationType="slide" onRequestClose={() => setGlassLabOpen(false)}>
+          <GlassLab onClose={() => setGlassLabOpen(false)} clubColor={clubColor} />
+        </Modal>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  safeArea: { flex: 1 },
-  orbTopRight:   { position: 'absolute', top: -160, right: -160, width: SCREEN_WIDTH * 1.3, height: SCREEN_HEIGHT * 0.65, borderRadius: 9999 },
-  orbBottomLeft: { position: 'absolute', bottom: -160, left: -120, width: SCREEN_WIDTH * 1.2, height: SCREEN_HEIGHT * 0.65, borderRadius: 9999 },
-  header: { paddingTop: 6, paddingBottom: 14, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  greeting:    { fontSize: 11, color: 'rgba(255,255,255,0.35)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 3 },
-  athleteName: { fontSize: 26, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.5 },
-  avatarWrap:  { shadowColor: '#2563EB', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.7, shadowRadius: 12, elevation: 8 },
-  avatar:      { width: 44, height: 44, borderRadius: 22, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.25)' },
-  avatarText:  { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  metaRow:     { flexDirection: 'row', gap: 8 },
-  chip:        { paddingHorizontal: 11, paddingVertical: 5, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.07)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },
-  chipAccent:  { backgroundColor: 'rgba(59,130,246,0.15)', borderColor: 'rgba(59,130,246,0.3)' },
-  chipSpec:    { position: 'absolute', top: 0, left: 8, right: 8, height: 1, backgroundColor: 'rgba(255,255,255,0.25)' },
-  chipText:    { fontSize: 12, color: 'rgba(255,255,255,0.5)', fontWeight: '500' },
-  chipTextAccent: { color: '#60A5FA' },
-  contentScroll: { flex: 1 },
-  sectionPage:   { width: SCREEN_WIDTH, flex: 1 },
+  root: { flex: 1, backgroundColor: '#0c0a0a' },
 });

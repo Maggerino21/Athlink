@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
@@ -16,6 +16,14 @@ export interface Profile {
   club_name: string | null;
   club_color: string;
   language: string;
+  /**
+   * Set when the club removed this member. Removal is soft — `user_club_id()`
+   * and `user_role()` both filter on it, so every RLS policy already denies
+   * them. Without reading it here the app just renders empty tabs with no
+   * explanation, which reads as the app being broken rather than as access
+   * having ended.
+   */
+  removed_at: string | null;
 }
 
 interface AuthContextType {
@@ -36,28 +44,63 @@ const AuthContext = createContext<AuthContextType>({
   refreshProfile: async () => {},
 });
 
+/**
+ * Turn a thrown fetch error into something a person can act on.
+ *
+ * "TypeError: Network request failed" is what React Native reports for every
+ * failed request, including the case that actually matters here: the Supabase
+ * project being paused (free tier pauses after about a week idle), which looks
+ * identical to being offline.
+ */
+function friendlyNetworkError(e: unknown): string {
+  const msg = String(e);
+  if (msg.includes('Network request failed') || msg.includes('Aborted') || msg.includes('abort')) {
+    return "Couldn't reach the server. Check your connection — if it persists, the backend may be asleep.";
+  }
+  return msg;
+}
+
+/** How long to wait for auth to settle before showing an escape hatch. */
+const AUTH_TIMEOUT_MS = 12_000;
+/** How long any single profile fetch may take before we give up on it. */
+const PROFILE_TIMEOUT_MS = 8_000;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession]         = useState<Session | null>(null);
   const [profile, setProfile]         = useState<Profile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
+  /** Set once auth has resolved either way, so the watchdog knows to stand down. */
+  const settledRef = useRef(false);
+
+  const settle = () => { settledRef.current = true; setLoading(false); };
 
   const fetchProfile = async (userId: string, attempt = 1): Promise<void> => {
     try {
+      // Hand-rolled deadline: React Native polyfills AbortSignal from the
+      // `abort-controller` package, which has no static AbortSignal.timeout().
+      const controller = new AbortController();
+      const deadline = setTimeout(() => controller.abort(), PROFILE_TIMEOUT_MS);
+
+      // PostgrestBuilder is a thenable, not a real Promise, so it has no
+      // .finally() — clear the deadline explicitly instead.
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, role, full_name, avatar_url, club_id, language, clubs(name, primary_color)')
+        .select('id, role, full_name, avatar_url, club_id, language, removed_at, clubs(name, primary_color)')
         .eq('id', userId)
+        .abortSignal(controller.signal)
         .single();
+      clearTimeout(deadline);
 
       if (error) {
+        clearTimeout(deadline);
         console.warn(`[AuthContext] Profile fetch error (attempt ${attempt}):`, error.code, error.message);
         if (attempt < 3) {
           await new Promise(r => setTimeout(r, 800 * attempt));
           return fetchProfile(userId, attempt + 1);
         }
         setProfileError(`${error.code}: ${error.message}`);
-        setLoading(false);
+        settle();
       } else if (data) {
         const { clubs, ...rest } = data as any;
         const profile: Profile = {
@@ -67,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         };
         setProfile(profile);
         setProfileError(null);
-        setLoading(false);
+        settle();
         // Switch app language to match the user's preference
         if (profile.language && profile.language !== i18n.language) {
           i18n.changeLanguage(profile.language);
@@ -77,12 +120,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         console.warn('[AuthContext] Profile fetch returned null data, no error. userId:', userId);
         setProfileError('no_data');
-        setLoading(false);
+        settle();
       }
     } catch (e) {
-      console.warn('[AuthContext] Profile fetch exception:', e);
-      setProfileError(String(e));
-      setLoading(false);
+      // A thrown error means the request never completed — a dropped
+      // connection, a paused Supabase project, or our own abort deadline. These
+      // used to give up on the first attempt while Postgrest-level errors got
+      // three tries, so one transient blip was a dead end. Retry both alike.
+      console.warn(`[AuthContext] Profile fetch exception (attempt ${attempt}):`, e);
+      if (attempt < 3) {
+        await new Promise(r => setTimeout(r, 800 * attempt));
+        return fetchProfile(userId, attempt + 1);
+      }
+      setProfileError(friendlyNetworkError(e));
+      settle();
     }
   };
 
@@ -118,20 +169,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
+    /**
+     * The callback below is deliberately SYNCHRONOUS, and the profile fetch is
+     * deferred with setTimeout(0).
+     *
+     * supabase-js holds an internal auth lock while it runs onAuthStateChange
+     * listeners. Calling another Supabase method from inside the callback — as
+     * this used to, with `await fetchProfile(...)` — can deadlock: the query
+     * waits to acquire the lock, the lock waits for the callback to return, and
+     * the callback waits for the query. It only triggers when a token refresh
+     * happens to be in flight, which is why the app froze on the splash screen
+     * intermittently rather than every time.
+     *
+     * Deferring to a macrotask lets the callback return and release the lock
+     * before any query starts. This is the pattern Supabase documents.
+     */
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      (_event, newSession) => {
         console.log('[AuthContext] onAuthStateChange:', _event, newSession?.user?.id ?? 'no user');
         setSession(newSession);
+
         if (newSession) {
           setLoading(true);
-          await fetchProfile(newSession.user.id);
+          setTimeout(() => { void fetchProfile(newSession.user.id); }, 0);
         } else {
           setProfile(null);
           setProfileError(null);
-          setLoading(false);
+          settle();
         }
       }
     );
+
+    /**
+     * Watchdog. Whatever goes wrong — a hung request, a paused Supabase
+     * project, an auth event that never arrives — the user must never be left
+     * on an unrecoverable splash screen. After this long we stop waiting and
+     * show the error state, which carries a sign-out button.
+     */
+    const watchdog = setTimeout(() => {
+      if (!settledRef.current) {
+        console.warn('[AuthContext] Auth did not settle in time — releasing the splash screen.');
+        setProfileError('timeout');
+        settle();
+      }
+    }, AUTH_TIMEOUT_MS);
 
     const handleDeepLink = async ({ url }: { url: string }) => {
       if (!url.includes('access_token')) return;
@@ -148,6 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const linkingSub = Linking.addEventListener('url', handleDeepLink);
 
     return () => {
+      clearTimeout(watchdog);
       subscription.unsubscribe();
       linkingSub.remove();
     };

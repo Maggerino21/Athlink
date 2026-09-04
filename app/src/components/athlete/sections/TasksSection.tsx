@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import haptics from '../../../utils/haptics';
+import PressableScale from '../../ui/PressableScale';
 import { Ionicons } from '@expo/vector-icons';
 import GlassCard from '../../ui/GlassCard';
 import { supabase } from '../../../lib/supabase';
@@ -75,24 +77,34 @@ export default function TasksSection({ isActive }: { isActive?: boolean }) {
   }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const markComplete = async (id: string) => {
+    // Optimistic: the checkbox flips and the haptic lands on touch, not after a
+    // network round-trip. Reverted below if the write fails.
+    haptics.success();
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'completed' } : t));
+
     const { error } = await supabase
       .from('tasks')
       .update({ status: 'completed', completed_at: new Date().toISOString() })
       .eq('id', id);
 
-    if (!error) {
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'completed' } : t));
+    if (error) {
+      haptics.error();
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'pending' } : t));
     }
   };
 
   const markPending = async (id: string) => {
+    haptics.soft();
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'pending' } : t));
+
     const { error } = await supabase
       .from('tasks')
       .update({ status: 'pending', completed_at: null })
       .eq('id', id);
 
-    if (!error) {
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'pending' } : t));
+    if (error) {
+      haptics.error();
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, status: 'completed' } : t));
     }
   };
 
@@ -163,13 +175,16 @@ function TaskCard({
       style={done ? styles.cardDone : undefined}
     >
       <View style={styles.row}>
-        <TouchableOpacity
+        <PressableScale
           style={[styles.checkbox, done && styles.checkboxDone]}
           onPress={() => done ? onUndo(task.id) : onComplete(task.id)}
-          activeOpacity={0.7}
+          scaleTo={0.82}
+          dim={false}
+          // The complete/undo handlers fire their own, more meaningful haptic.
+          haptic="none"
         >
           {done && <Ionicons name="checkmark" size={13} color="#fff" />}
-        </TouchableOpacity>
+        </PressableScale>
 
         <View style={styles.body}>
           <Text style={[styles.taskTitle, done && styles.taskTitleDone]}>{task.title}</Text>

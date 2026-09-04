@@ -1,9 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Dimensions,
-  Modal, ScrollView, PanResponder,
-  ActivityIndicator, Animated, Easing,
+  Modal, ScrollView, Image,
+  ActivityIndicator,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withSpring, withTiming,
+  runOnJS, interpolate, Extrapolation, Easing,
+} from 'react-native-reanimated';
+import haptics from '../../utils/haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -162,7 +168,7 @@ function Background() {
       />
 
       {/* Noise grain */}
-      <Animated.Image
+      <Image
         source={require('../../../assets/noise.png')}
         style={styles.noiseLayer}
         resizeMode="cover"
@@ -400,74 +406,73 @@ function SignupSheet({
 function BottomSheet({
   visible, onClose, title, children,
 }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
-  const insets          = useSafeAreaInsets();
-  const translateY      = useRef(new Animated.Value(H)).current;
-  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const insets = useSafeAreaInsets();
   const [mounted, setMounted] = useState(false);
 
-  // Keep latest onClose in a ref so PanResponder (created once) always calls the current one
+  const translateY = useSharedValue(H);
+
+  // Keep the latest onClose reachable from a worklet callback without
+  // rebuilding the gesture on every render.
   const onCloseRef = useRef(onClose);
   useEffect(() => { onCloseRef.current = onClose; });
 
-  // Step 1 — when visible flips, either mount+reset or start close animation
+  const requestClose = useCallback(() => {
+    haptics.soft();
+    onCloseRef.current();
+  }, []);
+
+  const finishClose = useCallback(() => setMounted(false), []);
+
+  // Step 1 — when visible flips, either mount+reset or start the close animation
   useEffect(() => {
     if (visible) {
-      translateY.setValue(H);
-      backdropOpacity.setValue(0);
+      translateY.value = H;
       setMounted(true);
     } else if (mounted) {
-      Animated.parallel([
-        Animated.timing(translateY, {
-          toValue: H,
-          duration: 260,
-          easing: Easing.in(Easing.bezier(0.55, 0, 0.55, 0.2)),
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start(() => setMounted(false));
+      translateY.value = withTiming(
+        H,
+        { duration: 260, easing: Easing.in(Easing.cubic) },
+        (done) => { if (done) runOnJS(finishClose)(); }
+      );
     }
-  }, [visible]);
+  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Step 2 — after mount (Modal is now rendered), start the open animation
+  // Step 2 — after mount (Modal is now rendered), spring the sheet up
   useEffect(() => {
     if (mounted && visible) {
-      Animated.parallel([
-        Animated.timing(translateY, {
-          toValue: 0,
-          duration: 300,
-          easing: Easing.out(Easing.bezier(0.25, 0.46, 0.45, 0.94)),
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 1,
-          duration: 240,
-          useNativeDriver: true,
-        }),
-      ]).start();
+      translateY.value = withSpring(0, { duration: 520, dampingRatio: 0.84 });
+      haptics.soft();
     }
-  }, [mounted]);
+  }, [mounted]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Drag handle — swipe down > 80px or fast flick dismisses; otherwise snaps back
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gs) => gs.dy > 4,
-      onPanResponderMove: (_, gs) => {
-        if (gs.dy > 0) translateY.setValue(gs.dy);
-      },
-      onPanResponderRelease: (_, gs) => {
-        if (gs.dy > 80 || gs.vy > 0.5) {
-          onCloseRef.current();
-        } else {
-          Animated.spring(translateY, { toValue: 0, useNativeDriver: true, bounciness: 4 }).start();
-        }
-      },
+  // Drag handle — pull down past a quarter of the sheet, or flick, to dismiss.
+  // Scoped to the handle rather than the whole sheet because this sheet holds
+  // text inputs and a keyboard-adjusting ScrollView.
+  const pan = Gesture.Pan()
+    .activeOffsetY([-10, 10])
+    .onUpdate((e) => {
+      // Downward only; upward pull meets a stiff, capped resistance.
+      translateY.value = e.translationY > 0
+        ? e.translationY
+        : -40 * (1 - Math.exp(e.translationY / 40));
     })
-  ).current;
+    .onEnd((e) => {
+      const projected = translateY.value + e.velocityY * 0.15;
+      if (translateY.value > H * 0.12 || e.velocityY > 800 || projected > H * 0.25) {
+        translateY.value = withTiming(H, { duration: 240, easing: Easing.in(Easing.cubic) });
+        runOnJS(requestClose)();
+      } else {
+        translateY.value = withSpring(0, { duration: 400, dampingRatio: 0.78 });
+      }
+    });
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(translateY.value, [0, H * 0.6], [1, 0], Extrapolation.CLAMP),
+  }));
 
   if (!mounted) return null;
 
@@ -475,7 +480,7 @@ function BottomSheet({
     <Modal visible transparent animationType="none" onRequestClose={onClose}>
       {/* Backdrop tint — visual only */}
       <Animated.View
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.55)', opacity: backdropOpacity }]}
+        style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.55)' }, backdropStyle]}
         pointerEvents="none"
       />
       {/* Backdrop tap-to-close — behind the sheet */}
@@ -487,15 +492,17 @@ function BottomSheet({
           sheetStyles.sheet,
           { position: 'absolute', bottom: 0, left: 0, right: 0 },
           { paddingBottom: Math.max(insets.bottom + 8, 24) },
-          { transform: [{ translateY }] },
+          sheetStyle,
         ]}
       >
         <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10,13,28,0.97)' }]} />
 
         {/* Handle area — larger tap/drag target wrapping the visible pill */}
-        <View {...panResponder.panHandlers} style={sheetStyles.handleArea}>
-          <View style={sheetStyles.handle} />
-        </View>
+        <GestureDetector gesture={pan}>
+          <View style={sheetStyles.handleArea}>
+            <View style={sheetStyles.handle} />
+          </View>
+        </GestureDetector>
 
         <ScrollView
           style={{ flex: 1, zIndex: 1 }}

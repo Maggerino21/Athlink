@@ -1,13 +1,22 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
-  Dimensions, Pressable, RefreshControl, Animated,
+  Dimensions, RefreshControl,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withSpring, withTiming,
+  withSequence, runOnJS, Easing,
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { supabase } from '../../../lib/supabase';
 import { useAuth } from '../../../context/AuthContext';
-import SlideUpSheet from '../../ui/SlideUpSheet';
+import PressableScale from '../../ui/PressableScale';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
+import haptics from '../../../utils/haptics';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const H_PAD = 16;
@@ -34,9 +43,9 @@ function DashCard({
   );
   if (onPress) {
     return (
-      <Pressable onPress={onPress}>
+      <PressableScale onPress={onPress} scaleTo={0.975} haptic="medium">
         {inner}
-      </Pressable>
+      </PressableScale>
     );
   }
   return inner;
@@ -48,6 +57,11 @@ interface NextMatch {
   match_date: string;
   is_home: boolean | null;
   location: string | null;
+  // Club-owned matchday detail — what the athlete actually needs to know.
+  meet_time: string | null;
+  meet_location: string | null;
+  notes: string | null;
+  opponent_logo_url: string | null;
 }
 
 interface UpcomingEvent {
@@ -202,57 +216,48 @@ function AISummaryCard({
   onPress: () => void;
   loading: boolean;
 }) {
-  const scale       = useRef(new Animated.Value(1)).current;
-  const glowOpacity = useRef(new Animated.Value(0)).current;
+  const pressed = useSharedValue(0);
+  const bounce  = useSharedValue(1);
+  const glow    = useSharedValue(0);
 
-  const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.963,
-      useNativeDriver: true,
-      tension: 400,
-      friction: 25,
-    }).start();
-  };
-
-  const handlePress = () => {
-    // Bubbly: compress → overshoot → settle
-    Animated.sequence([
-      Animated.spring(scale, {
-        toValue: 1.028,
-        useNativeDriver: true,
-        tension: 120,
-        friction: 4,
-      }),
-      Animated.spring(scale, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 220,
-        friction: 12,
-      }),
-    ]).start();
-
-    // Border glow pulse
-    Animated.sequence([
-      Animated.timing(glowOpacity, { toValue: 1, duration: 55, useNativeDriver: true }),
-      Animated.timing(glowOpacity, { toValue: 0, duration: 450, useNativeDriver: true }),
-    ]).start();
-
+  const fire = useCallback(() => {
+    haptics.medium();
     onPress();
-  };
+  }, [onPress]);
 
-  const handlePressOut = () => {
-    // If released without registering as a press (e.g. scroll cancel), snap back
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 200,
-      friction: 12,
-    }).start();
-  };
+  const tap = Gesture.Tap()
+    .maxDuration(4000)
+    .maxDistance(14)
+    .onBegin(() => {
+      pressed.value = withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) });
+    })
+    .onFinalize(() => {
+      pressed.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.cubic) });
+    })
+    .onEnd((_e, success) => {
+      if (!success) return;
+      // Bubbly: overshoot, then settle.
+      bounce.value = withSequence(
+        withSpring(1.028, { duration: 260, dampingRatio: 0.42 }),
+        withSpring(1,     { duration: 380, dampingRatio: 0.85 })
+      );
+      // Border glow pulse.
+      glow.value = withSequence(
+        withTiming(1, { duration: 55 }),
+        withTiming(0, { duration: 450 })
+      );
+      runOnJS(fire)();
+    });
+
+  const cardStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: bounce.value * (1 - pressed.value * 0.037) }],
+  }));
+
+  const glowStyle = useAnimatedStyle(() => ({ opacity: glow.value }));
 
   return (
-    <Pressable onPressIn={handlePressIn} onPress={handlePress} onPressOut={handlePressOut}>
-      <Animated.View style={[styles.aiCard, { transform: [{ scale }] }]}>
+    <GestureDetector gesture={tap}>
+      <Animated.View style={[styles.aiCard, cardStyle]}>
 
         {/* Top-corner AI tint gradient */}
         <LinearGradient
@@ -265,7 +270,7 @@ function AISummaryCard({
 
         {/* Glow border flash on tap */}
         <Animated.View
-          style={[styles.aiCardGlowBorder, { opacity: glowOpacity }]}
+          style={[styles.aiCardGlowBorder, glowStyle]}
           pointerEvents="none"
         />
 
@@ -311,55 +316,7 @@ function AISummaryCard({
           </View>
         )}
       </Animated.View>
-    </Pressable>
-  );
-}
-
-// ── Full summary sheet content ─────────────────────────────────────────────────
-function SummarySheetContent({
-  headline,
-  fullSummary,
-  sections,
-}: {
-  headline: string;
-  fullSummary: string;
-  sections: Array<{ title: string; items: string[] }>;
-}) {
-  return (
-    <View>
-      {/* AI label */}
-      <View style={styles.sheetAiLabel}>
-        <Text style={styles.sheetAiStar}>✦</Text>
-        <Text style={styles.sheetAiLabelText}>AI DAILY BRIEFING</Text>
-      </View>
-
-      {/* Headline */}
-      <Text style={styles.sheetHeadline}>{headline}</Text>
-
-      {/* Summary paragraph */}
-      <Text style={styles.sheetSummaryText}>{fullSummary}</Text>
-
-      {/* Sections */}
-      {sections.map((sec, si) => (
-        <View key={si} style={styles.sheetSection}>
-          <Text style={styles.sheetSectionTitle}>{sec.title}</Text>
-          {sec.items.map((item, ii) => (
-            <View key={ii} style={styles.sheetItemRow}>
-              <View style={styles.sheetItemDot} />
-              <Text style={styles.sheetItemText}>{item}</Text>
-            </View>
-          ))}
-        </View>
-      ))}
-
-      {/* Footer note */}
-      <View style={styles.sheetFooterNote}>
-        <Text style={styles.sheetAiStar}>✦</Text>
-        <Text style={styles.sheetFooterText}>
-          Summary generated from your live schedule, feedback, and tasks.
-        </Text>
-      </View>
-    </View>
+    </GestureDetector>
   );
 }
 
@@ -373,7 +330,7 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
   const [upcomingEvents, setUpcomingEvents] = useState<UpcomingEvent[]>([]);
   const [loading, setLoading]               = useState(true);
   const [refreshing, setRefreshing]         = useState(false);
-  const [sheetOpen, setSheetOpen]           = useState(false);
+  const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
 
   const fetchData = useCallback(async () => {
     if (!profile) return;
@@ -382,9 +339,12 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
       profile.club_id
         ? supabase
             .from('matches')
-            .select('opponent, match_date, is_home, location')
+            .select('opponent, match_date, is_home, location, meet_time, meet_location, notes, opponent_logo_url')
             .eq('club_id', profile.club_id)
             .eq('status', 'upcoming')
+            // Fixtures a coach removed are hidden, not deleted — a real DELETE
+            // would be undone by the next provider sync. Every read must filter.
+            .is('suppressed_at', null)
             .gte('match_date', new Date().toISOString())
             .order('match_date', { ascending: true })
             .limit(1)
@@ -403,20 +363,18 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
         .eq('assigned_to', profile.id)
         .eq('status', 'pending'),
 
+      // Squad-wide events have NO event_assignments rows, and RLS only lets an
+      // athlete read their own — so filtering client-side by assignment hid
+      // every event meant for the whole squad. Resolved server-side instead.
       (async () => {
-        const { data: asgn } = await supabase
-          .from('event_assignments')
-          .select('event_id')
-          .eq('athlete_id', profile.id);
-        const ids = (asgn ?? []).map((a: any) => a.event_id);
-        if (!ids.length) return { data: [] };
-        return supabase
-          .from('events')
-          .select('id, type, title, event_date, location')
-          .in('id', ids)
-          .gte('event_date', new Date().toISOString())
-          .order('event_date', { ascending: true })
-          .limit(5);
+        const from = new Date();
+        const to = new Date();
+        to.setDate(to.getDate() + 21);
+        const { data } = await supabase.rpc('visible_events_for_me', {
+          p_from: from.toISOString(),
+          p_to: to.toISOString(),
+        });
+        return { data: (data ?? []).slice(0, 5) };
       })(),
     ]);
 
@@ -466,7 +424,11 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
         <AISummaryCard
           headline={summary.headline}
           bullets={summary.bullets}
-          onPress={() => setSheetOpen(true)}
+          onPress={() => navigation.navigate('Briefing', {
+            headline: summary.headline,
+            fullSummary: summary.fullSummary,
+            sections: summary.sections,
+          })}
           loading={loading}
         />
 
@@ -517,18 +479,6 @@ export default function ThisWeekSection({ isActive }: { isActive?: boolean }) {
         )}
       </ScrollView>
 
-      {/* ── Full summary sheet ───────────────────────────────────────────── */}
-      <SlideUpSheet
-        visible={sheetOpen}
-        onClose={() => setSheetOpen(false)}
-        title="Today's Briefing"
-      >
-        <SummarySheetContent
-          headline={summary.headline}
-          fullSummary={summary.fullSummary}
-          sections={summary.sections}
-        />
-      </SlideUpSheet>
     </>
   );
 }
@@ -718,82 +668,4 @@ const styles = StyleSheet.create({
   eventMeta: { fontSize: 12, color: 'rgba(255,255,255,0.28)' },
 
   // ── Sheet content
-  sheetAiLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-  },
-  sheetAiStar: {
-    fontSize: 10,
-    color: 'rgba(167,139,250,0.6)',
-  },
-  sheetAiLabelText: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: 'rgba(167,139,250,0.5)',
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
-  },
-  sheetHeadline: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#F1F5F9',
-    letterSpacing: -0.3,
-    lineHeight: 28,
-    marginBottom: 14,
-  },
-  sheetSummaryText: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.55)',
-    lineHeight: 24,
-    marginBottom: 24,
-  },
-  sheetSection: {
-    marginBottom: 20,
-  },
-  sheetSectionTitle: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: 'rgba(167,139,250,0.45)',
-    letterSpacing: 1.8,
-    textTransform: 'uppercase',
-    marginBottom: 12,
-  },
-  sheetItemRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    marginBottom: 9,
-  },
-  sheetItemDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(167,139,250,0.4)',
-    flexShrink: 0,
-    marginTop: 7,
-  },
-  sheetItemText: {
-    flex: 1,
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-    lineHeight: 21,
-  },
-  sheetFooterNote: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginTop: 8,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.06)',
-  },
-  sheetFooterText: {
-    flex: 1,
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.2)',
-    lineHeight: 18,
-    fontStyle: 'italic',
-  },
 });
