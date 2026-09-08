@@ -23,7 +23,7 @@ import {
   View, Text, StyleSheet, ScrollView, Pressable, Platform,
   Dimensions, AccessibilityInfo,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
@@ -31,19 +31,23 @@ import { GlassView, GlassContainer } from 'expo-glass-effect';
 import { CAN_USE_GLASS, glassDiagnostics } from '../../utils/glass';
 import { useSharedValue } from 'react-native-reanimated';
 import LiquidGlassTabBar from '../../components/athlete/LiquidGlassTabBar';
-import { hexToRgba } from '../../utils/theme';
+import BlobLab from './BlobLab';
+import { hexToRgba, SURFACE_BASE } from '../../utils/theme';
 
 const { width: W } = Dimensions.get('window');
 const SAMPLE_W = W - 48;
 const SAMPLE_H = 74;
 
 type Backdrop = 'app' | 'rich' | 'busy' | 'photo';
+type Lab = 'glass' | 'blobs';
 
 export default function GlassLab({ onClose, clubColor = '#3B82F6' }: {
   onClose: () => void;
   clubColor?: string;
 }) {
   const [backdrop, setBackdrop] = useState<Backdrop>('app');
+  const [lab, setLab] = useState<Lab>('glass');
+  const insets = useSafeAreaInsets();
   // Drives the real tab bar pinned at the bottom of this screen. Static — this
   // is about how the bar *looks* on a given backdrop, not how it animates.
   const labScrollX = useSharedValue(0);
@@ -65,20 +69,29 @@ export default function GlassLab({ onClose, clubColor = '#3B82F6' }: {
       <Backdrops kind={backdrop} clubColor={clubColor} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Glass Lab</Text>
+        {/* Header. The floor is deliberate: if the safe-area context is ever
+            missing again the toggle must still be reachable, not tucked under
+            the Dynamic Island. */}
+        <View style={[styles.header, { paddingTop: insets.top > 0 ? 12 : 56 }]}>
+          <View style={styles.labSwitch}>
+            {(['glass', 'blobs'] as Lab[]).map(k => (
+              <Pressable key={k} onPress={() => setLab(k)} style={[styles.labBtn, lab === k && styles.labBtnOn]}>
+                <Text style={[styles.labTxt, lab === k && styles.labTxtOn]}>{k === 'glass' ? 'Glass' : 'Blobs'}</Text>
+              </Pressable>
+            ))}
+          </View>
           <Pressable onPress={onClose} hitSlop={16}>
             <Ionicons name="close" size={24} color="#fff" />
           </Pressable>
         </View>
 
+        {lab === 'blobs' ? <BlobLab /> : <>
+
         {/* Capability readout — the facts, not a guess */}
         <View style={styles.readout}>
           <Fact label="Platform" value={d.platform} />
           <Fact label="Liquid Glass design" value={d.designAvailable ? 'available' : 'unavailable'} good={d.designAvailable} />
-          <Fact label="API flag present?" value={d.apiFlagPresent ? 'yes' : 'no (ignored)'} />
-          <Fact label="API flag value" value={d.apiFlagPresent ? String(d.apiFlagValue) : 'n/a'} />
+          <Fact label="API flag (not gated on)" value={String(d.apiFlagValue)} />
           <Fact
             label="Reduce Transparency"
             value={reduceTransparency === null ? 'unknown' : reduceTransparency ? 'ON (dims glass)' : 'off'}
@@ -227,6 +240,7 @@ export default function GlassLab({ onClose, clubColor = '#3B82F6' }: {
           onTabPress={() => {}}
           clubColor={clubColor}
         />
+        </>}
       </SafeAreaView>
     </View>
   );
@@ -236,22 +250,10 @@ export default function GlassLab({ onClose, clubColor = '#3B82F6' }: {
 
 function Backdrops({ kind, clubColor }: { kind: Backdrop; clubColor: string }) {
   if (kind === 'app') {
-    // Deliberately identical to HomeScreen's real background.
-    return (
-      <View style={StyleSheet.absoluteFill}>
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0c0a0a' }]} />
-        <LinearGradient
-          colors={[clubColor + '38', clubColor + '00']}
-          style={styles.orbTop}
-          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-        />
-        <LinearGradient
-          colors={[clubColor + '1F', clubColor + '00']}
-          style={styles.orbBottom}
-          start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }}
-        />
-      </View>
-    );
+    // Deliberately identical to the real background: flat, no orbs. Glass has
+    // the least to refract here of any backdrop in this lab, and that is now
+    // the shipped condition rather than a worst case.
+    return <View style={[StyleSheet.absoluteFill, { backgroundColor: SURFACE_BASE }]} />;
   }
 
   if (kind === 'rich') {
@@ -359,6 +361,11 @@ function Note({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
+  labSwitch: { flexDirection: 'row', gap: 6 },
+  labBtn:    { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.07)' },
+  labBtnOn:  { backgroundColor: 'rgba(255,255,255,0.20)' },
+  labTxt:    { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
+  labTxtOn:  { color: '#fff' },
   root: { flex: 1, backgroundColor: '#000' },
   orbTop:    { position: 'absolute', top: -160, right: -160, width: W * 1.3, height: 460, borderRadius: 9999 },
   orbBottom: { position: 'absolute', bottom: -160, left: -120, width: W * 1.2, height: 460, borderRadius: 9999 },

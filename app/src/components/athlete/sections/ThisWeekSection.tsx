@@ -528,11 +528,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(139,92,246,0.18)',
   },
   aiCardTint: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: AI_RADIUS,
   },
   aiCardGlowBorder: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: AI_RADIUS,
     borderWidth: 1.5,
     borderColor: 'rgba(167,139,250,0.7)',

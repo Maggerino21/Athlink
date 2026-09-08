@@ -11,14 +11,19 @@
  * backdrop was hidden and the whole app went white. Do not try it again.
  */
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { clubGradientOrbs } from '../../utils/theme';
-
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+import { SURFACE_BASE } from '../../utils/theme';
 
 export interface AthleteFrameProps {
+  /**
+   * `brand` is the redesigned Home header: the wordmark centred, the greeting
+   * under it, no chips and no rule. `default` is the older header the other
+   * four tabs still use — they are being redesigned one at a time, and a tab
+   * that has not been done yet looking like itself is better than every tab
+   * looking half-done.
+   */
+  variant?: 'default' | 'brand' | 'bare';
   clubColor: string;
   greeting: string;
   name: string;
@@ -32,19 +37,54 @@ export interface AthleteFrameProps {
 }
 
 export default function AthleteFrame({
-  clubColor, greeting, name, initials, clubName, dateLabel,
+  variant = 'default', clubColor, greeting, name, initials, clubName, dateLabel,
   nextMatchLabel, onAvatarPress, onAvatarLongPress, children,
 }: AthleteFrameProps) {
-  const orbs = clubGradientOrbs(clubColor);
+  // No header at all — just the safe area and the ground colour. Every tab
+  // except Home uses this: the greeting and avatar belong on the screen you
+  // land on, not repeated above every list in the app.
+  if (variant === 'bare') {
+    return (
+      <View style={styles.root}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.content}>{children}</View>
+        </SafeAreaView>
+      </View>
+    );
+  }
+
+  if (variant === 'brand') {
+    return (
+      <View style={styles.root}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <View style={styles.brandHeader}>
+            <View style={styles.brandRow}>
+              <View style={styles.avatarSpacer} />
+              <Text style={styles.wordmark}>Athlink</Text>
+              <TouchableOpacity
+                onPress={onAvatarPress}
+                onLongPress={onAvatarLongPress}
+                delayLongPress={500}
+                activeOpacity={0.8}
+              >
+                <View style={[styles.avatarSmall, { backgroundColor: clubColor }]}>
+                  <Text style={styles.avatarSmallText}>{initials}</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.brandGreeting}>
+              {greeting}{name ? `, ${name.split(' ')[0]}` : ''}
+            </Text>
+          </View>
+
+          <View style={styles.content}>{children}</View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
-      <View style={StyleSheet.absoluteFill} pointerEvents="none">
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: '#0c0a0a' }]} />
-        <LinearGradient colors={orbs.top}    style={styles.orbTopRight}   start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} />
-        <LinearGradient colors={orbs.bottom} style={styles.orbBottomLeft} start={{ x: 0.5, y: 1 }} end={{ x: 0.5, y: 0 }} />
-      </View>
-
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <View style={styles.headerRow}>
@@ -90,11 +130,17 @@ function GlassChip({
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0c0a0a' },
+  root: { flex: 1, backgroundColor: SURFACE_BASE },
   safeArea: { flex: 1 },
   content: { flex: 1 },
-  orbTopRight:   { position: 'absolute', top: -160, right: -160, width: SCREEN_WIDTH * 1.3, height: SCREEN_HEIGHT * 0.65, borderRadius: 9999 },
-  orbBottomLeft: { position: 'absolute', bottom: -160, left: -120, width: SCREEN_WIDTH * 1.2, height: SCREEN_HEIGHT * 0.65, borderRadius: 9999 },
+  brandHeader:   { paddingTop: 2, paddingBottom: 18, paddingHorizontal: 24 },
+  brandRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  avatarSpacer:  { width: 34 },
+  wordmark:      { fontFamily: 'SpaceGrotesk_400Regular', fontSize: 27, color: '#FFFFFF', letterSpacing: -0.3 },
+  avatarSmall:   { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
+  avatarSmallText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  brandGreeting: { fontFamily: 'Inter_500Medium', fontSize: 17, color: 'rgba(255,255,255,0.55)', marginTop: 22 },
+
   header: { paddingTop: 6, paddingBottom: 14, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   greeting:    { fontSize: 11, color: 'rgba(255,255,255,0.35)', fontWeight: '500', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 3 },

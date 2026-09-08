@@ -3,7 +3,7 @@
  *
  * ── Why this uses a native tab bar ──
  *
- * `BottomTabs` from react-native-screens wraps a real `UITabBarController`. On
+ * `Tabs.Host` from react-native-screens wraps a real `UITabBarController`. On
  * iOS 26 that means Apple's own Liquid Glass tab bar, with the selection lens
  * that magnifies and displaces content behind it, chromatic edge fringing, the
  * lens merging into the bar as it travels, and scroll-edge/minimize behaviour.
@@ -25,22 +25,31 @@
  *    background and header via `AthleteFrame` rather than sharing one above a
  *    pager.
  *  - Tabs are tapped, not swiped. That is how iOS tab bars work.
+ *
+ * SDK 57 note: this API was `BottomTabs` / `BottomTabsScreen` with a per-screen
+ * `isFocused` until react-native-screens 4.26, which renamed it to
+ * `Tabs.Host` / `Tabs.Screen`, moved platform props under `ios` / `android`,
+ * and replaced `isFocused` with the acknowledged `navStateRequest` +
+ * `onTabSelected` model below.
  */
 import React, { useState, useEffect, useCallback } from 'react';
 import { Alert, InteractionManager, Modal, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { BottomTabs, BottomTabsScreen } from 'react-native-screens';
+import { Tabs, type TabSelectedEvent } from 'react-native-screens';
+import type { NativeSyntheticEvent } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import haptics from '../../utils/haptics';
 import AthleteFrame from '../../components/athlete/AthleteFrame';
-import ThisWeekSection from '../../components/athlete/sections/ThisWeekSection';
+import HomeSection from '../../components/athlete/sections/HomeSection';
 import FeedbackSection from '../../components/athlete/sections/FeedbackSection';
 import ScheduleSection from '../../components/athlete/sections/ScheduleSection';
 import TasksSection from '../../components/athlete/sections/TasksSection';
 import ProgressSection from '../../components/athlete/sections/ProgressSection';
 import GlassLab from '../dev/GlassLab';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SURFACE_BASE } from '../../utils/theme';
 
 /**
  * SF Symbols rather than Ionicons — the native tab bar renders these itself, at
@@ -48,7 +57,7 @@ import GlassLab from '../dev/GlassLab';
  * the Liquid Glass treatment. A bitmap icon would not.
  */
 const SECTIONS = [
-  { id: 'this-week', label: 'Home',     sf: 'house',                      sfActive: 'house.fill',            Component: ThisWeekSection },
+  { id: 'this-week', label: 'Home',     sf: 'house',                      sfActive: 'house.fill',            Component: HomeSection },
   { id: 'feedback',  label: 'Feedback', sf: 'bubble.left',                sfActive: 'bubble.left.fill',      Component: FeedbackSection },
   { id: 'schedule',  label: 'Schedule', sf: 'calendar',                   sfActive: 'calendar',              Component: ScheduleSection },
   { id: 'tasks',     label: 'Tasks',    sf: 'checkmark.circle',           sfActive: 'checkmark.circle.fill', Component: TasksSection    },
@@ -75,6 +84,16 @@ function formatDate() {
 export default function HomeScreen() {
   const { profile, signOut } = useAuth();
   const [activeKey, setActiveKey] = useState<string>(SECTIONS[0].id);
+  /**
+   * Optimistic-concurrency token for the native tab selection, new in
+   * react-native-screens 4.26.
+   *
+   * The native side owns the selection; we request changes and it acknowledges
+   * them. `baseProvenance` must be the provenance of the last state we were
+   * told about, so native can reject a request built on a stale view of the
+   * world (two rapid taps, say) instead of applying it out of order.
+   */
+  const [provenance, setProvenance] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
   const [nextMatchLabel, setNextMatchLabel] = useState<string | null>(null);
   const [glassLabOpen, setGlassLabOpen] = useState(false);
@@ -129,8 +148,9 @@ export default function HomeScreen() {
     return () => task.cancel();
   }, []);
 
-  const onFocusChange = useCallback((key: string) => {
+  const onTabSelected = useCallback((key: string, nextProvenance: number) => {
     setActiveKey(key);
+    setProvenance(nextProvenance);
     setVisited(prev => (prev.has(key) ? prev : new Set(prev).add(key)));
     haptics.selection();
   }, []);
@@ -171,38 +191,52 @@ export default function HomeScreen() {
     <View style={styles.root}>
       <StatusBar style="light" />
 
-      <BottomTabs
-        // From iOS 26 this also drives the glow of the Liquid Glass selection
-        // lens, so the club colour lands inside Apple's own effect.
-        tabBarTintColor={clubColor}
-        // iOS 26 behaviour: the bar shrinks out of the way as content scrolls.
-        tabBarMinimizeBehavior="onScrollDown"
-        onNativeFocusChange={({ nativeEvent }) => onFocusChange(nativeEvent.tabKey)}
+      <Tabs.Host
+        // Selection is native-owned and acknowledged: we request a key, native
+        // confirms via onTabSelected with a new provenance. See the note on the
+        // `provenance` state above.
+        navStateRequest={{ selectedScreenKey: activeKey, baseProvenance: provenance }}
+        onTabSelected={({ nativeEvent }: NativeSyntheticEvent<TabSelectedEvent>) =>
+          onTabSelected(nativeEvent.selectedScreenKey, nativeEvent.provenance)
+        }
+        ios={{
+          // White, not the club colour. From iOS 26 this also drives the glow
+          // of the Liquid Glass selection lens, so the whole lens takes this
+          // colour — a club tint there reads as decoration rather than as
+          // "you are here", and fights the cards for attention.
+          tabBarTintColor: '#FFFFFF',
+          // iOS 26 behaviour: the bar shrinks out of the way as content scrolls.
+          tabBarMinimizeBehavior: 'onScrollDown',
+        }}
       >
         {SECTIONS.map(({ id, label, sf, sfActive, Component }) => (
-          <BottomTabsScreen
+          <Tabs.Screen
             key={id}
-            tabKey={id}
-            isFocused={activeKey === id}
+            screenKey={id}
             title={label}
-            icon={{ sfSymbolName: sf }}
-            selectedIcon={{ sfSymbolName: sfActive }}
             badgeValue={id === 'feedback' && unreadCount > 0 ? String(unreadCount) : undefined}
-            // Deliberately no `freezeContents`. Freezing was only ever needed
-            // because each tab drew its own full-screen backdrop; now there is
-            // one backdrop behind the whole tab controller, a hidden tab costs
-            // little and freezing it bought a flash instead of speed.
+            ios={{
+              // SF Symbols, rendered by the bar itself at the system's optical
+              // size and weight — a bitmap icon does not get that treatment.
+              icon: { type: 'sfSymbol', name: sf },
+              selectedIcon: { type: 'sfSymbol', name: sfActive },
+            }}
           >
-            <AthleteFrame {...frameProps}>
+            <AthleteFrame {...frameProps} variant={id === 'this-week' ? 'brand' : 'bare'}>
               {visited.has(id) ? <Component isActive={activeKey === id} /> : null}
             </AthleteFrame>
-          </BottomTabsScreen>
+          </Tabs.Screen>
         ))}
-      </BottomTabs>
+      </Tabs.Host>
 
       {__DEV__ && glassLabOpen && (
         <Modal visible animationType="slide" onRequestClose={() => setGlassLabOpen(false)}>
-          <GlassLab onClose={() => setGlassLabOpen(false)} clubColor={clubColor} />
+          {/* An RN Modal is a separate root view, so it does not inherit the
+              app's SafeAreaProvider. Without its own, every inset reads 0 and
+              the lab's header renders under the Dynamic Island, out of reach. */}
+          <SafeAreaProvider>
+            <GlassLab onClose={() => setGlassLabOpen(false)} clubColor={clubColor} />
+          </SafeAreaProvider>
         </Modal>
       )}
     </View>
@@ -210,5 +244,5 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0c0a0a' },
+  root: { flex: 1, backgroundColor: SURFACE_BASE },
 });

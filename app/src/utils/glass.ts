@@ -27,33 +27,14 @@
  * back here, but it no longer vetoes anything.
  */
 import { Platform } from 'react-native';
-import { requireNativeModule } from 'expo-modules-core';
-import { isLiquidGlassAvailable } from 'expo-glass-effect';
+import { isLiquidGlassAvailable, isGlassEffectAPIAvailable } from 'expo-glass-effect';
 
-/** Does the native module actually expose the API-availability flag at all? */
-function apiFlagIsPresent(): boolean {
-  if (Platform.OS !== 'ios') return false;
-  try {
-    const mod = requireNativeModule('ExpoGlassEffect') as Record<string, unknown>;
-    return mod != null && 'isGlassEffectAPIAvailable' in mod;
-  } catch {
-    return false;
-  }
-}
-
-/** The flag's value, only meaningful when `apiFlagIsPresent()` is true. */
-function apiFlagValue(): boolean {
-  if (Platform.OS !== 'ios') return false;
-  try {
-    const mod = requireNativeModule('ExpoGlassEffect') as Record<string, unknown>;
-    return !!mod?.isGlassEffectAPIAvailable;
-  } catch {
-    return false;
-  }
-}
-
-const FLAG_PRESENT = apiFlagIsPresent();
-const FLAG_VALUE = apiFlagValue();
+/**
+ * Reported for diagnostics only — nothing gates on it. See the note above for
+ * why: on a real iOS 26.6 device this returns false while GlassView renders
+ * full refracting Liquid Glass perfectly.
+ */
+const FLAG_VALUE = Platform.OS === 'ios' && isGlassEffectAPIAvailable();
 const DESIGN_AVAILABLE = Platform.OS === 'ios' && isLiquidGlassAvailable();
 
 /**
@@ -69,23 +50,20 @@ export const CAN_USE_GLASS = DESIGN_AVAILABLE;
 export const glassDiagnostics = {
   platform: `${Platform.OS} ${String(Platform.Version)}`,
   designAvailable: DESIGN_AVAILABLE,
-  apiFlagPresent: FLAG_PRESENT,
   apiFlagValue: FLAG_VALUE,
   result: CAN_USE_GLASS,
   /** Plain-language account of why, so the lab never has to be interpreted. */
   reason: !DESIGN_AVAILABLE
     ? 'Device/OS does not offer the Liquid Glass design'
-    : FLAG_PRESENT && !FLAG_VALUE
-      ? 'API flag says false — ignoring it, glass verified working (see glass.ts)'
-      : !FLAG_PRESENT
-        ? 'API flag absent from this build — not required'
-        : 'API flag present and true',
+    : FLAG_VALUE
+      ? 'Design available, API flag agrees'
+      : 'API flag says false — ignoring it, glass verified working (see glass.ts)',
 };
 
 if (__DEV__) {
   console.log(
     `[glass] ${glassDiagnostics.platform} · design=${DESIGN_AVAILABLE} · ` +
-    `flagPresent=${FLAG_PRESENT} flagValue=${FLAG_VALUE} → ` +
+    `apiFlag=${FLAG_VALUE} → ` +
     `${CAN_USE_GLASS ? 'NATIVE GLASS' : 'BlurView fallback'} (${glassDiagnostics.reason})`
   );
 }

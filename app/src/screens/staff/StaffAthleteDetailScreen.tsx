@@ -705,11 +705,11 @@ function ModalShell({ visible, title, onClose, children }: {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         activeOpacity={1}
         onPress={onClose}
       >
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
       </TouchableOpacity>
       <KeyboardAvoidingView
         style={{ flex: 1, justifyContent: 'flex-end' }}

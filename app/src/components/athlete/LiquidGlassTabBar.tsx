@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
   },
 
   tabRow: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: ROW_PAD,

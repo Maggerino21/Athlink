@@ -784,11 +784,11 @@ function ModalShell({
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       {/* Backdrop */}
       <TouchableOpacity
-        style={StyleSheet.absoluteFillObject}
+        style={StyleSheet.absoluteFill}
         activeOpacity={1}
         onPress={onClose}
       >
-        <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)' }]} />
       </TouchableOpacity>
 
       {/* KAV positions sheet at bottom and lifts it when keyboard appears */}
@@ -1088,7 +1088,7 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 20, gap: 10 },
 
   // Modal
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
     overflow: 'hidden',

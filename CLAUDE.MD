@@ -4,7 +4,7 @@
 
 | Layer | Technology |
 |---|---|
-| Mobile app (`app/`) | Expo SDK 55 / React Native (iOS primary) |
+| Mobile app (`app/`) | Expo SDK 57 / React Native 0.86 (iOS primary) |
 | Staff web app (`web/`) | Next.js 16 (App Router) / React 19 / Tailwind v4 |
 | Language | TypeScript (strict) |
 | Backend | Supabase (Postgres + Auth + Edge Functions + Storage) |
@@ -12,6 +12,7 @@
 | Push notifications | Expo Push Notifications (`expo-notifications`) |
 | i18n | `react-i18next` + JSON translation files (EN / NO) — mobile only |
 | Navigation | React Navigation v6 — NativeStack (mobile) |
+| Animation | Reanimated 4 worklets + `react-native-gesture-handler` (mobile) — UI thread only |
 | UI | Mobile: custom glass system. Web: CSS design tokens in `web/app/globals.css` |
 
 > **Next.js version warning.** `web/` runs a Next.js release with breaking changes from
@@ -51,7 +52,8 @@ app/
       ui/
         GlassCard.tsx
         GlassInput.tsx
-        SlideUpSheet.tsx  # Reusable bottom sheet (slides up ~62% screen)
+        PressableScale.tsx  # Standard tap target — UI-thread press feedback
+        SlideUpSheet.tsx    # Reusable bottom sheet (slides up ~62% screen)
     context/
       AuthContext.tsx     # Session, profile, club_color, push token registration
     i18n/
@@ -67,6 +69,7 @@ app/
       staff/StaffAthleteDetailScreen.tsx
     utils/
       theme.ts            # hexToRgba(), clubGradientOrbs()
+      haptics.ts          # the only entry point for haptics — six named intents
     lib/
       supabase.ts
 
@@ -176,7 +179,23 @@ integration contract and its limits.
 
 **Language per user.** User selects language at signup (EN / NO). Stored on `profiles.language`. Applied via `i18n.changeLanguage()` on login. AI feedback is translated into the athlete's language by the edge function.
 
-**SlideUpSheet pattern.** Tap any content item (event, feedback, task) → sheet slides up from the bottom covering ~62% of screen. Draggable to dismiss. Used for calendar events today; planned for feedback and task detail views.
+**Detail views are native iOS sheets, not components.** Tapping an event or the daily
+briefing navigates to a route in `RootNavigator`'s athlete sheet group, presented with
+`presentation: 'formSheet'` — i.e. `UISheetPresentationController`. iOS owns the detents
+(`sheetAllowedDetents: 'fitToContents'`), the grabber, interactive dismissal,
+scroll-to-expand, the stacked-card recede of the screen behind, and the sheet's own Liquid
+Glass material on iOS 26.
+
+The sheet screens draw **content only** — never add a drag handle, backdrop or close
+button, because the presentation already supplies all three.
+
+Because it is a route, the detail data travels as navigation params. `CalEvent` is a flat
+object of primitives so it is serialisable; pass it directly rather than refetching what
+the list already had.
+
+`components/ui/SlideUpSheet.tsx` is the superseded hand-built version — kept for reference,
+used by nothing. **Don't wire it back in.** Feedback and task detail views should become
+sheet routes in the same group.
 
 ## Database schema (key tables)
 
@@ -236,8 +255,8 @@ Mobile documents: `training` · `exercise` · `recovery` · `travel` · `meeting
 (plus `match` from the matches table).
 
 The web app writes three more — `home` (home training), `rehab`, `vacation` — and
-`CalendarTab` colour-maps all of them. **The mobile app has no colour/label for these
-three**, so events created on web currently fall through to the mobile default styling.
+`CalendarTab` colour-maps all of them. The mobile app covers all nine in `EVENT_META`
+(ScheduleSection) and `EVENT_ICONS` (ThisWeekSection); keep those two in sync.
 
 ### Club signup flow (DB trigger `handle_new_user`)
 
@@ -421,13 +440,33 @@ SELECT name, invite_code, primary_color FROM clubs;
 **Mobile — untouched this cycle, and now behind the web app**
 
 - **No invite-code display** — a coach working purely from mobile cannot onboard anyone.
-- **Ignores `removed_at`** — a removed athlete just sees empty queries, with no explanation.
-- **No styling for `home` / `rehab` / `vacation`** event types the web app creates.
-- **Knows nothing about the new match fields** — `meet_time`, `meet_location`, `notes` and
-  `opponent_logo_url` are the whole point of matchday for an athlete, and the app does not
-  read them yet. This is the biggest single gap between what the staff app produces and
-  what athletes see.
 - **Progress tab** — still a placeholder.
+- **Mobile is English-only below the landing screen.** 171 translation keys exist but only
+  `LandingScreen` consumes them, and there is still no way to change language after signup
+  (mobile signup *does* have an EN/NO picker — it's the web signup that hardcodes `en`).
+
+**Fixed in the correctness pass** (all verified against production rows):
+
+- **Squad-wide events were invisible.** Both sections filtered to `event_assignments`, but
+  an absent row means *whole squad*. Live data had 5 events and 1 assignment row, so an
+  athlete saw almost nothing. This could not be fixed client-side — the athlete policy on
+  `event_assignments` is `athlete_id = auth.uid()`, so "unassigned" and "assigned to
+  someone else" are indistinguishable from the client. Resolved by the
+  `visible_events_for_me(from, to)` RPC (`SECURITY DEFINER`), which keeps assignment
+  details private while answering correctly. **Use it for any athlete-facing event read.**
+- **Kick-off times displayed in UTC.** `ScheduleSection` did `iso.slice(11, 16)`, reading
+  the UTC portion straight off the wire — a 20:00 Oslo fixture rendered as 18:00, and
+  Schedule disagreed with Home by two hours about the same match. `localTime()` /
+  `localYMD()` now do this; **never slice a timestamptz string.**
+- **Suppressed fixtures reappeared on mobile** — no `suppressed_at IS NULL` filter on any
+  of the three `matches` reads.
+- **Multi-day events collapsed to day one.** `end_date` was read nowhere in `app/`.
+  `expandEvent()` now spans them, tagged `spanDay` / `spanTotal`, capped at 60 days.
+- **Matchday fields are now read** — `meet_time`, `meet_location`, `notes` and
+  `opponent_logo_url`. Meet time and place lead the detail sheet, above kick-off, because
+  that is what an athlete opens it to find.
+- **`removed_at` is now honoured** — `RootNavigator` shows a plain-language explanation and
+  a sign-out button instead of silently empty tabs.
 
 **Both apps**
 
@@ -503,16 +542,126 @@ category offers paste-a-fixture-list (parsed by `lib/parseFixtures.ts`, confirme
 alongside single-match entry. Everything it writes is `source = 'manual'` and is therefore
 untouchable by a sync.
 
-**Mobile feel — blocking the launch bar**
+**Mobile feel — the animation stack**
 
-The app has `react-native-reanimated` v4 installed but **does not use it for gestures**.
-`SlideUpSheet.tsx` and the `BottomSheet` in `LandingScreen.tsx` both drive drag with
-`PanResponder` + the legacy `Animated` API, which runs on the JS thread — that is the gap
-between "works" and "feels native", and it will not reach the bar set above.
+Everything animated now runs as a Reanimated worklet on the UI thread. `PanResponder` and
+the legacy `Animated` API are gone from `app/` entirely — **do not reintroduce either.**
+The rule: if a value changes while a finger is down, it belongs in a worklet.
 
-Also absent: **`react-native-gesture-handler`** (needed for swipeable rows, drag-to-dismiss
-and any real gesture work — it runs on the UI thread) and **`expo-haptics`** (cheap to add,
-disproportionate effect on perceived quality).
+- **`react-native-gesture-handler`** drives every gesture. `GestureHandlerRootView` wraps
+  the tree in `App.tsx` and must stay outermost with `flex: 1`.
+- **`utils/haptics.ts`** is the only entry point for haptics — six named intents, all
+  fire-and-forget so a failure can never surface. Don't call `expo-haptics` directly.
+- **`components/ui/PressableScale.tsx`** is the standard tap target. It uses a
+  gesture-handler Tap rather than `Pressable` so the press-down visual starts on the UI
+  thread instead of waiting for a JS round-trip.
+
+> **The worklets babel plugin is injected by `babel-preset-expo` automatically** whenever
+> `react-native-worklets` is present (it is, via Reanimated 4). `babel.config.js` used to
+> *also* list `react-native-reanimated/plugin` — which re-exports the same plugin — so it
+> was applied twice. Don't add it back. Note the v4 rename: the plugin is
+> `react-native-worklets/plugin` now, not the Reanimated one.
+
+> **`react-native-worklets` must be pinned to the exact version in
+> `expo/bundledNativeModules.json`** — `0.10.1` on SDK 57. It is not a direct dependency by
+> nature: it arrives transitively via Reanimated, which declares a loose range and so
+> resolves to something newer. But Expo Go ships the *native* half at exactly the bundled
+> version, and a newer JS half throws at startup:
+> `Mismatch between JavaScript part and native part of Worklets (0.7.2 vs 0.5.1)`.
+>
+> Any `npm install` that re-resolves the tree can reintroduce the drift, and **every SDK
+> upgrade changes the required version** — re-pin it as part of the upgrade. Reanimated
+> itself compares only major.minor, so its own patch drift is harmless.
+
+**Never layer anything on top of real Liquid Glass.** `expo-glass-effect` is bundled in
+Expo Go and resolves on any iOS 26 device, so `GlassView` gives us Apple's actual
+`UIGlassEffect` — the same one Expo Go's own tab bar uses. It draws its own edge, specular
+highlight and shadow. Both `LiquidGlassTabBar` and `SlideUpSheet` used to apply it and then
+bury it under a hand-built imitation — a 1px white border, gradient speculars, a manual
+shadow, `overflow: 'hidden'`, and in the sheet's case an **85%-opaque fill directly over a
+BlurView**, which made the blur invisible while still paying for it. The native path must
+stay bare.
+
+Gate on **both** `isLiquidGlassAvailable()` *and* `isGlassEffectAPIAvailable()`. The second
+is not redundant: some iOS 26 builds report the design as available while the API is
+missing, and that crashes rather than degrading.
+
+Use **`GlassContainer`** when two glass elements should merge — its `spacing` prop is what
+makes the tab bar's indicator flow into the bar as it travels instead of sliding over it as
+a separate pane. Without the container they ignore each other.
+
+The hand-layered `BlurView` stack is still correct as the pre-iOS-26 / Android fallback, and
+lives in the `else` branch. Keep the two paths separate rather than trying to unify them —
+they want opposite things.
+
+> **Skia is not the answer to glass.** Shader-based approaches (`@shopify/react-native-skia`
+> and the various `react-native-liquid-glass*` packages) exist to *simulate* this effect
+> where the platform lacks it. We have the real API. A hand-written refraction shader would
+> be more code, more GPU, and still not match, since Apple's samples the live backdrop and
+> responds to Reduce Transparency. Skia earns its place for Android parity or a bespoke
+> effect Apple doesn't ship — not here.
+
+> **SDK 57 upgrade notes** (from SDK 54, Sept 2026). Four things broke and are worth
+> knowing if you upgrade again:
+>
+> - **`StyleSheet.absoluteFillObject` was removed** in RN 0.86. `absoluteFill` is now a
+>   plain frozen object rather than a registered style ID, so it spreads correctly and is a
+>   direct replacement. 11 call sites.
+> - **`BottomTabs` / `BottomTabsScreen` became `Tabs.Host` / `Tabs.Screen`** in
+>   react-native-screens 4.26 — see the tab bar section below.
+> - **`@expo/config-plugins` is no longer hoisted.** It lives under `expo/node_modules`, so
+>   `@react-native-community/datetimepicker`'s config plugin cannot resolve it and every
+>   `expo export` fails with `Cannot find module '@expo/config-plugins'`. Fixed by adding it
+>   as a top-level devDependency, matching the nested version.
+> - **Expo packages are renumbered to match the SDK** — `expo-blur` is `57.0.2`, not `15.x`.
+>   Don't read those as major-version jumps.
+
+**The athlete tab bar is Apple's, not ours.** `HomeScreen` uses `Tabs.Host` /
+`Tabs.Screen` from `react-native-screens` — a real `UITabBarController`. This is the
+only way to get authentic Liquid Glass, and the distinction that took several rounds to
+find is this: **`expo-glass-effect` gives you the material, not the control.** `GlassView`
+is `UIGlassEffect`; the tab bar is something Apple *built on top of* that material, and the
+control is what contributes the selection lens that magnifies and displaces content behind
+it, the chromatic edge fringing, the lens merging into the bar as it travels, and
+scroll-edge/minimize behaviour. A hand-built pill applying the material will always read as
+a copy, however carefully it is tuned — that is not a tuning problem.
+
+`react-native-screens` is bundled in Expo Go, so this needs no dev build and no Mac.
+
+- `tabBarTintColor` is not just a label colour — from iOS 26 it drives the glow of the
+  Liquid Glass selection lens, so `club_color` flows into Apple's own effect.
+- Icons are **SF Symbols** (`icon={{ sfSymbolName }}`), rendered by the bar itself at the
+  system's optical size and weight. A bitmap icon does not get the same treatment.
+- `tabBarMinimizeBehavior: 'onScrollDown'` is the iOS 26 shrink-on-scroll behaviour.
+- **Platform props are nested** under `ios` / `android` since screens 4.26.
+- **Selection is native-owned and acknowledged.** There is no per-screen `isFocused` any
+  more: you request a tab via `navStateRequest={{ selectedScreenKey, baseProvenance }}` and
+  native confirms through `onTabSelected`, handing back a new `provenance`. Store it — it
+  is what lets native reject a request built on a stale view (two fast taps) rather than
+  applying it out of order.
+- `UITabBarController` owns full-screen children, so each tab draws its own background and
+  header through `AthleteFrame` rather than sharing one above a pager.
+- Tabs are **tapped, not swiped**. Horizontal paging between sections is gone; that is how
+  iOS tab bars work, and it was the accepted cost of the switch.
+
+`LiquidGlassTabBar` is retained but **no longer used by the app** — GlassLab still renders
+it for comparison. Don't wire it back into `HomeScreen`.
+
+**The old custom tab bar was driven by scroll position, not by a settled index.** `HomeScreen` writes
+the pager's offset into a `scrollX` shared value and hands it to `LiquidGlassTabBar`, which
+interpolates the indicator, icon cross-fade, label colour and active scale from it. Passing
+an `activeIndex` instead would make the bar snap after the swipe rather than track the thumb.
+
+**Athlete sections mount lazily.** Page 0 renders at launch; the rest are mounted by
+`InteractionManager.runAfterInteractions` once the first paint is done. All five used to
+mount and fire their query batches simultaneously, saturating JS exactly as the app became
+visible. Mounting them on page-crossing instead would move the cost into the middle of a
+gesture, which is why it's a post-interaction prefetch rather than on-demand.
+
+**Not yet verified on a device.** All of the above typechecks and produces a clean
+production bundle (`npx expo export --platform ios`), and the worklets are confirmed to
+compile, but no one has run it on hardware. Judge it from a **release** build — dev-mode
+Expo Go is not a fair test of any of this.
 
 **Polish / deferred**
 

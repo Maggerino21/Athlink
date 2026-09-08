@@ -290,7 +290,7 @@ export default function SlideUpSheet({ visible, onClose, title, children }: Slid
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.55)',
   },
   sheet: {

@@ -17,6 +17,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
 import { EVENT_META, type EventType, type CalEvent } from '../eventTypes';
 import { hexToRgba } from '../../../utils/theme';
+import { DISPLAY_FONT, UI_FONT } from '../../../utils/type';
 import haptics from '../../../utils/haptics';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -24,8 +25,9 @@ import haptics from '../../../utils/haptics';
 interface DayGroup {
   dateStr: string;       // YYYY-MM-DD
   date: Date;
-  label: string;         // "Today", "Tomorrow", "Next Tuesday" …
-  subLabel: string;      // "Mon 14 Apr"
+  label: string;         // "Today", or just the day name
+  /** Set on the Monday that opens a week block — "Last week" / "This week" / … */
+  weekLabel: string | null;
   events: CalEvent[];
   isToday: boolean;
   isPast: boolean;
@@ -72,26 +74,36 @@ function addDays(d: Date, n: number): Date {
   return r;
 }
 
-function buildDayLabel(date: Date, today: Date, nextMondayStart: Date): { label: string; subLabel: string } {
-  const todayYMD    = toYMD(today);
-  const tomorrowYMD = toYMD(addDays(today, 1));
-  const dateYMD     = toYMD(date);
-
-  const dayName = DAYS[date.getDay()];
-  const sub = `${dayName.slice(0,3)} ${date.getDate()} ${SHORT_MONTHS[date.getMonth()]}`;
-
-  let label: string;
-  if (dateYMD === todayYMD)    label = 'Today';
-  else if (dateYMD === tomorrowYMD) label = 'Tomorrow';
-  else if (date >= nextMondayStart) label = `Next ${dayName}`;
-  else label = dayName;
-
-  return { label, subLabel: sub };
+/**
+ * Day name, and "Today" as the single exception.
+ *
+ * There used to be "Tomorrow" and "Next Tuesday" here. Both had to go: with
+ * three weeks on screen, "Next Tuesday" and the Tuesday two rows below it are
+ * different days with almost the same name, and no amount of styling makes
+ * that legible. The week intermissions carry that information now, which is
+ * what a heading is for — the row says which day, the heading says which week.
+ */
+function buildDayLabel(date: Date, today: Date): string {
+  return toYMD(date) === toYMD(today) ? 'Today' : DAYS[date.getDay()];
 }
 
-function buildTwoWeekRange(anchor: Date): Date[] {
-  const monday = startOfWeek(anchor);
-  return Array.from({ length: 14 }, (_, i) => addDays(monday, i));
+/**
+ * Last week, this week, next week — 21 days from the Monday BEFORE the anchor's
+ * week. Last week is in range so the schedule has somewhere to scroll back to;
+ * the list still opens on today, so its only cost is that the gesture works.
+ */
+const RANGE_DAYS = 21;
+
+function buildRange(anchor: Date): Date[] {
+  const monday = addDays(startOfWeek(anchor), -7);
+  return Array.from({ length: RANGE_DAYS }, (_, i) => addDays(monday, i));
+}
+
+/** Only Mondays open a block, and only these three are ever on screen. */
+function weekLabelFor(date: Date, today: Date): string | null {
+  if (date.getDay() !== 1) return null;
+  const diff = Math.round((startOfWeek(date).getTime() - startOfWeek(today).getTime()) / 604800000);
+  return diff === -1 ? 'Last week' : diff === 0 ? 'This week' : diff === 1 ? 'Next week' : null;
 }
 
 /**
@@ -162,6 +174,15 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   const [pickerDate, setPickerDate] = useState(today);
   const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
 
+  // The list still starts on Monday — the earlier days of this week have to be
+  // reachable — but it opens scrolled to today rather than making you scroll
+  // down past days that have already happened. Driven off the today row's own
+  // layout rather than index * rowHeight, because a row's height changes once
+  // it is expanded and any arithmetic would drift the moment one is.
+  const scrollRef = useRef<ScrollView>(null);
+  const didJump = useRef(false);
+  useEffect(() => { didJump.current = false; }, [anchor]);
+
   const isDefaultView = toYMD(startOfWeek(anchor)) === toYMD(startOfWeek(today));
 
   // ── Data ──────────────────────────────────────────────────────────────────
@@ -170,9 +191,9 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
     if (!profile?.club_id) return;
     setLoading(true);
 
-    const days = buildTwoWeekRange(anchor);
+    const days = buildRange(anchor);
     const from = days[0];
-    const to   = addDays(days[13], 1);   // exclusive upper bound, local
+    const to   = addDays(days[RANGE_DAYS - 1], 1);   // exclusive upper bound, local
 
     const [{ data: evData }, { data: matchData }] = await Promise.all([
       // Server-side resolution of "which events am I supposed to see".
@@ -223,16 +244,13 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
 
   // ── Build day groups ──────────────────────────────────────────────────────
 
-  const nextMondayStart = startOfWeek(addDays(today, 7));
-
-  const dayGroups: DayGroup[] = buildTwoWeekRange(anchor).map(date => {
+  const dayGroups: DayGroup[] = buildRange(anchor).map(date => {
     const dateStr = toYMD(date);
-    const { label, subLabel } = buildDayLabel(date, today, nextMondayStart);
     return {
       dateStr,
       date,
-      label,
-      subLabel,
+      label: buildDayLabel(date, today),
+      weekLabel: weekLabelFor(date, today),
       events: events.filter(e => e.date === dateStr),
       isToday: dateStr === toYMD(today),
       isPast:  date < today,
@@ -283,13 +301,20 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
 
       {/* Day list */}
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
       >
         {dayGroups.map((day) => (
-          <DayRow
-            key={day.dateStr}
+          <React.Fragment key={day.dateStr}>
+            {day.weekLabel && <WeekMark label={day.weekLabel} />}
+            <DayRow
             day={day}
+            onMeasure={day.isToday ? (y) => {
+              if (didJump.current) return;
+              didJump.current = true;
+              scrollRef.current?.scrollTo({ y, animated: false });
+            } : undefined}
             expanded={expandedDay === day.dateStr}
             onToggle={() => {
               haptics.selection();
@@ -297,7 +322,8 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
             }}
             onEventPress={(e: CalEvent) => navigation.navigate('EventDetail', { event: e })}
             clubColor={profile?.club_color ?? '#3B82F6'}
-          />
+            />
+          </React.Fragment>
         ))}
       </ScrollView>
 
@@ -346,13 +372,14 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
 // ── DayRow ─────────────────────────────────────────────────────────────────────
 
 function DayRow({
-  day, expanded, onToggle, onEventPress, clubColor,
+  day, expanded, onToggle, onEventPress, clubColor, onMeasure,
 }: {
   day: DayGroup;
   expanded: boolean;
   onToggle: () => void;
   onEventPress: (e: CalEvent) => void;
   clubColor: string;
+  onMeasure?: (y: number) => void;
 }) {
   // Drives both the chevron and the reveal. Reanimated applies these on the UI
   // thread — the old `Animated` version ran with useNativeDriver:false, which
@@ -371,11 +398,6 @@ function DayRow({
     });
   }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const chevronStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${progress.value * 180}deg` }],
-    opacity: 0.3 + progress.value * 0.25,
-  }));
-
   const listStyle = useAnimatedStyle(() => {
     // Before the first layout pass we don't know the natural height yet, so
     // fall back to auto (expanded) or zero (collapsed) to avoid a one-frame pop.
@@ -389,40 +411,41 @@ function DayRow({
   const isMuted = day.isPast && !day.isToday;
 
   return (
-    <View style={styles.dayWrap}>
+    <View
+      style={styles.dayWrap}
+      onLayout={onMeasure ? (e) => onMeasure(e.nativeEvent.layout.y) : undefined}
+    >
       {/* Tap target for the header */}
       <TouchableOpacity
         onPress={isEmpty ? undefined : onToggle}
         activeOpacity={isEmpty ? 1 : 0.6}
         style={styles.dayHeader}
       >
-        <View style={styles.dayLabelCol}>
-          {/* BIG day name */}
-          <Text style={[
+        {/* Sized to fill the row rather than set at a fixed point size: the
+            names differ in length by a factor of two ("Today" vs "Wednesday"),
+            so a size that fills the box for one leaves the other floating in
+            it. Auto-fit makes every day read as the same weight of thing. */}
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.3}
+          allowFontScaling={false}
+          style={[
             styles.dayName,
-            isMuted   && styles.dayNameMuted,
+            isMuted && styles.dayNameMuted,
             day.isToday && { color: clubColor },
-          ]}>
-            {day.label.toUpperCase()}
-          </Text>
-          {/* Small date + dots row */}
-          <View style={styles.dayMeta}>
-            <Text style={[styles.dayDate, isMuted && { opacity: 0.35 }]}>{day.subLabel}</Text>
-            {!isEmpty && (
-              <View style={styles.dotRow}>
-                {[...new Set(day.events.map(e => e.type))].slice(0, 5).map(type => (
-                  <View key={type} style={[styles.dot, { backgroundColor: EVENT_META[type].color }]} />
-                ))}
-              </View>
-            )}
-          </View>
-        </View>
+          ]}
+        >
+          {day.label.toUpperCase()}
+        </Text>
 
-        {/* Chevron — only when events exist */}
+        {/* What is on, without saying what it is yet. */}
         {!isEmpty && (
-          <Animated.View style={chevronStyle}>
-            <Ionicons name="chevron-down" size={20} color="#fff" />
-          </Animated.View>
+          <View style={styles.dotRow}>
+            {[...new Set(day.events.map(e => e.type))].slice(0, 5).map(type => (
+              <View key={type} style={[styles.dot, { backgroundColor: EVENT_META[type].color }]} />
+            ))}
+          </View>
         )}
       </TouchableOpacity>
 
@@ -449,6 +472,24 @@ function DayRow({
 
       {/* Full-width divider */}
       <View style={styles.divider} />
+    </View>
+  );
+}
+
+// ── WeekMark ───────────────────────────────────────────────────────────────────
+
+/**
+ * The divider between week blocks. Rules on both sides rather than a left-
+ * aligned heading, because the day names it separates are centred — a heading
+ * off to one side would read as belonging to the row under it rather than to
+ * the block.
+ */
+function WeekMark({ label }: { label: string }) {
+  return (
+    <View style={styles.weekMark}>
+      <View style={styles.weekRule} />
+      <Text style={styles.weekMarkText}>{label.toUpperCase()}</Text>
+      <View style={styles.weekRule} />
     </View>
   );
 }
@@ -493,9 +534,11 @@ const styles = StyleSheet.create({
   // ── Top header
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingBottom: 8, paddingTop: 4,
+    paddingHorizontal: 20, paddingBottom: 10, paddingTop: 4,
   },
-  headerTitle: { fontSize: 22, fontWeight: '800', color: '#F1F5F9', letterSpacing: 0.2 },
+  headerTitle: {
+    fontFamily: DISPLAY_FONT, fontSize: 24, color: '#FFFFFF', letterSpacing: -0.6,
+  },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
   backBtn: {
@@ -518,26 +561,34 @@ const styles = StyleSheet.create({
   dayWrap: { width: '100%' },
 
   dayHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 22, paddingBottom: 14,
+    paddingHorizontal: 16, paddingTop: 18, paddingBottom: 14,
+    alignItems: 'center', justifyContent: 'center',
   },
 
-  dayLabelCol: { flex: 1 },
-
-  // THE BIG TEXT
+  // THE BIG TEXT — one line, centred, as large as the row will take.
   dayName: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.88)',
-    letterSpacing: 0.5,
+    fontFamily: DISPLAY_FONT,
+    fontSize: 68,
+    lineHeight: 74,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.92)',
+    letterSpacing: -1.5,
   },
   dayNameMuted: {
-    color: 'rgba(255,255,255,0.2)',
+    color: 'rgba(255,255,255,0.18)',
   },
 
-  dayMeta: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 3 },
-  dayDate: { fontSize: 13, color: 'rgba(255,255,255,0.3)', fontWeight: '400' },
-  dotRow:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  weekMark: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 20, paddingTop: 30, paddingBottom: 12,
+  },
+  weekRule: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' },
+  weekMarkText: {
+    fontFamily: UI_FONT, fontSize: 10, letterSpacing: 2.4,
+    color: 'rgba(255,255,255,0.35)',
+  },
+
+  dotRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 },
   dot:     { width: 6, height: 6, borderRadius: 3 },
 
   // Full-width divider between days

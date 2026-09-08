@@ -480,11 +480,11 @@ function BottomSheet({
     <Modal visible transparent animationType="none" onRequestClose={onClose}>
       {/* Backdrop tint — visual only */}
       <Animated.View
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.55)' }, backdropStyle]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }, backdropStyle]}
         pointerEvents="none"
       />
       {/* Backdrop tap-to-close — behind the sheet */}
-      <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
 
       {/* Sheet — anchored to bottom, no KAV needed; ScrollView handles keyboard natively */}
       <Animated.View
@@ -636,7 +636,7 @@ const styles = StyleSheet.create({
 });
 
 const sheetStyles = StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.6)' },
   sheet: {
     borderTopLeftRadius: 30, borderTopRightRadius: 30,
     overflow: 'hidden', height: H * 0.85,
