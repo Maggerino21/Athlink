@@ -8,155 +8,220 @@
  * stacked-card recede of the screen behind, and — on iOS 26 — the sheet's own
  * Liquid Glass material.
  *
- * It replaces a hand-built `SlideUpSheet`: ~230 lines reimplementing drag,
- * velocity projection, rubber-band overscroll and backdrop fade. Same lesson as
- * the tab bar — `expo-glass-effect` gives the material, the platform gives the
- * control, and hand-building the control is what makes it read as a copy.
- *
  * The sheet chrome is Apple's, so this screen draws only its *content*. Do not
  * add a drag handle, a backdrop, or a close button — the presentation supplies
  * all three.
+ *
+ * **The sheet wears the event's colour.** It is the card you just tapped,
+ * opened out: a rust card rising into a rust sheet is one continuous object,
+ * where a rust card rising into a grey sheet is two. It also keeps the rule the
+ * rest of the app follows — colour means the type of thing, and nothing else.
  */
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Image, Dimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useAuth } from '../../context/AuthContext';
-import { hexToRgba } from '../../utils/theme';
-import { EVENT_META } from '../../components/athlete/eventTypes';
+import { eventAccent } from '../../components/athlete/eventTypes';
+import { DISPLAY_FONT, DISPLAY_FONT_LARGE, UI_FONT } from '../../utils/type';
+import { RADIUS } from '../../utils/tokens';
 import type { AthleteStackParamList } from '../../navigation/RootNavigator';
 
 type Props = NativeStackScreenProps<AthleteStackParamList, 'EventDetail'>;
 
+/**
+ * The coloured canvas, stated rather than inherited.
+ *
+ * `react-native-screens` gives a formSheet's content wrapper
+ * `position: absolute` with top/left/right pinned and **no bottom**
+ * (`ScreenStackItem.getPositioningStyle`), so there is no height for a
+ * `flex: 1` chain to fill — a ScrollView inside one measures zero and draws
+ * nothing at all. Matching the detent explicitly is what gives the content
+ * something to live in.
+ *
+ * A ScrollView does not work in here at all — inside that absolute wrapper it
+ * measures zero and draws nothing, which is the same quirk that forced the
+ * `fitToContents` version to drop its scroller. The content is laid out to fit
+ * two thirds of the screen instead; a very long note will clip rather than
+ * scroll, which is worth revisiting if coaches start writing essays.
+ *
+ * It is the FULL screen height, not the detent's two thirds, because iOS lets
+ * you rubber-band a sheet up past its detent. Sized to the detent exactly, the
+ * colour ran out mid-drag and you could see the end of the card with black
+ * below it. Anything taller than the sheet can ever be is simply clipped by the
+ * sheet's own rounded frame, so the ground never runs out.
+ */
+const SHEET_H = Dimensions.get('window').height;
+
+const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+
+/** "Saturday 12 September" from a local YYYY-MM-DD. */
+function longDate(ymd: string): string {
+  const [y, m, d] = ymd.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  return `${DAYS[date.getDay()]} ${d} ${MONTHS[m - 1]}`;
+}
+
 export default function EventDetailScreen({ route }: Props) {
   const { event } = route.params;
-  const { profile } = useAuth();
-  const clubColor = profile?.club_color ?? '#3B82F6';
-
-  const meta = EVENT_META[event.type];
+  const accent = eventAccent(event.type);
   const isMatch = event.source === 'match';
+  const [crestFailed, setCrestFailed] = useState(false);
+
+  const category = event.type.charAt(0).toUpperCase() + event.type.slice(1);
+  const showCrest = isMatch && !!event.opponent_logo_url && !crestFailed;
 
   return (
-    <View style={styles.root}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Opponent crest, when the provider gave us one. Falls back to the
-            type badge rather than a broken image box. */}
-        {isMatch && event.opponent_logo_url ? (
-          <View style={styles.crestRow}>
+    <View style={[styles.root, { backgroundColor: accent.fill }]}>
+      <View style={styles.content}>
+        {/* The category leads, set in the display face — the same one the
+            Schedule header uses, so a sheet reads as part of that screen
+            rather than as a dialog that arrived from somewhere else. */}
+        <View style={styles.head}>
+          <View style={styles.headText}>
+            <Text style={[styles.category, { color: accent.ink }]}>{category}</Text>
+            <Text style={styles.title}>{event.title}</Text>
+          </View>
+
+          {/* A crest is identity, not decoration, so it survives where the old
+              category icon did not. Hidden outright if the provider's image
+              404s rather than leaving an empty frame. */}
+          {showCrest && (
             <Image
-              source={{ uri: event.opponent_logo_url }}
+              source={{ uri: event.opponent_logo_url! }}
               style={styles.crest}
               resizeMode="contain"
+              onError={() => setCrestFailed(true)}
             />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.crestTitle}>{event.title}</Text>
-              <Text style={styles.crestSub}>
-                {event.is_home === false ? 'Away' : 'Home'}
-                {event.location ? ` · ${event.location}` : ''}
-              </Text>
-            </View>
-          </View>
-        ) : (
+          )}
+        </View>
+
+        <View style={styles.rule} />
+
+        {/* What an athlete opened this to find.
+            For a match that is where and when to BE — the meet, not kick-off.
+            CLAUDE.md is explicit about it, and it is why meet leads here. */}
+        {isMatch && (event.meet_time || event.meet_location) ? (
           <>
-            <Text style={styles.title}>{event.title}</Text>
-            <View style={[styles.typeBadge, { backgroundColor: hexToRgba(meta.color, 0.12), borderColor: hexToRgba(meta.color, 0.25) }]}>
-              <Ionicons name={meta.icon as any} size={14} color={meta.color} style={{ marginRight: 6 }} />
-              <Text style={[styles.typeText, { color: meta.color }]}>
-                {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
-              </Text>
-            </View>
+            <Figure
+              label="Meet"
+              value={event.meet_time ?? '—'}
+              caption={event.meet_location ?? undefined}
+              emphasis
+            />
+            {event.start_time ? (
+              <Figure label="Kick-off" value={event.start_time} caption={event.location ?? undefined} />
+            ) : null}
           </>
-        )}
-
-        {/* Meet time and place lead for a match — they are what an athlete
-            opens this to find, and they matter more than kick-off. */}
-        {isMatch && (event.meet_time || event.meet_location) && (
-          <View style={[styles.meetBlock, { borderColor: hexToRgba(clubColor, 0.3), backgroundColor: hexToRgba(clubColor, 0.08) }]}>
-            <Text style={[styles.meetLabel, { color: clubColor }]}>MEET</Text>
-            {event.meet_time && <Text style={styles.meetPrimary}>{event.meet_time}</Text>}
-            {event.meet_location && <Text style={styles.meetSecondary}>{event.meet_location}</Text>}
-          </View>
-        )}
-
-        {/* Multi-day blocks say so, rather than looking like a one-day event
-            that mysteriously repeats. */}
-        {event.spanTotal && event.spanTotal > 1 && (
-          <MetaRow icon="calendar-outline" text={`Day ${event.spanDay} of ${event.spanTotal}`} />
-        )}
-
-        {event.start_time && (
-          <MetaRow
-            icon="time-outline"
-            text={isMatch ? `Kick-off ${event.start_time}` : event.start_time}
+        ) : (
+          <Figure
+            label={isMatch ? 'Kick-off' : 'Starts'}
+            value={event.start_time ?? 'All day'}
+            caption={event.location ?? undefined}
+            emphasis
           />
         )}
 
-        {event.location && !(isMatch && event.opponent_logo_url) && (
-          <MetaRow icon="location-outline" text={event.location} />
-        )}
+        <Text style={styles.date}>{longDate(event.date)}</Text>
 
-        <View style={styles.divider} />
+        {/* A block spanning days says so, rather than looking like a one-day
+            event that mysteriously repeats. */}
+        {event.spanTotal && event.spanTotal > 1 ? (
+          <Text style={styles.span}>Day {event.spanDay} of {event.spanTotal}</Text>
+        ) : null}
 
-        {/* Coach's notes for a match, otherwise the event description. */}
-        {isMatch && event.notes ? (
-          <Text style={styles.description}>{event.notes}</Text>
-        ) : event.description ? (
-          <Text style={styles.description}>{event.description}</Text>
-        ) : (
-          <Text style={styles.noDesc}>No additional details.</Text>
-        )}
-      </ScrollView>
+        {(isMatch ? event.notes : event.description) ? (
+          <>
+            <View style={styles.rule} />
+            <Text style={styles.body}>
+              {isMatch ? event.notes : event.description}
+            </Text>
+          </>
+        ) : null}
+      </View>
     </View>
   );
 }
 
-function MetaRow({ icon, text }: { icon: string; text: string }) {
+/**
+ * A labelled figure — the unit this sheet is built from.
+ *
+ * The label is small and the number is large, because the number is the answer
+ * and the label only says what question it answers. `emphasis` marks the one
+ * figure the event is really about; everything else supports it.
+ */
+function Figure({
+  label, value, caption, emphasis,
+}: { label: string; value: string; caption?: string; emphasis?: boolean }) {
   return (
-    <View style={styles.metaRow}>
-      <Ionicons name={icon as any} size={16} color="rgba(255,255,255,0.3)" style={styles.metaIcon} />
-      <Text style={styles.metaText}>{text}</Text>
+    <View style={[styles.figure, emphasis && styles.figureLead]}>
+      <Text style={styles.label}>{label.toUpperCase()}</Text>
+      <Text
+        allowFontScaling={false}
+        style={[styles.value, emphasis && styles.valueLead]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+      {caption ? <Text style={styles.caption}>{caption}</Text> : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // Sheet chrome (corners, material, grabber) belongs to the presentation, so
-  // this only needs to fill and tint.
-  root: { flex: 1, backgroundColor: '#0E1220' },
-  content: { padding: 22, paddingTop: 18, paddingBottom: 40 },
+  root: { height: SHEET_H },
+  content: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
 
-  title: { fontSize: 22, fontWeight: '800', color: '#F1F5F9', letterSpacing: -0.3, marginBottom: 10 },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
+  headText: { flex: 1 },
 
-  crestRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 18 },
-  crest: { width: 54, height: 54, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.05)' },
-  crestTitle: { fontSize: 19, fontWeight: '800', color: '#F1F5F9', letterSpacing: -0.3 },
-  crestSub: { fontSize: 12, color: 'rgba(255,255,255,0.45)', marginTop: 3 },
-
-  typeBadge: {
-    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 20,
-    borderWidth: 1, marginBottom: 14,
+  category: {
+    fontFamily: DISPLAY_FONT, fontSize: 22,
+    letterSpacing: -0.3, marginBottom: 2,
   },
-  typeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.4 },
-
-  meetBlock: {
-    borderRadius: 14, borderWidth: 1,
-    paddingHorizontal: 14, paddingVertical: 12,
-    marginBottom: 12,
+  title: {
+    fontFamily: DISPLAY_FONT, fontSize: 34, lineHeight: 39,
+    color: 'rgba(255,255,255,0.97)', letterSpacing: -1,
   },
-  meetLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.4, marginBottom: 4 },
-  meetPrimary: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.6 },
-  meetSecondary: { fontSize: 13, color: 'rgba(255,255,255,0.6)', marginTop: 2 },
+  crest: {
+    width: 54, height: 54, borderRadius: RADIUS.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
 
-  metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  metaIcon: { marginRight: 9 },
-  metaText: { fontSize: 14, color: 'rgba(255,255,255,0.7)' },
+  rule: {
+    height: 1, backgroundColor: 'rgba(255,255,255,0.14)',
+    marginTop: 22, marginBottom: 20,
+  },
 
-  divider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 16 },
+  figure: { marginBottom: 20 },
+  figureLead: { marginBottom: 24 },
+  label: {
+    fontFamily: UI_FONT, fontSize: 11, letterSpacing: 1.8,
+    color: 'rgba(255,255,255,0.5)', marginBottom: 4,
+  },
+  value: {
+    fontFamily: DISPLAY_FONT_LARGE, fontSize: 34, lineHeight: 38,
+    color: 'rgba(255,255,255,0.95)', letterSpacing: -1,
+  },
+  // The one figure the event is about, set large enough to read across a room —
+  // an athlete checking when to be somewhere should not have to focus.
+  valueLead: { fontSize: 56, lineHeight: 60, letterSpacing: -2.2 },
+  caption: {
+    fontFamily: UI_FONT, fontSize: 15,
+    color: 'rgba(255,255,255,0.72)', marginTop: 4,
+  },
 
-  description: { fontSize: 14, lineHeight: 21, color: 'rgba(255,255,255,0.75)' },
-  noDesc: { fontSize: 14, color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' },
+  date: {
+    fontFamily: UI_FONT, fontSize: 15,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  span: {
+    fontFamily: UI_FONT, fontSize: 13,
+    color: 'rgba(255,255,255,0.5)', marginTop: 6,
+  },
+
+  body: {
+    fontFamily: UI_FONT, fontSize: 15, lineHeight: 23,
+    color: 'rgba(255,255,255,0.82)',
+  },
 });

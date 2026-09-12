@@ -10,7 +10,7 @@
  * `maxDistance` lets the gesture fail cleanly when the finger travels, so these
  * can be nested inside a ScrollView without stealing the scroll.
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { StyleProp, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -62,30 +62,38 @@ export default function PressableScale({
     onLongPress?.();
   }, [onLongPress]);
 
-  const tap = Gesture.Tap()
-    .enabled(!disabled)
-    // Generous duration so a slow, deliberate tap still counts; distance is what
-    // decides whether this was a tap or the start of a scroll.
-    .maxDuration(4000)
-    .maxDistance(14)
-    .onBegin(() => {
-      pressed.value = withTiming(1, PRESS_IN);
-    })
-    .onFinalize(() => {
-      pressed.value = withTiming(0, PRESS_OUT);
-    })
-    .onEnd((_e, success) => {
-      if (success) runOnJS(fire)();
-    });
+  // Memoised because a Gesture object is configuration, not a value: building a
+  // new one every render makes GestureDetector tear down and reattach the
+  // native handler each time. Harmless for one button, and very much not
+  // harmless for a grid of them re-rendering together.
+  const gesture = useMemo(() => {
+    const tap = Gesture.Tap()
+      .enabled(!disabled)
+      // Generous duration so a slow, deliberate tap still counts; distance is
+      // what decides whether this was a tap or the start of a scroll.
+      .maxDuration(4000)
+      .maxDistance(14)
+      .onBegin(() => {
+        pressed.value = withTiming(1, PRESS_IN);
+      })
+      .onFinalize(() => {
+        pressed.value = withTiming(0, PRESS_OUT);
+      })
+      .onEnd((_e, success) => {
+        if (success) runOnJS(fire)();
+      });
 
-  const long = Gesture.LongPress()
-    .enabled(!disabled && !!onLongPress)
-    .minDuration(450)
-    .onStart(() => {
-      runOnJS(fireLong)();
-    });
+    if (!onLongPress) return tap;
 
-  const gesture = onLongPress ? Gesture.Exclusive(long, tap) : tap;
+    const long = Gesture.LongPress()
+      .enabled(!disabled)
+      .minDuration(450)
+      .onStart(() => {
+        runOnJS(fireLong)();
+      });
+
+    return Gesture.Exclusive(long, tap);
+  }, [disabled, onLongPress, fire, fireLong, pressed]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 - pressed.value * (1 - scaleTo) }],

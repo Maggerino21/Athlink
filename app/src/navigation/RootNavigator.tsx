@@ -40,6 +40,13 @@ export type StaffStackParamList = {
 
 // ── Individual stacks ──────────────────────────────────────────────────────
 const AuthStack   = createNativeStackNavigator<AuthStackParamList>();
+/**
+ * The sheet's ground colour. Lives here because both the route container and
+ * the screens drawn inside it have to agree — a mismatch shows as a seam at
+ * whichever edge the content stops short of.
+ */
+export const SHEET_SURFACE = '#0E1220';
+
 const AthleteStack = createNativeStackNavigator<AthleteStackParamList>();
 const StaffStack  = createNativeStackNavigator<StaffStackParamList>();
 
@@ -88,9 +95,26 @@ function AthleteNavigator() {
           headerShown: false,
           // Dim starts immediately rather than only at the largest detent.
           sheetLargestUndimmedDetentIndex: -1,
+          // The route's own container, which defaults to white. Unset, it shows
+          // as a bright band wherever the screen's content does not reach — and
+          // on a dark sheet that band is the first thing you see.
+          contentStyle: { backgroundColor: SHEET_SURFACE },
         }}
       >
-        <AthleteStack.Screen name="EventDetail" component={EventDetailScreen} />
+        <AthleteStack.Screen
+          name="EventDetail"
+          component={EventDetailScreen}
+          options={{
+            // Two thirds, with drag-to-full. An event is the backbone of this
+            // app and a sheet that sizes to its contents made a short one look
+            // like a scrap of paper; a fixed detent gives every event the same
+            // presence. The second value pairs with `sheetExpandsWhenScrolled-
+            // ToEdge` so long notes can take the whole screen.
+            // One detent, matching SHEET_H in the screen. A second one would
+            // let the sheet grow past content that cannot grow with it.
+            sheetAllowedDetents: [0.67],
+          }}
+        />
         <AthleteStack.Screen name="Briefing" component={BriefingScreen} />
       </AthleteStack.Group>
     </AthleteStack.Navigator>

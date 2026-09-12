@@ -1,33 +1,73 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Image,
-  ScrollView, Platform, Modal,
+  View, Text, StyleSheet, TouchableOpacity, Image, ScrollView,
+  Platform, Modal, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import DateTimePicker from '@react-native-community/datetimepicker';
+// RNGH's ScrollView for the inner lists. A plain RN ScrollView owns a native
+// pan recogniser that takes the touch outright; RNGH's participates in the
+// same arbitration as the pager above it, so sideways reaches the pager and
+// vertical stays with the list.
+import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withTiming, Easing,
+  useSharedValue, useAnimatedStyle, useDerivedValue, useAnimatedScrollHandler,
+  withTiming, withSpring, interpolate, interpolateColor, Easing,
 } from 'react-native-reanimated';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import PressableScale from '../../ui/PressableScale';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { SharedValue } from 'react-native-reanimated';
 import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
-import { EVENT_META, type EventType, type CalEvent } from '../eventTypes';
-import { hexToRgba } from '../../../utils/theme';
-import { DISPLAY_FONT, UI_FONT } from '../../../utils/type';
+import { eventMeta, eventAccent, type EventType, type CalEvent } from '../eventTypes';
+import { SURFACE, LINE, TEXT, RADIUS } from '../../../utils/tokens';
+import { DISPLAY_FONT, DISPLAY_FONT_LARGE, UI_FONT } from '../../../utils/type';
 import haptics from '../../../utils/haptics';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
+
+// ── Motion ─────────────────────────────────────────────────────────────────────
+
+/**
+ * One easing and one set of durations for the whole screen, so a toggle, a
+ * month step and a day expanding all move with the same hand.
+ *
+ * Fast is the point. These sit at 200-280ms because the transition has to cover
+ * the swap without ever being something you wait for — anything slower reads as
+ * friction, which is the opposite of what the motion is for.
+ */
+const EASE = Easing.bezier(0.22, 1, 0.36, 1);
+const SWAP   = { duration: 170, easing: EASE } as const;
+const TRAVEL = { duration: 210, easing: EASE } as const;
+/** Quick and barely overshooting — a selection should land, not wobble. */
+const { width: SCREEN_W } = Dimensions.get('window');
+
+/** Distance between month names in the strip — one 'step' of the swipe. */
+const STRIP_STEP = 104;
+
+/**
+ * Card heights, so snap offsets can be computed instead of measured.
+ * These MUST match the styles below — `cardTop.minHeight`, `cardSlim`'s
+ * padding, `evCard`, and `cardWrap.marginBottom`.
+ */
+const CARD_FULL_H = 168;
+const CARD_SLIM_H = 56;
+const EVENT_CARD_H = 104;
+const REVEAL_PAD = 18;
+const CARD_GAP = 8;
+
+const SELECT_SPRING = { damping: 20, stiffness: 380, mass: 0.5 } as const;
+
+/** Shared so an empty day does not hand DayCell a new array on every render. */
+const NO_EVENTS: CalEvent[] = [];
 
 interface DayGroup {
   dateStr: string;       // YYYY-MM-DD
   date: Date;
   label: string;         // "Today", or just the day name
-  /** Set on the Monday that opens a week block — "Last week" / "This week" / … */
-  weekLabel: string | null;
   events: CalEvent[];
   isToday: boolean;
   isPast: boolean;
@@ -87,23 +127,48 @@ function buildDayLabel(date: Date, today: Date): string {
   return toYMD(date) === toYMD(today) ? 'Today' : DAYS[date.getDay()];
 }
 
-/**
- * Last week, this week, next week — 21 days from the Monday BEFORE the anchor's
- * week. Last week is in range so the schedule has somewhere to scroll back to;
- * the list still opens on today, so its only cost is that the gesture works.
- */
-const RANGE_DAYS = 21;
+// ── Month maths ────────────────────────────────────────────────────────────────
 
-function buildRange(anchor: Date): Date[] {
-  const monday = addDays(startOfWeek(anchor), -7);
-  return Array.from({ length: RANGE_DAYS }, (_, i) => addDays(monday, i));
+const MONTHS = ['January','February','March','April','May','June',
+                'July','August','September','October','November','December'];
+
+/** Weeks run Monday-first here, matching `startOfWeek`. */
+const WEEKDAY_INITIALS = ['M','T','W','T','F','S','S'];
+
+/** Identity of a month, for keys and for the per-month memory. */
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}`;
 }
 
-/** Only Mondays open a block, and only these three are ever on screen. */
-function weekLabelFor(date: Date, today: Date): string | null {
-  if (date.getDay() !== 1) return null;
-  const diff = Math.round((startOfWeek(date).getTime() - startOfWeek(today).getTime()) / 604800000);
-  return diff === -1 ? 'Last week' : diff === 0 ? 'This week' : diff === 1 ? 'Next week' : null;
+function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+function addMonths(d: Date, n: number): Date {
+  // Day 1 first, so stepping from the 31st never skips a short month.
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+
+function fromYMD(s: string): Date {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * The cells of a month grid: whole weeks, so it always starts on a Monday and
+ * ends on a Sunday. Leading and trailing days belong to the neighbouring months
+ * and are drawn dimmed — a grid that began mid-row would misalign the weekday
+ * header above it.
+ */
+function buildMonthGrid(monthStart: Date): Date[] {
+  const lastOfMonth = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0);
+  const cells: Date[] = [];
+  let d = startOfWeek(monthStart);
+  while ((d <= lastOfMonth || cells.length % 7 !== 0) && cells.length < 42) {
+    cells.push(d);
+    d = addDays(d, 1);
+  }
+  return cells;
 }
 
 /**
@@ -163,37 +228,152 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   const { profile } = useAuth();
   const insets = useSafeAreaInsets();
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Memoised because it is a dependency of almost everything below. A fresh
+  // Date on every render gives every child a changed prop, which defeats every
+  // memo in the subtree — 90 day cards rebuilding because midnight moved.
+  const today = React.useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
 
-  const [anchor, setAnchor]         = useState<Date>(today);  // determines which 2 weeks to show
   const [events, setEvents]         = useState<CalEvent[]>([]);
-  const [loading, setLoading]       = useState(false);
-  const [expandedDay, setExpanded]  = useState<string>(toYMD(today));
+  const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
+  /**
+   * The open day, per month.
+   *
+   * This used to be a single string for the whole screen, which meant swiping
+   * away from a month collapsed whatever was open in it — the content above
+   * your scroll position shrank, so coming back you were parked further down,
+   * and re-expanding on arrival cut you back. A month's open day is a property
+   * of that month, so it lives per month and simply stays put while you are
+   * elsewhere.
+   *
+   * It doubles as the per-visit memory: reopening a month finds it exactly as
+   * you left it, with no restore logic at all.
+   */
+  const [openByMonth, setOpenByMonth] = useState<Record<string, string>>({});
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerDate, setPickerDate] = useState(today);
-  const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
 
-  // The list still starts on Monday — the earlier days of this week have to be
-  // reachable — but it opens scrolled to today rather than making you scroll
-  // down past days that have already happened. Driven off the today row's own
-  // layout rather than index * rowHeight, because a row's height changes once
-  // it is expanded and any arithmetic would drift the moment one is.
-  const scrollRef = useRef<ScrollView>(null);
-  const didJump = useRef(false);
-  useEffect(() => { didJump.current = false; }, [anchor]);
+  const [monthAnchor, setMonthAnchor] = useState<Date>(startOfMonth(today));
+  /** Today opens itself once, and only if there is something to open. */
+  const seededToday = useRef(false);
 
-  const isDefaultView = toYMD(startOfWeek(anchor)) === toYMD(startOfWeek(today));
+  /** What `events` currently covers, so a step inside it skips the query. */
+  const loadedRange = useRef<{ from: Date; to: Date } | null>(null);
+
+  const isDefaultView = toYMD(monthAnchor) === toYMD(startOfMonth(today));
+
+  /** Shared by the strip, the chevrons and the swipe, so they cannot diverge. */
+  const goToMonth = useCallback((next: Date) => {
+    setMonthAnchor(next);
+  }, []);
+
+  const stepMonth = useCallback((n: number) => {
+    goToMonth(addMonths(monthAnchor, n));
+  }, [goToMonth, monthAnchor]);
+
+  // Stable identities, so a month that did not change does not re-render.
+  const handleToggle = useCallback((ymd: string) => {
+    const key = monthKey(fromYMD(ymd));
+    setOpenByMonth(prev => ({ ...prev, [key]: prev[key] === ymd ? '' : ymd }));
+  }, []);
+
+  const handleEventPress = useCallback((e: CalEvent) => {
+    navigation.navigate('EventDetail', { event: e });
+  }, [navigation]);
+
+  /**
+   * Every month, laid out end to end. No recycling.
+   *
+   * The previous design kept a three-page window and recentred it after each
+   * step. That required two things to commit atomically — which months React
+   * renders, and where the native scroll view is parked — and React Native has
+   * no primitive that does both in one frame. Every fix narrowed that window
+   * without closing it, and swiping fast blew it open again: a second gesture
+   * arrives before the first has settled, and the recentre teleports the list
+   * out from under the finger.
+   *
+   * So: stop recycling. Two years either side is 49 pages, FlatList mounts only
+   * the few near the viewport, and the scroll offset becomes the single source
+   * of truth. There is nothing to reset, nothing to synchronise, and no race to
+   * lose — which is the only way this stops being a category of bug rather than
+   * a bug.
+   */
+  const RANGE = 24;
+  const months = React.useMemo(
+    () => Array.from({ length: RANGE * 2 + 1 }, (_, i) => addMonths(startOfMonth(today), i - RANGE)),
+    [today],
+  );
+  const HOME_INDEX = RANGE;
+
+  const pagerRef = useRef<any>(null);
+  const scrollX = useSharedValue(HOME_INDEX * SCREEN_W);
+
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => { scrollX.value = e.contentOffset.x; },
+  });
+
+  /** Which page is centred, as a float — the strip reads this directly. */
+  const page = useDerivedValue(() => scrollX.value / SCREEN_W);
+
+  const goToIndex = useCallback((index: number, animated = true) => {
+    const clamped = Math.max(0, Math.min(months.length - 1, index));
+    pagerRef.current?.scrollToOffset({ offset: clamped * SCREEN_W, animated });
+  }, [months.length]);
+
+  /** Land on a specific day — the month AND the day, not just the month. */
+  const jumpTo = useCallback((d: Date) => {
+    const key = monthKey(d);
+    setOpenByMonth(prev => ({ ...prev, [key]: toYMD(d) }));
+    goToIndex(months.findIndex(m => monthKey(m) === key), false);
+  }, [goToIndex, months]);
+
+  const goToToday = useCallback(() => {
+    goToIndex(HOME_INDEX);
+  }, [goToIndex]);
+
+  /**
+   * The month the viewport has settled on. This now only decides which data to
+   * fetch and which day is open — never where anything is drawn — so arriving
+   * late costs nothing visible.
+   */
+  const onSettled = useCallback((x: number) => {
+    const idx = Math.round(x / SCREEN_W);
+    const next = months[Math.max(0, Math.min(months.length - 1, idx))];
+    if (!next || monthKey(next) === monthKey(monthAnchor)) return;
+    goToMonth(next);
+  }, [months, monthAnchor, goToMonth]);
+
+
+  /** The chevrons and month names scroll the pager, so they animate identically. */
+  const slideTo = useCallback((dir: number) => {
+    goToIndex(months.findIndex(m => monthKey(m) === monthKey(monthAnchor)) + dir);
+  }, [goToIndex, months, monthAnchor]);
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
   const load = useCallback(async () => {
     if (!profile?.club_id) return;
-    setLoading(true);
 
-    const days = buildRange(anchor);
-    const from = days[0];
-    const to   = addDays(days[RANGE_DAYS - 1], 1);   // exclusive upper bound, local
+    // Five months, not the three on screen.
+    //
+    // Three months are mounted so the carousel can show real content mid-drag,
+    // but fetching exactly three means every single step needs a new query —
+    // and each one replaces `events`, which re-renders every mounted day card.
+    // Fetching a month of slack either side means stepping within the window
+    // costs nothing at all: no query, no new array, no re-render.
+    const from = startOfMonth(addMonths(monthAnchor, -2));
+    const to   = startOfMonth(addMonths(monthAnchor, 3));   // exclusive, local
+
+    // Already covered? Then there is nothing to do. This is what makes a step
+    // free rather than merely fast.
+    if (loadedRange.current
+        && from >= loadedRange.current.from
+        && to <= loadedRange.current.to) {
+      return;
+    }
 
     const [{ data: evData }, { data: matchData }] = await Promise.all([
       // Server-side resolution of "which events am I supposed to see".
@@ -236,98 +416,105 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
       })),
     ];
 
+    loadedRange.current = { from, to };
     setEvents(mapped);
-    setLoading(false);
-  }, [profile?.club_id, anchor]);
+  }, [profile?.club_id, monthAnchor]);
 
   useEffect(() => { if (isActive) load(); }, [isActive, load]);
 
-  // ── Build day groups ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (seededToday.current || !events.length) return;
+    seededToday.current = true;
+    const t = toYMD(today);
+    if (events.some(e => e.date === t)) setOpenByMonth({ [monthKey(today)]: t });
+  }, [events, today]);
 
-  const dayGroups: DayGroup[] = buildRange(anchor).map(date => {
-    const dateStr = toYMD(date);
-    return {
-      dateStr,
-      date,
-      label: buildDayLabel(date, today),
-      weekLabel: weekLabelFor(date, today),
-      events: events.filter(e => e.date === dateStr),
-      isToday: dateStr === toYMD(today),
-      isPast:  date < today,
-    };
-  });
-
-  // ── Jump to date ──────────────────────────────────────────────────────────
-
-  const handlePickerChange = (_: any, date?: Date) => {
-    if (Platform.OS === 'android') setPickerVisible(false);
-    if (date) setPickerDate(date);
-  };
-
-  const confirmJump = () => {
-    setAnchor(pickerDate);
-    setExpanded(toYMD(pickerDate));
+  /**
+   * Leaving the section puts it back to its defaults.
+   *
+   * Coming back to Schedule three days later and finding it still parked on
+   * the day in March you were checking is a small betrayal — the answer to
+   * "what's on" is almost always about now. Each month's open day is for
+   * moving around *within* a visit, and does not outlive one.
+   */
+  useEffect(() => {
+    if (isActive) return;
+    setOpenByMonth({});
+    seededToday.current = false;
+    loadedRange.current = null;
+    setMonthAnchor(startOfMonth(today));
     setPickerVisible(false);
-  };
+    goToIndex(HOME_INDEX, false);
+  }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Build day groups ──────────────────────────────────────────────────────
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.root}>
-      {/* Header */}
+      {/* Header. The Today button is absolute so that appearing and
+          disappearing cannot resize the header and shove the list down — a
+          control that shifts the page when it arrives is worse than no control. */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Schedule</Text>
-        <View style={styles.headerRight}>
-          {!isDefaultView && (
-            <TouchableOpacity
-              style={styles.backBtn}
-              onPress={() => { setAnchor(today); setExpanded(toYMD(today)); }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="return-up-back" size={14} color="rgba(147,197,253,0.8)" style={{ marginRight: 4 }} />
-              <Text style={styles.backBtnText}>Today</Text>
-            </TouchableOpacity>
-          )}
+        {!isDefaultView && (
           <TouchableOpacity
-            style={styles.jumpBtn}
-            onPress={() => setPickerVisible(true)}
-            activeOpacity={0.8}
+            style={styles.backBtn}
+            onPress={goToToday}
+            activeOpacity={0.7}
           >
-            <Ionicons name="calendar" size={14} color="rgba(255,255,255,0.4)" style={{ marginRight: 5 }} />
-            <Text style={styles.jumpBtnText}>Jump to date</Text>
+            <Ionicons name="return-up-back" size={14} color={TEXT.secondary} style={{ marginRight: 4 }} />
+            <Text style={styles.backBtnText}>Today</Text>
           </TouchableOpacity>
-        </View>
+        )}
       </View>
 
-      {/* Day list */}
-      <ScrollView
-        ref={scrollRef}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 + insets.bottom }}
-      >
-        {dayGroups.map((day) => (
-          <React.Fragment key={day.dateStr}>
-            {day.weekLabel && <WeekMark label={day.weekLabel} />}
-            <DayRow
-            day={day}
-            onMeasure={day.isToday ? (y) => {
-              if (didJump.current) return;
-              didJump.current = true;
-              scrollRef.current?.scrollTo({ y, animated: false });
-            } : undefined}
-            expanded={expandedDay === day.dateStr}
-            onToggle={() => {
-              haptics.selection();
-              setExpanded(expandedDay === day.dateStr ? '' : day.dateStr);
-            }}
-            onEventPress={(e: CalEvent) => navigation.navigate('EventDetail', { event: e })}
-            clubColor={profile?.club_color ?? '#3B82F6'}
-            />
-          </React.Fragment>
-        ))}
-      </ScrollView>
+      <MonthStrip months={months} page={page} onStep={slideTo} onJump={() => setPickerVisible(true)} />
 
-      {/* Date picker */}
+      {/* Every month, end to end. FlatList mounts only what is near. */}
+      <Animated.FlatList
+        ref={pagerRef}
+        data={months}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        // Fixed page width, so the list can jump straight to a month without
+        // measuring its way there.
+        getItemLayout={(_: any, i: number) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+        initialScrollIndex={HOME_INDEX}
+        keyExtractor={(m: any) => monthKey(m)}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        onMomentumScrollEnd={(e: any) => onSettled(e.nativeEvent.contentOffset.x)}
+        // `removeClippedSubviews` is off deliberately: on iOS it is a known
+        // cause of blank and stale cells while flinging, which is almost
+        // certainly the "start of September" appearing during a fast swipe.
+        // A slightly larger window costs little now that the cards are cheap,
+        // and it is what stops a fast fling outrunning the renderer.
+        windowSize={5}
+        initialNumToRender={1}
+        maxToRenderPerBatch={2}
+        style={{ flex: 1 }}
+        renderItem={({ item }: { item: Date }) => (
+          <MonthList
+            month={item}
+            events={events}
+            today={today}
+            expandedDay={openByMonth[monthKey(item)] ?? ''}
+            landOn={
+              openByMonth[monthKey(item)]
+              || toYMD(monthKey(item) === monthKey(today) ? today : startOfMonth(item))
+            }
+            bottomPad={40 + insets.bottom}
+            onToggle={handleToggle}
+            onEventPress={handleEventPress}
+          />
+        )}
+      />
+
+      {/* Pick any date. The strip walks month by month; this is for the jump
+          that would take a dozen swipes. */}
       {pickerVisible && (
         Platform.OS === 'ios' ? (
           <Modal transparent animationType="slide" onRequestClose={() => setPickerVisible(false)}>
@@ -338,8 +525,8 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
                   <TouchableOpacity onPress={() => setPickerVisible(false)}>
                     <Text style={styles.pickerCancel}>Cancel</Text>
                   </TouchableOpacity>
-                  <Text style={styles.pickerTitle}>Jump to date</Text>
-                  <TouchableOpacity onPress={confirmJump}>
+                  <Text style={styles.pickerTitle}>Go to date</Text>
+                  <TouchableOpacity onPress={() => { jumpTo(pickerDate); setPickerVisible(false); }}>
                     <Text style={styles.pickerDone}>Go</Text>
                   </TouchableOpacity>
                 </View>
@@ -347,7 +534,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
                   value={pickerDate}
                   mode="date"
                   display="spinner"
-                  onChange={handlePickerChange}
+                  onChange={(_, d) => { if (d) setPickerDate(d); }}
                   textColor="#fff"
                   style={styles.picker}
                 />
@@ -359,7 +546,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
             value={pickerDate}
             mode="date"
             display="default"
-            onChange={(e, date) => { setPickerVisible(false); if (date) { setPickerDate(date); setAnchor(date); setExpanded(toYMD(date)); } }}
+            onChange={(_, d) => { setPickerVisible(false); if (d) { setPickerDate(d); jumpTo(d); } }}
           />
         )
       )}
@@ -369,159 +556,342 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   );
 }
 
-// ── DayRow ─────────────────────────────────────────────────────────────────────
+// ── MonthList ──────────────────────────────────────────────────────────────────
 
-function DayRow({
-  day, expanded, onToggle, onEventPress, clubColor, onMeasure,
+/**
+ * One month's days, as its own scroller.
+ *
+ * Three of these are mounted at once — previous, current, next — so the month
+ * you drag toward is already on screen with its real data. The previous design
+ * animated a single container and swapped its contents when the animation
+ * finished, which meant the frames during the slide showed the month you were
+ * leaving: the state change and the Supabase query both land a frame or more
+ * after the UI-thread animation, so the "new" month slid in still showing the
+ * old one and then popped. No amount of tuning fixes that — the content was
+ * wrong by construction.
+ *
+ * Each list owns its own scroll position and snap offsets, which is also why
+ * they are a component: coming back to a month finds it where you left it
+ * without a single line of restore logic.
+ */
+const MonthList = React.memo(function MonthList({
+  month, events, expandedDay, landOn, bottomPad, today, onToggle, onEventPress,
+}: {
+  month: Date;
+  events: CalEvent[];
+  expandedDay: string;
+  landOn: string;
+  bottomPad: number;
+  today: Date;
+  onToggle: (ymd: string) => void;
+  onEventPress: (e: CalEvent) => void;
+}) {
+  const scrollRef = useRef<any>(null);
+  const didLand = useRef(false);
+
+  const days = React.useMemo(() => {
+    const first = startOfMonth(month);
+    const last = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    return Array.from({ length: last }, (_, i) => addDays(first, i));
+  }, [month]);
+
+  const dayGroups: DayGroup[] = React.useMemo(() => {
+    const todayStr = toYMD(today);
+    const byDay = new Map<string, CalEvent[]>();
+    for (const e of events) {
+      const b = byDay.get(e.date);
+      if (b) b.push(e); else byDay.set(e.date, [e]);
+    }
+    return days.map(date => {
+      const dateStr = toYMD(date);
+      return {
+        dateStr,
+        date,
+        label: buildDayLabel(date, today),
+        events: byDay.get(dateStr) ?? NO_EVENTS,
+        isToday: dateStr === todayStr,
+        isPast: date < today,
+      };
+    });
+  }, [days, events, today]);
+
+  /**
+   * Snap offsets, computed rather than measured.
+   *
+   * These used to come from an `onLayout` on every card feeding a debounced
+   * `setState`. That meant expanding one day relayed out the list, which fired
+   * thirty layout callbacks, which scheduled a state update in the middle of
+   * the animation — the stutter was the measurement, not the motion.
+   *
+   * Every height here is a constant we set ourselves, so the running total is
+   * exact for collapsed days and close enough for the one open day that snapping
+   * still lands where it should.
+   */
+  const { offsets } = React.useMemo(() => {
+    const out: number[] = [];
+    let y = 0;
+    for (const d of dayGroups) {
+      out.push(y);
+      const slim = d.isPast && !d.isToday && d.events.length === 0;
+      const open = d.dateStr === expandedDay && d.events.length > 0;
+      y += (slim ? CARD_SLIM_H : CARD_FULL_H)
+         + (open ? d.events.length * EVENT_CARD_H + REVEAL_PAD : 0)
+         + CARD_GAP;
+    }
+    return { offsets: out };
+  }, [dayGroups, expandedDay]);
+
+  // Open on the month's day, once.
+  useEffect(() => {
+    if (didLand.current) return;
+    const i = dayGroups.findIndex(d => d.dateStr === landOn);
+    if (i < 0) return;
+    didLand.current = true;
+    scrollRef.current?.scrollTo({ y: Math.max(0, offsets[i] - 8), animated: false });
+  }, [offsets, dayGroups, landOn]);
+
+  return (
+    <GHScrollView
+      ref={scrollRef}
+      style={{ width: SCREEN_W }}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: bottomPad }}
+      snapToOffsets={offsets}
+      snapToEnd={false}
+      decelerationRate="fast"
+    >
+      {dayGroups.map(day => (
+        <DayCard
+          key={day.dateStr}
+          day={day}
+          expanded={expandedDay === day.dateStr}
+          onToggle={onToggle}
+          onEventPress={onEventPress}
+        />
+      ))}
+    </GHScrollView>
+  );
+});
+
+// ── MonthStrip ─────────────────────────────────────────────────────────────────
+
+/**
+ * The month, with its neighbours either side.
+ *
+ * Naming the months you are moving *between*, rather than only the one you are
+ * in, is what makes the sideways swipe discoverable — otherwise nothing on
+ * screen suggests there is anywhere to go.
+ */
+function MonthStrip({
+  months, page, onStep, onJump,
+}: {
+  months: Date[];
+  page: SharedValue<number>;
+  onStep: (n: number) => void;
+  onJump: () => void;
+}) {
+  /**
+   * The same scroll, at a different scale.
+   *
+   * Every month's label is laid out in one long row, and the row is translated
+   * by the pager's own page position. The strip is not told which month is
+   * current and it holds no state of its own — it reads the number the list is
+   * already reading, so it cannot lag it, overshoot it, or disagree with it.
+   *
+   * This is what the recycling version could never quite manage: it had to be
+   * *told* when the month changed, and being told always arrives a frame late.
+   */
+  const groupStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: -page.value * STRIP_STEP }],
+  }));
+
+  return (
+    <View style={styles.monthStrip}>
+      <PressableScale style={styles.stripArrow} scaleTo={0.88} dim={false} onPress={() => onStep(-1)}>
+        <Ionicons name="chevron-back" size={15} color={TEXT.tertiary} />
+      </PressableScale>
+
+      <View style={styles.stripWindow}>
+        <Animated.View style={[styles.stripGroup, groupStyle]}>
+          {months.map((m, i) => (
+            <StripLabel
+              key={monthKey(m)}
+              label={SHORT_MONTHS[m.getMonth()].toUpperCase()}
+              index={i}
+              page={page}
+              onJump={onJump}
+            />
+          ))}
+        </Animated.View>
+      </View>
+
+      <PressableScale style={styles.stripArrow} scaleTo={0.88} dim={false} onPress={() => onStep(1)}>
+        <Ionicons name="chevron-forward" size={15} color={TEXT.tertiary} />
+      </PressableScale>
+    </View>
+  );
+}
+
+/** One month name. Brightens as it approaches the centre of the strip. */
+function StripLabel({
+  label, index, page, onJump,
+}: { label: string; index: number; page: SharedValue<number>; onJump: () => void }) {
+  const style = useAnimatedStyle(() => {
+    const d = Math.abs(index - page.value);   // 0 at centre, 1 either side
+    return {
+      opacity: interpolate(d, [0, 1, 2], [1, 0.3, 0.12], 'clamp'),
+      transform: [{ scale: interpolate(d, [0, 1], [1, 0.86], 'clamp') }],
+    };
+  });
+  return (
+    <PressableScale style={styles.stripSlot} scaleTo={0.94} onPress={onJump}>
+      <Animated.Text style={[styles.stripLabel, style]} numberOfLines={1}>
+        {label}
+      </Animated.Text>
+    </PressableScale>
+  );
+}
+
+// ── DayCard ────────────────────────────────────────────────────────────────────
+
+/**
+ * A day, as a tall card: the date set large on the left, and a row of dots on
+ * the right saying only *that* something is on and roughly what kind.
+ *
+ * The dots are deliberately not the events. A closed day should be a glance —
+ * scanning a month means reading thirty of these, and thirty rows of event
+ * titles is a wall of text. Open the day and the events arrive in full.
+ *
+ * Every card takes the same treatment rather than a colour per day. The colour
+ * on this screen belongs to the event types, and a coloured card behind them
+ * would compete with the only colour that carries meaning.
+ *
+ * Days with nothing on collapse to a slim row. A month of empty cards at full
+ * height is a lot of scrolling past nothing, and the size difference does real
+ * work: the days that hold something are the big ones.
+ */
+const DayCard = React.memo(function DayCard({
+  day, expanded, onToggle, onEventPress,
 }: {
   day: DayGroup;
   expanded: boolean;
-  onToggle: () => void;
+  onToggle: (ymd: string) => void;
   onEventPress: (e: CalEvent) => void;
-  clubColor: string;
-  onMeasure?: (y: number) => void;
 }) {
-  // Drives both the chevron and the reveal. Reanimated applies these on the UI
-  // thread — the old `Animated` version ran with useNativeDriver:false, which
-  // meant every single frame of this expand crossed the bridge.
-  const progress = useSharedValue(expanded ? 1 : 0);
-  // Natural height of the event list, captured on first layout. Animating to a
-  // measured height rather than a hardcoded maxHeight means the reveal takes the
-  // same time regardless of how many events a day holds — and days with more
-  // than the old 800px cap no longer get silently clipped.
-  const measured = useSharedValue(0);
+  const isPast = day.isPast && !day.isToday;
+  const isSlim = isPast && day.events.length === 0;
+  const monthLabel = SHORT_MONTHS[day.date.getMonth()].toUpperCase();
+  const hasEvents = day.events.length > 0;
 
-  useEffect(() => {
-    progress.value = withTiming(expanded ? 1 : 0, {
-      duration: 300,
-      easing: Easing.bezier(0.22, 1, 0.36, 1),
-    });
-  }, [expanded]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const listStyle = useAnimatedStyle(() => {
-    // Before the first layout pass we don't know the natural height yet, so
-    // fall back to auto (expanded) or zero (collapsed) to avoid a one-frame pop.
-    if (measured.value === 0) {
-      return { height: progress.value > 0.5 ? undefined : 0, opacity: progress.value };
-    }
-    return { height: measured.value * progress.value, opacity: progress.value };
-  });
-
-  const isEmpty = day.events.length === 0;
-  const isMuted = day.isPast && !day.isToday;
+  const todayStyle = day.isToday && { backgroundColor: SURFACE.active };
 
   return (
-    <View
-      style={styles.dayWrap}
-      onLayout={onMeasure ? (e) => onMeasure(e.nativeEvent.layout.y) : undefined}
-    >
-      {/* Tap target for the header */}
-      <TouchableOpacity
-        onPress={isEmpty ? undefined : onToggle}
-        activeOpacity={isEmpty ? 1 : 0.6}
-        style={styles.dayHeader}
-      >
-        {/* Sized to fill the row rather than set at a fixed point size: the
-            names differ in length by a factor of two ("Today" vs "Wednesday"),
-            so a size that fills the box for one leaves the other floating in
-            it. Auto-fit makes every day read as the same weight of thing. */}
-        <Text
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.3}
-          allowFontScaling={false}
-          style={[
-            styles.dayName,
-            isMuted && styles.dayNameMuted,
-            day.isToday && { color: clubColor },
-          ]}
-        >
-          {day.label.toUpperCase()}
-        </Text>
-
-        {/* What is on, without saying what it is yet. */}
-        {!isEmpty && (
-          <View style={styles.dotRow}>
-            {[...new Set(day.events.map(e => e.type))].slice(0, 5).map(type => (
-              <View key={type} style={[styles.dot, { backgroundColor: EVENT_META[type].color }]} />
-            ))}
-          </View>
-        )}
-      </TouchableOpacity>
-
-      {/* Expanded event list */}
-      {!isEmpty && (
-        <Animated.View style={[{ overflow: 'hidden' }, listStyle]}>
-          {/* Inner view lays out at its natural height regardless of the clipped
-              parent, which is what makes it measurable. */}
-          <View
-            style={styles.eventList}
-            onLayout={(e) => { measured.value = e.nativeEvent.layout.height; }}
+    <View style={styles.cardWrap}>
+      {isSlim ? (
+        <View style={[styles.card, styles.cardSlim, styles.cardPast, todayStyle]}>
+          <Text allowFontScaling={false} style={[styles.slimNum, day.isToday && styles.slimNumToday]}>
+            {day.date.getDate()}
+          </Text>
+          <Text style={styles.slimMon}>{monthLabel}</Text>
+          <Text style={styles.slimDay} numberOfLines={1}>{day.label.toUpperCase()}</Text>
+        </View>
+      ) : (
+        <View style={[styles.card, isPast && styles.cardPast, todayStyle]}>
+          {/* TouchableOpacity, not PressableScale.
+              PressableScale is a gesture handler with its own shared value and
+              animated style. One per card, thirty cards a month, several months
+              mounted — hundreds of live recognisers, and what made mounting a
+              page (and therefore swiping) expensive. A native Touchable costs
+              almost nothing. */}
+          <TouchableOpacity
+            style={styles.cardTop}
+            activeOpacity={hasEvents ? 0.75 : 1}
+            onPress={hasEvents ? () => onToggle(day.dateStr) : undefined}
           >
-            {day.events.map((ev, i) => (
-              <EventRow
-                key={ev.id}
-                event={ev}
-                onPress={() => onEventPress(ev)}
-                isLast={i === day.events.length - 1}
-              />
-            ))}
-          </View>
-        </Animated.View>
-      )}
+            <View style={styles.dateBlock}>
+              <Text style={styles.dayName} numberOfLines={1}>{day.label.toUpperCase()}</Text>
+              <Text allowFontScaling={false} style={styles.dateNum}>{day.date.getDate()}</Text>
+              <Text allowFontScaling={false} style={styles.dateMon}>{monthLabel}</Text>
+            </View>
 
-      {/* Full-width divider */}
-      <View style={styles.divider} />
+            {/* One dot per KIND of thing, not per event. */}
+            <View style={styles.dotRow}>
+              {[...new Set(day.events.map(e => e.type))].slice(0, 4).map(type => (
+                <View key={type} style={[styles.bigDot, { backgroundColor: eventAccent(type).edge }]} />
+              ))}
+            </View>
+          </TouchableOpacity>
+
+          {/* Only the open day mounts the animation. A collapsed card used to
+              carry two shared values, an effect and an animated style for a
+              reveal it was not showing — twenty-nine wasted copies per month. */}
+          {expanded && hasEvents && (
+            <DayReveal events={day.events} onEventPress={onEventPress} />
+          )}
+        </View>
+      )}
     </View>
+  );
+});
+
+// ── DayReveal ──────────────────────────────────────────────────────────────────
+
+/** The opened day's events, sliding in. Mounted only while open. */
+function DayReveal({ events, onEventPress }: { events: CalEvent[]; onEventPress: (e: CalEvent) => void }) {
+  const t = useSharedValue(0);
+  useEffect(() => { t.value = withTiming(1, { duration: 220, easing: EASE }); }, []); // eslint-disable-line
+
+  // Opacity and a small rise — not height. Animating height relayouts the whole
+  // list every frame, which is what made opening a day stutter; the card simply
+  // takes its new size and the content arrives into it.
+  const style = useAnimatedStyle(() => ({
+    opacity: t.value,
+    transform: [{ translateY: (1 - t.value) * -8 }],
+  }));
+
+  return (
+    <Animated.View style={[styles.reveal, style]}>
+      {events.map(ev => (
+        <DayEventCard key={ev.id} event={ev} onPress={() => onEventPress(ev)} />
+      ))}
+    </Animated.View>
   );
 }
 
-// ── WeekMark ───────────────────────────────────────────────────────────────────
+// ── DayEventCard ───────────────────────────────────────────────────────────────
 
 /**
- * The divider between week blocks. Rules on both sides rather than a left-
- * aligned heading, because the day names it separates are centred — a heading
- * off to one side would read as belonging to the row under it rather than to
- * the block.
+ * One event, opened out. Colour-coded to its type, because the type is the
+ * thing an athlete sorts by at a glance — a match is not a physio slot.
+ *
+ * No duration: nothing in `events` carries an end time yet (one row in the
+ * whole club has an `end_date`, and it is the multi-day vacation), so a
+ * "45 min" pill would be invented rather than reported.
  */
-function WeekMark({ label }: { label: string }) {
-  return (
-    <View style={styles.weekMark}>
-      <View style={styles.weekRule} />
-      <Text style={styles.weekMarkText}>{label.toUpperCase()}</Text>
-      <View style={styles.weekRule} />
-    </View>
-  );
-}
-
-// ── EventRow ───────────────────────────────────────────────────────────────────
-
-function EventRow({ event, onPress, isLast }: { event: CalEvent; onPress: () => void; isLast: boolean }) {
-  const meta = EVENT_META[event.type];
+function DayEventCard({ event, onPress }: { event: CalEvent; onPress: () => void }) {
+  const meta = eventMeta(event.type);
+  const accent = eventAccent(event.type);
+  const sub = [event.start_time, event.location].filter(Boolean).join('  ·  ');
   return (
     <PressableScale
-      style={[styles.eventRow, isLast && styles.eventRowLast]}
-      onPress={onPress}
+      style={[styles.evCard, { backgroundColor: accent.fill }]}
       scaleTo={0.975}
-      haptic="medium"
+      dim={false}
+      onPress={onPress}
     >
-      {/* Coloured left strip */}
-      <View style={[styles.eventStrip, { backgroundColor: meta.color }]} />
-
-      <View style={[styles.eventIconWrap, { backgroundColor: hexToRgba(meta.color, 0.1) }]}>
-        <Ionicons name={meta.icon as any} size={18} color={meta.color} />
+      <View style={styles.evTypeRow}>
+        <Ionicons name={meta.icon as any} size={13} color={accent.ink} />
+        <Text style={[styles.evType, { color: accent.ink }]} numberOfLines={1}>
+          {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
+        </Text>
+        {event.spanTotal && event.spanTotal > 1 ? (
+          <Text style={[styles.evType, { color: TEXT.tertiary }]}>
+            · Day {event.spanDay} of {event.spanTotal}
+          </Text>
+        ) : null}
       </View>
-
-      <View style={styles.eventInfo}>
-        <Text style={styles.eventTitle} numberOfLines={1}>{event.title}</Text>
-        {event.location
-          ? <Text style={styles.eventMeta} numberOfLines={1}>{event.location}</Text>
-          : null}
-      </View>
-
-      {event.start_time
-        ? <Text style={styles.eventTime}>{event.start_time.slice(0, 5)}</Text>
-        : null}
+      <Text style={styles.evTitle} numberOfLines={2}>{event.title}</Text>
+      {sub ? <Text style={styles.evSub}>{sub}</Text> : null}
     </PressableScale>
   );
 }
@@ -533,115 +903,151 @@ const styles = StyleSheet.create({
 
   // ── Top header
   header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingBottom: 10, paddingTop: 4,
+    justifyContent: 'center',
+    height: 44,
+    paddingHorizontal: 20,
   },
   headerTitle: {
     fontFamily: DISPLAY_FONT, fontSize: 24, color: '#FFFFFF', letterSpacing: -0.6,
   },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 
   backBtn: {
+    position: 'absolute', right: 20, top: 8,
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10,
-    backgroundColor: 'rgba(147,197,253,0.08)',
-    borderWidth: 1, borderColor: 'rgba(147,197,253,0.2)',
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm,
+    backgroundColor: SURFACE.recessed,
+    borderWidth: 1, borderColor: LINE.soft,
   },
-  backBtnText: { fontSize: 12, color: 'rgba(147,197,253,0.8)', fontWeight: '600' },
+  backBtnText: { fontFamily: UI_FONT, fontSize: 12, color: TEXT.secondary },
 
-  jumpBtn: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
+  // ── Month strip
+  monthStrip: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingTop: 6, paddingBottom: 14,
   },
-  jumpBtnText: { fontSize: 12, color: 'rgba(255,255,255,0.35)', fontWeight: '500' },
+  // Wide enough to show the neighbours either side of the centre month.
+  stripWindow: { width: STRIP_STEP * 3, overflow: 'hidden' },
+  // Offset so page 0's label sits in the middle of the window rather than
+  // at its left edge; the translate then walks it along.
+  stripGroup: { flexDirection: 'row', marginLeft: STRIP_STEP },
+  stripSlot: { width: STRIP_STEP, alignItems: 'center' },
+  stripLabel: {
+    fontFamily: DISPLAY_FONT, fontSize: 22,
+    color: TEXT.primary, letterSpacing: 0.5,
+  },
+  stripArrow: { paddingHorizontal: 2, paddingVertical: 6 },
 
-  // ── Day rows — full-width, no cards
-  dayWrap: { width: '100%' },
-
-  dayHeader: {
-    paddingHorizontal: 16, paddingTop: 18, paddingBottom: 14,
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  // THE BIG TEXT — one line, centred, as large as the row will take.
-  dayName: {
-    fontFamily: DISPLAY_FONT,
-    fontSize: 68,
-    lineHeight: 74,
-    textAlign: 'center',
-    color: 'rgba(255,255,255,0.92)',
-    letterSpacing: -1.5,
-  },
-  dayNameMuted: {
-    color: 'rgba(255,255,255,0.18)',
-  },
-
-  weekMark: {
-    flexDirection: 'row', alignItems: 'center', gap: 12,
-    paddingHorizontal: 20, paddingTop: 30, paddingBottom: 12,
-  },
-  weekRule: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.10)' },
-  weekMarkText: {
-    fontFamily: UI_FONT, fontSize: 10, letterSpacing: 2.4,
-    color: 'rgba(255,255,255,0.35)',
-  },
-
-  dotRow:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 8 },
-  dot:     { width: 6, height: 6, borderRadius: 3 },
-
-  // Full-width divider between days
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    marginHorizontal: 0,
-  },
-
-  // ── Event list inside expanded day
-  eventList: {
-    paddingBottom: 8,
-  },
-
-  eventRow: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 14,
-    gap: 14,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
-  },
-  eventRowLast: {
-    // no special style needed, divider is on the dayWrap
-  },
-  eventStrip: {
-    width: 3, height: 36, borderRadius: 2, flexShrink: 0,
-  },
-  eventIconWrap: {
-    width: 40, height: 40, borderRadius: 12,
-    justifyContent: 'center', alignItems: 'center',
-    flexShrink: 0,
-  },
-  eventInfo:  { flex: 1 },
-  eventTitle: { fontSize: 15, fontWeight: '600', color: 'rgba(255,255,255,0.85)' },
-  eventMeta:  { fontSize: 12, color: 'rgba(255,255,255,0.3)', marginTop: 3 },
-  eventTime:  { fontSize: 14, color: 'rgba(255,255,255,0.4)', fontWeight: '500', flexShrink: 0 },
-
-  // ── Date picker modal (iOS)
-  pickerBackdrop: {
-    flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)',
-  },
+  // ── Go to date
+  pickerBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
   pickerSheet: {
-    backgroundColor: '#111827',
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingBottom: 32,
+    backgroundColor: '#14161F',
+    borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg,
+    paddingBottom: 28,
   },
   pickerHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 20, paddingVertical: 16,
-    borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 18, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: LINE.soft,
   },
-  pickerTitle:  { fontSize: 15, fontWeight: '600', color: '#F1F5F9' },
-  pickerCancel: { fontSize: 15, color: 'rgba(255,255,255,0.4)' },
-  pickerDone:   { fontSize: 15, fontWeight: '700', color: '#60A5FA' },
-  picker:       { height: 200 },
+  pickerTitle:  { fontFamily: UI_FONT, fontSize: 14, color: TEXT.primary },
+  pickerCancel: { fontFamily: UI_FONT, fontSize: 15, color: TEXT.tertiary },
+  pickerDone:   { fontFamily: UI_FONT, fontSize: 15, color: TEXT.primary },
+  picker: { alignSelf: 'stretch' },
+
+  // Three months wide; the row is translated to bring one into view.
+  row: { flex: 1, flexDirection: 'row', width: SCREEN_W * 3 },
+
+  // ── Day cards
+  // Near the edge on purpose: a wide gutter makes the screen itself look
+  // narrower and the phone's bezel look thicker.
+  cardWrap: { paddingHorizontal: 8, marginBottom: 8 },
+
+  // The container: one card per day, holding the date and, when open, the
+  // events. `overflow: hidden` keeps the revealed cards clipped to its corners
+  // as it grows.
+  card: {
+    borderRadius: RADIUS.lg,
+    backgroundColor: SURFACE.raised,
+    overflow: 'hidden',
+  },
+  // The part you tap. Tall on purpose: the date is the card's subject, not a
+  // label on a row, and it needs room around it to read that way.
+  cardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 168,
+    paddingVertical: 20,
+    paddingHorizontal: 22,
+  },
+  // Gone, not greyed: a day that has happened should recede without becoming a
+  // puzzle to read if you do look at it.
+  cardPast: { opacity: 0.42 },
+
+  // Only the past collapses. A future day with nothing on it is still a day you
+  // are looking ahead to, and shrinking it would say the opposite.
+  cardSlim: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 0,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    gap: 9,
+  },
+  slimNum: {
+    fontFamily: DISPLAY_FONT_LARGE, fontSize: 24, lineHeight: 28,
+    color: TEXT.secondary, letterSpacing: -0.8,
+  },
+  slimNumToday: { color: TEXT.primary },
+  slimMon: {
+    fontFamily: UI_FONT, fontSize: 10, letterSpacing: 1,
+    color: TEXT.faint,
+  },
+  slimDay: {
+    fontFamily: UI_FONT, fontSize: 12, letterSpacing: 1.4,
+    color: TEXT.tertiary, marginLeft: 2,
+  },
+
+  dateBlock: { flex: 1 },
+  dayName: {
+    fontFamily: UI_FONT, fontSize: 12,
+    letterSpacing: 1.4,
+    color: TEXT.tertiary,
+    marginBottom: 6,
+  },
+  // The number and the month are one object at one size, stacked. Set in the
+  // plainer weight — at this size the stroke does not need to add emphasis,
+  // the size already has it.
+  dateNum: {
+    fontFamily: DISPLAY_FONT_LARGE, fontSize: 58, lineHeight: 58,
+    color: TEXT.primary, letterSpacing: -2,
+  },
+  dateMon: {
+    fontFamily: DISPLAY_FONT_LARGE, fontSize: 58, lineHeight: 60,
+    color: TEXT.secondary, letterSpacing: -1,
+  },
+
+  // ── What is on, as a hint
+  dotRow: { flexDirection: 'row', alignItems: 'center', gap: 9, flexShrink: 0 },
+  bigDot: { width: 13, height: 13, borderRadius: RADIUS.pill },
+
+  // ── The day, opened
+  reveal: { paddingHorizontal: 10, paddingBottom: 10 },
+  // No stroke. A card with a colour of its own does not need an outline to say
+  // where it ends — the fill already does that, and an outline on top reads as
+  // a border drawn around a thing rather than as the thing.
+  evCard: {
+    borderRadius: RADIUS.lg,
+    paddingHorizontal: 18, paddingVertical: 16,
+    marginBottom: 8,
+  },
+  evTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
+  evType: { fontFamily: UI_FONT, fontSize: 11, letterSpacing: 0.3 },
+  evTitle: {
+    fontFamily: DISPLAY_FONT, fontSize: 20, lineHeight: 25,
+    color: TEXT.primary, letterSpacing: -0.4,
+  },
+  evSub: {
+    fontFamily: UI_FONT, fontSize: 13,
+    color: 'rgba(255,255,255,0.66)', marginTop: 5,
+  },
 });

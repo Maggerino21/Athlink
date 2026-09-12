@@ -10,9 +10,11 @@
  * web app writes (see CLAUDE.md § Event types).
  */
 
+import { matteAccent, type MatteAccent } from '../../utils/theme';
+
 export type EventType =
   | 'training' | 'home' | 'rehab' | 'exercise' | 'recovery'
-  | 'meeting' | 'match' | 'vacation' | 'other';
+  | 'travel' | 'meeting' | 'match' | 'vacation' | 'other';
 
 export interface CalEvent {
   id: string;
@@ -41,8 +43,35 @@ export const EVENT_META: Record<EventType, { icon: string; color: string }> = {
   rehab:    { icon: 'medkit',           color: '#A78BFA' },
   exercise: { icon: 'barbell',          color: '#8B5CF6' },
   recovery: { icon: 'leaf',             color: '#22C55E' },
+  travel:   { icon: 'airplane',         color: '#F59E0B' },
   meeting:  { icon: 'people',           color: '#EC4899' },
   match:    { icon: 'football',         color: '#F97316' },
   vacation: { icon: 'partly-sunny',     color: '#FBBF24' },
   other:    { icon: 'calendar-outline', color: '#6B7280' },
 };
+
+/**
+ * Always use this rather than indexing EVENT_META directly.
+ *
+ * `type` arrives from the database, where it is a plain text column, so it is
+ * not actually constrained to EventType however the TS says otherwise — the web
+ * app can introduce a category the mobile build has never heard of. A raw
+ * `EVENT_META[type].color` then throws on undefined, and because the lookup sits
+ * inside a render it takes the entire tab down to a white screen rather than
+ * spoiling one row. That is exactly how a single `travel` event blanked
+ * Schedule. Degrade to `other` instead.
+ */
+export function eventMeta(type: string): { icon: string; color: string } {
+  return EVENT_META[type as EventType] ?? EVENT_META.other;
+}
+
+/**
+ * The matte form of a type's colour — what the UI should actually draw.
+ *
+ * `EVENT_META.color` stays the source of truth for the hue, but nothing should
+ * paint it raw any more: at full saturation it reads neon against the matte
+ * surfaces. Ask for the accent, not the colour.
+ */
+export function eventAccent(type: string): MatteAccent {
+  return matteAccent(eventMeta(type).color);
+}

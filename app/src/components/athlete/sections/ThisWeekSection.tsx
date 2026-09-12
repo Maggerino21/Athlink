@@ -85,6 +85,7 @@ const EVENT_ICONS: Record<string, { icon: string; color: string }> = {
   rehab:    { icon: 'medkit',       color: '#A78BFA' },
   exercise: { icon: 'barbell',      color: '#8B5CF6' },
   recovery: { icon: 'leaf',         color: '#22C55E' },
+  travel:   { icon: 'airplane',     color: '#F59E0B' },
   meeting:  { icon: 'people',       color: '#EC4899' },
   match:    { icon: 'football',     color: '#F97316' },
   vacation: { icon: 'partly-sunny', color: '#FBBF24' },

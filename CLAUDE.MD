@@ -256,7 +256,7 @@ Mobile documents: `training` · `exercise` · `recovery` · `travel` · `meeting
 
 The web app writes three more — `home` (home training), `rehab`, `vacation` — and
 `CalendarTab` colour-maps all of them. The mobile app covers all nine in `EVENT_META`
-(ScheduleSection) and `EVENT_ICONS` (ThisWeekSection); keep those two in sync.
+(`eventTypes.ts`). `ThisWeekSection`'s `EVENT_ICONS` is dead with the file.
 
 ### Club signup flow (DB trigger `handle_new_user`)
 
@@ -331,13 +331,40 @@ no policy changes at all.**
 | `send-notification` | Takes `{ tokens, title, body, data }` → calls Expo Push API |
 | `football` | Sportmonks proxy — `ping` / `search` / `fixtures`. Holds `sportsmonks_api_key`; returns our own `{ teams }` / `{ fixtures }` shape |
 
+## Home — read this before touching it
+
+**`HomeSection` is the live file. `ThisWeekSection` is not rendered by anything.**
+CLAUDE.md said otherwise until 2026-09-12 and it cost a real detour.
+
+**Home shows mock data in dev.** `USE_MOCK = __DEV__`, and `fill(real, mock)`
+substitutes a mock whenever a real count is 0 — so "12 Feedback" is fiction when
+the true unread count is zero, and the "Days to next" card can never say
+"Nothing on". Judge Home's data with that flag off.
+
+**Home's cards are `Blob`, and `Blob` is the most considered design code in the
+repo.** A rim-lit squircle from the Figma sheet, built from stacked *inset*
+box-shadows and radial gradients, with `BlobLab` for tuning it. Its own docblock
+explains why it cannot use RN's blur filter. Do not casually replace it.
+
+**The open tension.** Home's rule is *"big cards, big numbers, close together"* —
+each card answers one question with one figure, and "a card that needs a sentence
+is a card that has not decided what it is for." Schedule was since rebuilt flat
+and matte. Blob's **neutral** variant is the bridge: the same four layers with
+the pinks swapped for white alphas, which is a matte card with a lit rim rather
+than a flat fill. Home is the centrepiece and should lead the design — do not
+flatten Home to match Schedule without asking.
+
+**Home's hero card carries the club hue**, which is now the only prominent club
+colour left in mobile (see the design system below). That is either the one
+deliberate exception or something to remove — an open question, not a decision.
+
 ## Athlete app — tabs
 
 | Tab | Component | Notes |
 |---|---|---|
-| Home | `ThisWeekSection` | Match week card, focus areas, upcoming events strip |
+| Home | `HomeSection` | Fixture countdown + four stat cards. **`ThisWeekSection` is dead code** — still in the tree, rendered by nothing. Delete it rather than edit it |
 | Feedback | `FeedbackSection` | Unread/read feedback cards, emoji reactions, athlete reply |
-| Schedule | `ScheduleSection` | Accordion day list (bold, full-width), event detail sheet |
+| Schedule | `ScheduleSection` | Month pager of day cards; tap a day to reveal its events; event detail sheet |
 | Tasks | `TasksSection` | Assigned tasks with due dates and completion |
 | Progress | `ProgressSection` | Placeholder — Phase D |
 
@@ -388,6 +415,64 @@ All tabs are built and backed by live Supabase queries (no mock data).
   badge) onto the nearest one using CIELAB distance.
 - **Say "staff", never "coaches"** in UI copy — physios and analysts need dashboard access
   without being coaches. The `role` value is `'staff'`; the wording follows it.
+
+## Mobile design system
+
+**Matte, greyscale, with colour reserved for meaning.** Decided 2026-09-12 after
+the Schedule page drifted into a look Magne called "vibecoded slop" — which it
+was, and the cause was measurable rather than aesthetic: an audit of `app/src`
+found **14 distinct surface greys** (0.04, 0.045, 0.05, 0.06, 0.07, 0.08, 0.1,
+0.12 …) and **12 distinct corner radii** (2, 4, 8, 9, 10, 12, 14, 16, 20, 37,
+999, 9999). No single one was wrong. Every screen was locally plausible and the
+app was globally incoherent, which is exactly what reads as machine-written.
+
+**`utils/tokens.ts` is the mobile equivalent of the web's `globals.css`** —
+`SURFACE`, `LINE`, `TEXT` (four levels, and four is the limit), `RADIUS`,
+`SPACE`. The web rule now applies here too: **never write a raw grey or radius
+in a component.**
+
+**Athlink's colour budget was already spent before any decoration.** Two systems
+carry meaning — club colour (identity) and event type colour (category) — so a
+third, decorative one means none of them read. Hence:
+
+| Colour | Says | Drawn as |
+|---|---|---|
+| Event type | what kind of thing this is | a matte edge, icon and label — never a filled tinted card |
+| Club | identity | **almost nothing in mobile.** Not on today, not on selection |
+| Greyscale | everything else | `SURFACE` / `TEXT` |
+
+"Current" is drawn with **weight and brightness, not colour**: today's card is
+`SURFACE.active` with a brighter edge; the calendar's selected day is a
+near-white fill with a dark number, and today unselected is a ring.
+
+**`eventAccent(type)` is what the UI draws — not `EVENT_META.color`.** The type
+palette is web-style (`#3B82F6` is HSL 217/**91%**/60%) and at that saturation
+reads neon on a matte surface. `matteAccent()` in `utils/theme.ts` keeps the hue
+— hue is the identity, blue means training — and cuts saturation to `MATTE_SAT`.
+Derived rather than hand-picked so **the whole app's colour temperature is three
+numbers in one place**; turn `MATTE_SAT` down and every accent quietens
+together, which ten hand-chosen hexes could never do.
+
+One deliberate exception is reserved and not yet built: the match countdown on
+Home may be genuinely vibrant. Restraint everywhere else is what would give it
+force.
+
+**Club colour is deliberately almost absent from mobile** (decided 2026-09-12).
+It is identity, not information, and every drop spent on chrome competes with
+the event colours, which are the only colour that tells you anything. "Current"
+is drawn with weight and brightness instead: today's card is `SURFACE.active`,
+nothing is tinted. `grep clubColor` in `ScheduleSection` returns nothing. The one
+survivor is Home's fixture card — see Home above.
+
+**The type palette is derived, and that is now its weakness.** `matteAccent()`
+mixes each hue toward clay by a fixed `FILL_MIX`, which found the territory but
+does not make ten *good* colours: match (rust) and training (slate) work, the
+pinks and purples are flat. The next move is probably to hand-pick ten rather
+than keep tuning one dial — ten is few enough to actually design.
+
+> Converted so far: **ScheduleSection** (incl. the month pager) and the event
+> sheet. Home, Feedback, Tasks and the staff screens still carry the old
+> ad-hoc greys — sweep them before adding anything new to those files.
 
 ## UI system
 
@@ -572,6 +657,16 @@ The rule: if a value changes while a finger is down, it belongs in a worklet.
 > Any `npm install` that re-resolves the tree can reintroduce the drift, and **every SDK
 > upgrade changes the required version** — re-pin it as part of the upgrade. Reanimated
 > itself compares only major.minor, so its own patch drift is harmless.
+
+> **A `formSheet` has no height to inherit, and a ScrollView inside one draws
+> nothing.** `react-native-screens` gives the content wrapper `position:
+> absolute` with top/left/right pinned and **no bottom**
+> (`ScreenStackItem.getPositioningStyle`), so a `flex: 1` chain measures zero.
+> This cost three "blank sheet" rounds. `EventDetailScreen` states its own height
+> in points instead, and uses a plain `View` — a ScrollView will not work in
+> there. Make the coloured ground the **full screen height**, not the detent's
+> fraction: iOS rubber-bands a sheet past its detent, and a ground sized to the
+> detent runs out mid-drag.
 
 **Never layer anything on top of real Liquid Glass.** `expo-glass-effect` is bundled in
 Expo Go and resolves on any iOS 26 device, so `GlassView` gives us Apple's actual
