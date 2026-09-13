@@ -13,7 +13,7 @@ import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue, useAnimatedStyle, useDerivedValue, useAnimatedScrollHandler,
-  withTiming, withSpring, interpolate, interpolateColor, Easing,
+  withTiming, withSpring, interpolate, interpolateColor, Easing, FadeIn,
 } from 'react-native-reanimated';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
@@ -50,13 +50,22 @@ const STRIP_STEP = 104;
 
 /**
  * Card heights, so snap offsets can be computed instead of measured.
- * These MUST match the styles below — `cardTop.minHeight`, `cardSlim`'s
- * padding, `evCard`, and `cardWrap.marginBottom`.
+ *
+ * These are applied as exact `height`s below, not `minHeight`s — and that
+ * distinction is the whole bug they used to cause. The full card was
+ * `minHeight: 168`, but its date block is taller than that, so the real card
+ * rendered at 178.67pt (measured off the screen pixels). The snap maths
+ * believed 168, so every full card added 10.67pt of error: the first date
+ * snapped perfectly, the fourth was ~43pt off. A minimum is a floor, not a size.
+ *
+ * Now each constant IS the rendered height, so the maths cannot drift from the
+ * layout however many cards you scroll past.
  */
-const CARD_FULL_H = 168;
+const CARD_FULL_H = 180;        // measured natural 178.67 → set exactly, never clips
 const CARD_SLIM_H = 56;
-const EVENT_CARD_H = 104;
-const REVEAL_PAD = 18;
+const EVENT_CARD_BODY_H = 98;   // measured natural 97.33
+const EVENT_CARD_H = EVENT_CARD_BODY_H + 8;   // + its marginBottom
+const REVEAL_PAD = 10;          // reveal paddingBottom
 const CARD_GAP = 8;
 
 const SELECT_SPRING = { damping: 20, stiffness: 380, mass: 0.5 } as const;
@@ -238,21 +247,29 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   }, []);
 
   const [events, setEvents]         = useState<CalEvent[]>([]);
+  /** Latest events without making the reset depend on them. */
+  const eventsRef = useRef<CalEvent[]>([]);
+  eventsRef.current = events;
+  /** True once events have loaded — the lists wait for it. See MonthList. */
+  const [ready, setReady] = useState(false);
   const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
   /**
-   * The open day, per month.
+   * Which days are open — each on its own, not one per month.
    *
-   * This used to be a single string for the whole screen, which meant swiping
-   * away from a month collapsed whatever was open in it — the content above
-   * your scroll position shrank, so coming back you were parked further down,
-   * and re-expanding on arrival cut you back. A month's open day is a property
-   * of that month, so it lives per month and simply stays put while you are
-   * elsewhere.
+   * This was one open day per month, and opening a day silently closed the
+   * one that was open before. When that day sat above you — today, usually —
+   * its events vanished and everything below was pulled up by exactly the
+   * height that closed. Open the 23rd and the list lurched 116pt, for a reason
+   * nothing on screen explained. Earlier still it was one day for the whole
+   * screen, with the same flaw across months.
    *
-   * It doubles as the per-visit memory: reopening a month finds it exactly as
-   * you left it, with no restore logic at all.
+   * The rule: nothing moves unless you touched it. So each day opens and closes
+   * independently, and a day you are not looking at is never changed by a tap
+   * somewhere else.
    */
-  const [openByMonth, setOpenByMonth] = useState<Record<string, string>>({});
+  const [openDays, setOpenDays] = useState<Record<string, true>>({});
+  /** Bumped on every reset, so each month's list scrolls back to its landing. */
+  const [resetToken, setResetToken] = useState(0);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerDate, setPickerDate] = useState(today);
 
@@ -276,8 +293,11 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
 
   // Stable identities, so a month that did not change does not re-render.
   const handleToggle = useCallback((ymd: string) => {
-    const key = monthKey(fromYMD(ymd));
-    setOpenByMonth(prev => ({ ...prev, [key]: prev[key] === ymd ? '' : ymd }));
+    setOpenDays(prev => {
+      const next = { ...prev };
+      if (next[ymd]) delete next[ymd]; else next[ymd] = true;
+      return next;
+    });
   }, []);
 
   const handleEventPress = useCallback((e: CalEvent) => {
@@ -326,7 +346,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   /** Land on a specific day — the month AND the day, not just the month. */
   const jumpTo = useCallback((d: Date) => {
     const key = monthKey(d);
-    setOpenByMonth(prev => ({ ...prev, [key]: toYMD(d) }));
+    setOpenDays(prev => ({ ...prev, [toYMD(d)]: true }));
     goToIndex(months.findIndex(m => monthKey(m) === key), false);
   }, [goToIndex, months]);
 
@@ -354,7 +374,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
 
   // ── Data ──────────────────────────────────────────────────────────────────
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     if (!profile?.club_id) return;
 
     // Five months, not the three on screen.
@@ -369,7 +389,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
 
     // Already covered? Then there is nothing to do. This is what makes a step
     // free rather than merely fast.
-    if (loadedRange.current
+    if (!force && loadedRange.current
         && from >= loadedRange.current.from
         && to <= loadedRange.current.to) {
       return;
@@ -417,17 +437,27 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
     ];
 
     loadedRange.current = { from, to };
-    setEvents(mapped);
+    // Today opens in the SAME render the events arrive, not one after.
+    //
+    // This used to be an effect watching `events`, which runs after the render
+    // that delivered them — so the list's first frame showed today closed, and
+    // the next frame opened it and pushed every card below down 116pt. React
+    // batches these three into one commit, so today is already open the first
+    // time the list is drawn.
+    if (!seededToday.current) {
+      seededToday.current = true;
+      const t = toYMD(today);
+      if (mapped.some(e => e.date === t)) setOpenDays({ [t]: true });
+    }
+    // A background refresh that returns the same rows must not re-render every
+    // mounted card for nothing. Compare a cheap signature first.
+    const sig = (xs: CalEvent[]) => xs.map(e => `${e.id}|${e.date}|${e.start_time}|${e.title}`).join('~');
+    if (sig(mapped) !== sig(eventsRef.current)) setEvents(mapped);
+    setReady(true);
   }, [profile?.club_id, monthAnchor]);
 
-  useEffect(() => { if (isActive) load(); }, [isActive, load]);
 
-  useEffect(() => {
-    if (seededToday.current || !events.length) return;
-    seededToday.current = true;
-    const t = toYMD(today);
-    if (events.some(e => e.date === t)) setOpenByMonth({ [monthKey(today)]: t });
-  }, [events, today]);
+
 
   /**
    * Leaving the section puts it back to its defaults.
@@ -437,14 +467,39 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
    * "what's on" is almost always about now. Each month's open day is for
    * moving around *within* a visit, and does not outlive one.
    */
+  // Swiping to a new month may step outside the fetched window. Not on mount —
+  // the effect below already loads then, and running both would fetch twice.
+  const anchorMounted = useRef(false);
   useEffect(() => {
-    if (isActive) return;
-    setOpenByMonth({});
-    seededToday.current = false;
-    loadedRange.current = null;
+    if (!anchorMounted.current) { anchorMounted.current = true; return; }
+    if (isActive) load();
+  }, [monthAnchor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (isActive) {
+      // Returning: refresh quietly. The screen is already in its final state
+      // from the reset below, so this only matters if the data really changed.
+      load(true);
+      return;
+    }
+    /**
+     * Leaving: put everything straight into the state you will see on return,
+     * NOW, while the section is hidden — using the events already in hand.
+     *
+     * This used to clear the open days and throw away the loaded range. Coming
+     * back, the list drew instantly with today closed, then waited on the
+     * network to refetch, then opened today and pushed every card below it down
+     * 116pt. Measured with realistic latency: 840ms of the wrong layout, then a
+     * jump. Nothing on the first frame may depend on a request that has not
+     * come back yet.
+     */
+    const t = toYMD(today);
+    setOpenDays(eventsRef.current.some(e => e.date === t) ? { [t]: true } : {});
     setMonthAnchor(startOfMonth(today));
     setPickerVisible(false);
     goToIndex(HOME_INDEX, false);
+    // Each month's list scrolls itself back to where it opens. While hidden.
+    setResetToken(n => n + 1);
   }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Build day groups ──────────────────────────────────────────────────────
@@ -500,12 +555,14 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
           <MonthList
             month={item}
             events={events}
+            ready={ready}
             today={today}
-            expandedDay={openByMonth[monthKey(item)] ?? ''}
-            landOn={
-              openByMonth[monthKey(item)]
-              || toYMD(monthKey(item) === monthKey(today) ? today : startOfMonth(item))
-            }
+            openDays={openDays}
+            resetToken={resetToken}
+            // Where a month first opens: today in this month, the 1st in any
+            // other. Deliberately NOT derived from which days are open — that
+            // coupling is what used to throw you back to today on collapse.
+            landOn={toYMD(monthKey(item) === monthKey(today) ? today : startOfMonth(item))}
             bottomPad={40 + insets.bottom}
             onToggle={handleToggle}
             onEventPress={handleEventPress}
@@ -575,19 +632,19 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
  * without a single line of restore logic.
  */
 const MonthList = React.memo(function MonthList({
-  month, events, expandedDay, landOn, bottomPad, today, onToggle, onEventPress,
+  month, events, ready, openDays, resetToken, landOn, bottomPad, today, onToggle, onEventPress,
 }: {
   month: Date;
+  ready: boolean;
   events: CalEvent[];
-  expandedDay: string;
+  openDays: Record<string, true>;
+  resetToken: number;
   landOn: string;
   bottomPad: number;
   today: Date;
   onToggle: (ymd: string) => void;
   onEventPress: (e: CalEvent) => void;
 }) {
-  const scrollRef = useRef<any>(null);
-  const didLand = useRef(false);
 
   const days = React.useMemo(() => {
     const first = startOfMonth(month);
@@ -627,49 +684,103 @@ const MonthList = React.memo(function MonthList({
    * exact for collapsed days and close enough for the one open day that snapping
    * still lands where it should.
    */
+  // This month's open days, as a string. Every mounted month receives the same
+  // `openDays` object, so memoising on it would recompute every month's offsets
+  // — and hand every month's ScrollView a new `snapToOffsets` — whenever a day
+  // anywhere was tapped. A string only changes when THIS month's days do.
+  const openKey = dayGroups.filter(d => openDays[d.dateStr]).map(d => d.dateStr).join(',');
+
   const { offsets } = React.useMemo(() => {
     const out: number[] = [];
     let y = 0;
     for (const d of dayGroups) {
       out.push(y);
       const slim = d.isPast && !d.isToday && d.events.length === 0;
-      const open = d.dateStr === expandedDay && d.events.length > 0;
+      const open = !!openDays[d.dateStr] && d.events.length > 0;
       y += (slim ? CARD_SLIM_H : CARD_FULL_H)
          + (open ? d.events.length * EVENT_CARD_H + REVEAL_PAD : 0)
          + CARD_GAP;
     }
     return { offsets: out };
-  }, [dayGroups, expandedDay]);
+  }, [dayGroups, openKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Open on the month's day, once.
-  useEffect(() => {
+  /**
+   * Where the list opens, applied as `contentOffset` — i.e. at mount, before
+   * the first frame is drawn.
+   *
+   * This used to be a `useEffect` calling `scrollTo`, and a passive effect runs
+   * after paint: the first frame was always drawn at the top of the month, then
+   * it jumped to today. `contentOffset` makes the first frame already correct,
+   * so there is no second position to jump to.
+   *
+   * Lands on the exact snap offset. The old landing used `offset - 8` while
+   * snapping used the raw offset, so the first touch nudged the list 8pt.
+   *
+   * See `land` below — this value is only ever applied once.
+   */
+  const landIndex = dayGroups.findIndex(d => d.dateStr === landOn);
+  const initialY = landIndex >= 0 ? offsets[landIndex] : 0;
+
+  /**
+   * Positioned once, imperatively, during the first layout — never as a prop.
+   *
+   * This was `contentOffset`, and on the New Architecture that is not an
+   * initial position: it lives in the ScrollView's shadow-tree state and
+   * takes part in layout. Whenever content height changed it pulled the offset
+   * back toward that value, which caused two bugs at once:
+   *
+   *  - Collapsing any day recomputed the landing day to "today", changed the
+   *    prop, and scrolled you back to the 13th from wherever you were.
+   *  - Expanding a day moved everything ABOVE it up by exactly the revealed
+   *    height (116pt) while everything below held still — the reverse of how a
+   *    list should grow. Measured with snapping disabled, so it was not that.
+   *
+   * `scrollTo` in `onLayout` runs before paint, and the page fades in from
+   * opacity 0, so the first visible frame is already in place — which is what
+   * `contentOffset` was there to achieve — without holding the offset hostage
+   * for the rest of the list's life.
+   */
+  const scrollRef = useRef<any>(null);
+  const didLand = useRef(false);
+  const land = useCallback(() => {
     if (didLand.current) return;
-    const i = dayGroups.findIndex(d => d.dateStr === landOn);
-    if (i < 0) return;
     didLand.current = true;
-    scrollRef.current?.scrollTo({ y: Math.max(0, offsets[i] - 8), animated: false });
-  }, [offsets, dayGroups, landOn]);
+    if (initialY > 0) scrollRef.current?.scrollTo({ x: 0, y: initialY, animated: false });
+  }, [initialY]);
+
+  // A reset (leaving Schedule) scrolls back to the landing day. It runs while
+  // the section is hidden, so the move is never seen.
+  const firstReset = useRef(resetToken);
+  useEffect(() => {
+    if (resetToken === firstReset.current) return;
+    scrollRef.current?.scrollTo({ x: 0, y: initialY, animated: false });
+  }, [resetToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!ready) return <View style={styles.monthPage} />;
 
   return (
-    <GHScrollView
-      ref={scrollRef}
-      style={{ width: SCREEN_W }}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: bottomPad }}
-      snapToOffsets={offsets}
-      snapToEnd={false}
-      decelerationRate="fast"
-    >
-      {dayGroups.map(day => (
-        <DayCard
-          key={day.dateStr}
-          day={day}
-          expanded={expandedDay === day.dateStr}
-          onToggle={onToggle}
-          onEventPress={onEventPress}
-        />
-      ))}
-    </GHScrollView>
+    <Animated.View entering={FadeIn.duration(160)} style={styles.monthPage}>
+      <GHScrollView
+        ref={scrollRef}
+        style={styles.monthScroll}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: bottomPad }}
+        onLayout={land}
+        snapToOffsets={offsets}
+        snapToEnd={false}
+        decelerationRate="fast"
+      >
+        {dayGroups.map(day => (
+          <DayCard
+            key={day.dateStr}
+            day={day}
+            expanded={!!openDays[day.dateStr]}
+            onToggle={onToggle}
+            onEventPress={onEventPress}
+          />
+        ))}
+      </GHScrollView>
+    </Animated.View>
   );
 });
 
@@ -890,8 +1001,10 @@ function DayEventCard({ event, onPress }: { event: CalEvent; onPress: () => void
           </Text>
         ) : null}
       </View>
-      <Text style={styles.evTitle} numberOfLines={2}>{event.title}</Text>
-      {sub ? <Text style={styles.evSub}>{sub}</Text> : null}
+      {/* One line each: the card has an exact height so snapping stays exact.
+          The full title is one tap away in the sheet. */}
+      <Text style={styles.evTitle} numberOfLines={1}>{event.title}</Text>
+      {sub ? <Text style={styles.evSub} numberOfLines={1}>{sub}</Text> : null}
     </PressableScale>
   );
 }
@@ -954,8 +1067,10 @@ const styles = StyleSheet.create({
   pickerDone:   { fontFamily: UI_FONT, fontSize: 15, color: TEXT.primary },
   picker: { alignSelf: 'stretch' },
 
-  // Three months wide; the row is translated to bring one into view.
-  row: { flex: 1, flexDirection: 'row', width: SCREEN_W * 3 },
+  // One month's page in the pager. `flex: 1` so the scroller inside it has
+  // the pager's full height to fill.
+  monthPage: { width: SCREEN_W, flex: 1 },
+  monthScroll: { flex: 1 },
 
   // ── Day cards
   // Near the edge on purpose: a wide gutter makes the screen itself look
@@ -975,7 +1090,7 @@ const styles = StyleSheet.create({
   cardTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 168,
+    height: CARD_FULL_H,
     paddingVertical: 20,
     paddingHorizontal: 22,
   },
@@ -988,7 +1103,7 @@ const styles = StyleSheet.create({
   cardSlim: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 0,
+    height: CARD_SLIM_H,
     paddingVertical: 14,
     paddingHorizontal: 22,
     gap: 9,
@@ -1037,6 +1152,7 @@ const styles = StyleSheet.create({
   // a border drawn around a thing rather than as the thing.
   evCard: {
     borderRadius: RADIUS.lg,
+    height: EVENT_CARD_BODY_H,
     paddingHorizontal: 18, paddingVertical: 16,
     marginBottom: 8,
   },
