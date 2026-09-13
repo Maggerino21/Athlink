@@ -1,90 +1,93 @@
 /**
- * HomeSection — the redesigned athlete home.
+ * HomeSection — the athlete home.
  *
- * Replaces ThisWeekSection, which is still in the tree but no longer rendered.
+ * Built up from a stripped floor (2026-09-13):
  *
- * The design rule, from the sketch: **big cards, big numbers, close together.**
- * Every card answers one question with a single figure large enough to read
- * without focusing, and the label under it is support, not content. That is
- * why there is no list, no strip of events, and no summary text — a card that
- * needs a sentence is a card that has not decided what it is for.
+ * - **The match sits at the top as text**, not a card.
+ * - **Light rises from the bottom of the screen** in the competition's hue,
+ *   strengthening toward matchday. It shows in the space between the match and
+ *   the panel, and under the tab bar.
+ * - **One solid panel, cut into tiles.** Not cards floating on a card — a
+ *   single opaque slab divided by thin grooves of the page colour, like a
+ *   bento box. One wide tile for what is next, three narrow ones beneath it.
+ *   The wide tile gives the panel a lead; four equal squares never had one.
+ * - **Colour lives in the type**: each tile's figure and dot take its category
+ *   ink. Fills stay grey and opaque.
+ * - **Thin Inter, set large.**
  *
- * Cards are `Blob variant="rim"`. The main one carries the club hue; the four
- * below are neutral, so the eye lands on the fixture first and the rest recede.
- * Making all five club-coloured turns the screen into a widget gallery where
- * nothing is emphasised.
- *
- * Data is unchanged from ThisWeekSection and every constraint it encoded still
- * applies: fixtures must filter `suppressed_at IS NULL`, and squad-wide events
- * can only be resolved by `visible_events_for_me` because an athlete cannot
- * distinguish "unassigned" from "assigned to someone else" under RLS.
+ * Data: fixtures must filter `suppressed_at IS NULL`, and squad-wide events can
+ * only be resolved by `visible_events_for_me` — an athlete cannot distinguish
+ * "unassigned" from "assigned to someone else" under RLS.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, Pressable, type LayoutChangeEvent } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, type LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence, cancelAnimation, Easing,
+} from 'react-native-reanimated';
+import Svg, { Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
-import Blob, { blobPaletteFor } from '../../ui/Blob';
+import { SURFACE, TEXT, RADIUS } from '../../../utils/tokens';
+import { THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR } from '../../../utils/type';
+import { hsla, matteAccent, type MatteAccent } from '../../../utils/theme';
+import { eventAccent } from '../eventTypes';
 
 const { width: W } = Dimensions.get('window');
 
-const PAD = 24;
-const GAP = 12;
-const CARD_W = W - PAD * 2;
-const MAIN_H = Math.round(CARD_W * 0.52);
-const SMALL_W = Math.round((CARD_W - GAP) / 2);
+/** Schedule's gutter. */
+const PAD = 8;
+/** Space between tiles. They are separate cards, edge to edge on the sides. */
+const GROOVE = 11;
+/** The match text lines up with the text inside the tiles. */
+const TEXT_INSET = PAD + 20;
+/** How much open space is kept between the match and the panel, for the glow. */
+const GLOW_ROOM = 48;
+/** Floor for the panel, so a very short screen still gets usable tiles. */
+const PANEL_MIN = 400;
+/** The narrow row keeps a fixed height; the wide tile grows upward into the rest. */
+const ROW_H = 212;
 
-/**
- * The tab bar floats over content rather than reserving space, so the height
- * this section is given includes the strip underneath it. There is no public
- * height to read from `react-native-screens` Tabs, so: the bar itself is 49pt
- * on iOS and the home-indicator inset is the rest.
- */
+/** The tab bar floats over content: 49pt of bar plus the home-indicator inset. */
 const TAB_BAR = 49;
-/** How close the bottom row sits to the bar. Small on purpose. */
-const BOTTOM_GAP = 10;
-const TOP_PAD = 4;
-/** Only used for the first frame, before the real height has been measured. */
-const SMALL_H_FALLBACK = Math.round(SMALL_W * 1.11);
+const BOTTOM_GAP = 12;
+
+const EASE = Easing.bezier(0.22, 1, 0.36, 1);
 
 /**
- * Negative tracking is applied after EVERY glyph including the last, so the
- * text box ends up `|letterSpacing|` narrower than the ink it contains — the
- * final digit gets clipped on the right, and centring lands off by half that.
- * Reserving the difference as padding fixes both at once.
+ * The glow's hue. Nothing stores a match's competition yet (the `football`
+ * edge function receives `league`, but `matches` has no column for it), so
+ * every match glows Eliteserien blue until that exists.
  */
-const HERO_TRACK = -4;
-
-/** Tuned in BlobLab against the green Figma tile. */
-const RIM = { intensity: 0.7, thickness: 0 };
+const COMPETITION_HUE = 200;
 
 /**
- * Candidates for the numerals only — the labels stay on Inter.
- *
- * That split is deliberate rather than laziness: a display face carries the
- * figure, a UI face carries the caption. Setting both to something characterful
- * is how a screen starts looking like a poster instead of an app.
- *
- * Live-switchable in __DEV__ because font is the one decision that has proved
- * impossible to make from a description, and cheap to make from a glance.
+ * Category colours for the text inside each card, through `matteAccent` so they
+ * sit in Schedule's family. "Next up" takes whatever the event's type is.
+ * Today, Tasks and Fines are not event types, so their hues are chosen here.
  */
+const CATEGORY: Record<'today' | 'tasks' | 'fines' | 'none', MatteAccent> = {
+  today: matteAccent('#3B82F6'),
+  tasks: matteAccent('#14B8A6'),
+  fines: matteAccent('#EF4444'),
+  none: matteAccent('#6B7280'),
+};
+
 /**
- * Stand-in numbers for design work, dev-only and never shipped.
+ * Stand-in data for design work, dev-only and never shipped. Real data always
+ * wins: these fill in only where the live value is absent or zero.
  *
- * A test account with nothing assigned renders five zeros, which says nothing
- * about whether the layout holds. The counts deliberately differ in digit
- * length — a two-digit figure is where centring and tabular spacing actually
- * get tested.
- *
- * Real data always wins: these fill in only where the live value is absent or
- * zero, so this cannot mask an empty state that is genuinely broken.
+ * Fines are mock-only because the fine box does not exist yet — it is the next
+ * feature to be built. Until then a release build shows a dash, not a number.
  */
 const USE_MOCK = __DEV__;
-const MOCK = { opponent: 'Brann', isHome: false, daysUntil: 8, tasks: 3, feedback: 12, week: 5, nextIn: 2 };
-
-const DISPLAY = ['Archivo', 'Inter', 'ChakraPetch', 'Rajdhani'] as const;
-const WEIGHTS = ['300Light', '400Regular', '500Medium'] as const;
-const RELIEFS = [0, 0.6, 1] as const;
+const MOCK = {
+  opponent: 'Brann', isHome: false, daysUntil: 8,
+  next: { title: 'Team training', days: 1, time: '18:00', location: 'Lerkendal kunstgress' },
+  today: 2,
+  tasks: 3,
+  fines: 150,
+};
 
 interface NextMatch {
   opponent: string;
@@ -97,33 +100,23 @@ interface UpcomingEvent {
   type: string;
   title: string;
   event_date: string;
+  location: string | null;
 }
 
 export default function HomeSection({ isActive }: { isActive?: boolean }) {
   const { profile } = useAuth();
   const insets = useSafeAreaInsets();
-  // Measured rather than derived: the header's height depends on the greeting
-  // wrapping, which depends on the name, so computing it here would drift.
-  const [areaH, setAreaH] = useState<number | null>(null);
   const [nextMatch, setNextMatch] = useState<NextMatch | null>(null);
-  const [daysUntil, setDaysUntil] = useState<number | null>(null);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [pendingCount, setPendingCount] = useState(0);
   const [events, setEvents] = useState<UpcomingEvent[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  // Archivo Medium is the default rather than a chosen answer — see the note on
-  // DISPLAY. Something competent has to sit here until the brand exists.
-  const [family, setFamily] = useState<(typeof DISPLAY)[number]>('Archivo');
-  const [weight, setWeight] = useState<(typeof WEIGHTS)[number]>('500Medium');
-  const numberFont = `${family}_${weight}`;
-  const [relief, setRelief] = useState<number>(1);
-
-  const clubColor = profile?.club_color ?? '#3B82F6';
+  const [viewH, setViewH] = useState(0);
+  const [matchH, setMatchH] = useState(0);
 
   const fetchData = useCallback(async () => {
     if (!profile) return;
 
-    const [matchRes, feedbackRes, tasksRes, eventsRes] = await Promise.all([
+    const [matchRes, tasksRes, eventsRes] = await Promise.all([
       profile.club_id
         ? supabase
             .from('matches')
@@ -138,12 +131,6 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
             .limit(1)
             .single()
         : Promise.resolve({ data: null }),
-
-      supabase
-        .from('match_feedback')
-        .select('id', { count: 'exact', head: true })
-        .eq('athlete_id', profile.id)
-        .eq('acknowledged', false),
 
       supabase
         .from('tasks')
@@ -166,18 +153,16 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
       })(),
     ]);
 
-    if (matchRes.data) {
-      const m = matchRes.data as NextMatch;
-      setNextMatch(m);
-      setDaysUntil(Math.ceil((new Date(m.match_date).getTime() - Date.now()) / 86400000));
-    } else {
-      setNextMatch(null);
-      setDaysUntil(null);
-    }
-
-    setUnreadCount((feedbackRes as { count?: number }).count ?? 0);
-    setPendingCount((tasksRes as { count?: number }).count ?? 0);
-    setEvents((eventsRes.data as UpcomingEvent[]) ?? []);
+    const tk = tasksRes as { count?: number | null };
+    setNextMatch((matchRes.data as NextMatch) ?? null);
+    setPendingCount(tk.count ?? 0);
+    // The RPC does not promise an order, and "next up" is whatever sorts first.
+    // Unsorted, a recovery session two days out was shown as next while two
+    // events were still to come today.
+    const list = ((eventsRes.data as UpcomingEvent[]) ?? [])
+      .slice()
+      .sort((a, b) => a.event_date.localeCompare(b.event_date));
+    setEvents(list);
   }, [profile]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -189,202 +174,394 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
     setRefreshing(false);
   }, [fetchData]);
 
-  const weekEnd = Date.now() + 7 * 86400000;
-  const thisWeek = events.filter(e => new Date(e.event_date).getTime() <= weekEnd).length;
+  // ── Derived ────────────────────────────────────────────────────────────────
+
+  const mock = USE_MOCK;
+
+  const match = nextMatch
+    ? { opponent: nextMatch.opponent, isHome: nextMatch.is_home, iso: nextMatch.match_date }
+    : mock ? { opponent: MOCK.opponent, isHome: MOCK.isHome, iso: mockKickoff(MOCK.daysUntil) } : null;
+
   const nextEvent = events[0];
-  const nextEventDays = nextEvent
-    ? Math.max(0, Math.ceil((new Date(nextEvent.event_date).getTime() - Date.now()) / 86400000))
-    : null;
+  const next = nextEvent
+    ? { title: nextEvent.title, days: calendarDaysUntil(nextEvent.event_date), time: localTime(nextEvent.event_date), location: nextEvent.location }
+    : mock ? MOCK.next : null;
+  const nextType = nextEvent?.type ?? (mock ? 'training' : null);
 
-  // Never slice a timestamptz string — the wire format is UTC and a 20:00 Oslo
-  // kick-off renders as 18:00. Format through Date so the device zone applies.
-  const formatKickoff = (iso: string) => {
-    const d = new Date(iso);
-    const day = d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-    const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
-    return `${day} · ${time}`;
-  };
-
-  const mockKickoff = () => {
-    const d = new Date(Date.now() + MOCK.daysUntil * 86400000);
-    d.setHours(15, 0, 0, 0);
-    return d.toISOString();
-  };
-
-  const fixture = nextMatch
-    ? { opponent: nextMatch.opponent, isHome: nextMatch.is_home, iso: nextMatch.match_date, days: daysUntil }
-    : USE_MOCK
-      ? { opponent: MOCK.opponent, isHome: MOCK.isHome, iso: mockKickoff(), days: MOCK.daysUntil }
-      : null;
-
-  const venue = fixture?.isHome === false ? '(a)' : fixture?.isHome ? '(h)' : '';
-  const kickoff = fixture ? formatKickoff(fixture.iso) : null;
-
-  const fill = (real: number, mock: number) => (real > 0 || !USE_MOCK ? real : mock);
-
-  // Fill the screen: whatever is left after the fixture card and the gaps is
-  // split between the two rows, so the bottom edge lands just above the bar.
-  const usable = areaH === null ? null : areaH - (insets.bottom + TAB_BAR) - BOTTOM_GAP - TOP_PAD;
-  const smallH = usable === null
-    ? SMALL_H_FALLBACK
-    : Math.max(SMALL_H_FALLBACK, Math.round((usable - MAIN_H - GAP * 2) / 2));
+  // The events RPC starts at "now", so this counts what is still to come today.
+  const todayCount = events.filter(e => calendarDaysUntil(e.event_date) === 0).length || (mock ? MOCK.today : 0);
+  const tasks = pendingCount || (mock ? MOCK.tasks : 0);
 
   const onLayout = (e: LayoutChangeEvent) => {
     const h = Math.round(e.nativeEvent.layout.height);
-    setAreaH(prev => (prev === h ? prev : h));
+    setViewH(prev => (prev === h ? prev : h));
+  };
+  const onMatchLayout = (e: LayoutChangeEvent) => {
+    const h = Math.round(e.nativeEvent.layout.height);
+    setMatchH(prev => (prev === h ? prev : h));
   };
 
+  // The panel takes what is left once the match and the glow have their room.
+  const bottom = insets.bottom + TAB_BAR + BOTTOM_GAP;
+  const panelH = viewH && matchH
+    ? Math.max(PANEL_MIN, viewH - matchH - GLOW_ROOM - bottom)
+    : PANEL_MIN;
+  const rowH = ROW_H;
+  const leadH = panelH - GROOVE - rowH;
+
+  const nextAccent = nextType ? eventAccent(nextType) : CATEGORY.none;
+
   return (
-    <>
-    <ScrollView
-      onLayout={onLayout}
-      contentContainerStyle={styles.scroll}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="rgba(255,255,255,0.4)" />
-      }
-    >
-      {/* The fixture. The only card carrying the club hue. */}
-      <Blob
-        width={CARD_W}
-        height={MAIN_H}
-        radius={30}
-        variant="rim"
-        palette={blobPaletteFor(clubColor)}
-        relief={relief}
-        {...RIM}
+    <View style={styles.root} onLayout={onLayout}>
+      {/* Behind everything, so it lights the space above the panel and reaches
+          under the tab bar, whose glass picks it up. */}
+      <RisingGlow height={viewH} days={match ? calendarDaysUntil(match.iso) : null} hue={COMPETITION_HUE} />
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.scroll, { paddingBottom: bottom }]}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />
+        }
       >
-        <View style={styles.mainInner}>
-          <Text style={styles.kickoff}>{kickoff ?? 'Nothing scheduled'}</Text>
-          <View style={styles.mainRow}>
-            <View>
-              <Text style={[styles.hero, { fontFamily: numberFont }]} allowFontScaling={false} numberOfLines={1}>
-                {fixture?.days ?? '—'}
-              </Text>
-              <Text style={styles.heroUnit}>{fixture?.days === 1 ? 'Day' : 'Days'}</Text>
-            </View>
-            <Text style={[styles.opponent, { fontFamily: numberFont }]} numberOfLines={2}>
-              {fixture ? `${fixture.opponent} ${venue}` : 'No fixture yet'}
-            </Text>
+        <View onLayout={onMatchLayout}>
+          <Match match={match} />
+        </View>
+
+        {/* Pushes the panel to the bottom. */}
+        <View style={styles.spacer} />
+
+        <View style={[styles.panel, { height: panelH }]}>
+          <LeadTile
+            height={leadH}
+            accent={nextAccent}
+            kind={nextType ? capitalise(nextType) : null}
+            when={next ? relativeDay(next.days) : null}
+            figure={next ? next.time : '—'}
+            title={next?.title ?? 'Nothing planned'}
+            place={next?.location ?? null}
+          />
+          <View style={[styles.row, { height: rowH }]}>
+            <Tile
+              accent={CATEGORY.today}
+              label="Today"
+              figure={String(todayCount)}
+              detail={todayCount === 0 ? 'nothing on' : todayCount === 1 ? 'event' : 'events'}
+            />
+            <Tile
+              accent={CATEGORY.tasks}
+              label="Tasks"
+              figure={String(tasks)}
+              detail={tasks === 0 ? 'all done' : 'to do'}
+            />
+            <Tile
+              accent={CATEGORY.fines}
+              label="Fines"
+              figure={mock ? String(MOCK.fines) : '—'}
+              unit={mock ? 'kr' : undefined}
+              detail={mock ? 'unpaid' : undefined}
+            />
           </View>
         </View>
-      </Blob>
-
-      <View style={styles.grid}>
-        <StatCard height={smallH} font={numberFont} relief={relief} value={fill(pendingCount, MOCK.tasks)} label="Tasks" />
-        <StatCard height={smallH} font={numberFont} relief={relief} value={fill(unreadCount, MOCK.feedback)} label="Feedback" />
-      </View>
-      <View style={styles.grid}>
-        <StatCard height={smallH} font={numberFont} relief={relief} value={fill(thisWeek, MOCK.week)} label="This week" />
-        <StatCard height={smallH} font={numberFont} relief={relief} value={fill(nextEventDays ?? 0, MOCK.nextIn)} label={nextEvent || USE_MOCK ? 'Days to next' : 'Nothing on'} />
-      </View>
-
-    </ScrollView>
-
-      {__DEV__ && (
-        <View style={[styles.fontBar, { bottom: insets.bottom + TAB_BAR + 8 }]}>
-          <View style={styles.fontRow}>
-            {DISPLAY.map(f => (
-              <Pressable key={f} onPress={() => setFamily(f)} style={[styles.fontChip, family === f && styles.fontChipOn]}>
-                <Text style={[styles.fontChipTxt, family === f && styles.fontChipTxtOn]}>{f.replace('Petch', '')}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.fontRow}>
-            {RELIEFS.map(r => (
-              <Pressable key={r} onPress={() => setRelief(r)} style={[styles.fontChip, relief === r && styles.fontChipOn]}>
-                <Text style={[styles.fontChipTxt, relief === r && styles.fontChipTxtOn]}>
-                  {r === 0 ? 'flat' : r === 1 ? 'relief' : 'soft'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-          <View style={styles.fontRow}>
-            {WEIGHTS.map(w => (
-              <Pressable key={w} onPress={() => setWeight(w)} style={[styles.fontChip, weight === w && styles.fontChipOn]}>
-                <Text style={[styles.fontChipTxt, weight === w && styles.fontChipTxtOn]}>{w.replace(/^\d+/, '')}</Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
-      )}
-    </>
+      </ScrollView>
+    </View>
   );
 }
 
-function StatCard({ value, label, height, font, relief }: { value: number | null; label: string; height: number; font: string; relief: number }) {
+// ── The match ──────────────────────────────────────────────────────────────
+
+function Match({ match }: { match: { opponent: string; isHome: boolean | null; iso: string } | null }) {
+  if (!match) {
+    return (
+      <View style={styles.match}>
+        <Text style={styles.matchWhen}>No match scheduled</Text>
+      </View>
+    );
+  }
+
+  const days = calendarDaysUntil(match.iso);
+  const when = days === 0 ? 'Match today' : days === 1 ? 'Match tomorrow' : `Match in ${days} days`;
+  const venue = match.isHome === false ? '(A)' : match.isHome ? '(H)' : '';
+
   return (
-    <Blob width={SMALL_W} height={height} radius={26} variant="rim" palette="neutral" relief={relief} {...RIM}>
-      <View style={styles.smallInner}>
-        <Text
-          style={[styles.stat, { fontFamily: font }]}
-          allowFontScaling={false}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.55}
-        >
-          {value ?? '—'}
-        </Text>
-        <Text style={styles.statLabel} numberOfLines={2}>{label}</Text>
-      </View>
-    </Blob>
+    <View style={styles.match}>
+      <Text style={styles.matchWhen}>{when}</Text>
+      <Text style={styles.matchName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+        {match.opponent}
+        {venue ? <Text style={styles.matchVenue}>{` ${venue}`}</Text> : null}
+      </Text>
+      <Text style={styles.matchTime}>Kick off {localTime(match.iso)}</Text>
+    </View>
   );
 }
+
+// ── The glow ───────────────────────────────────────────────────────────────
+
+/**
+ * Light rising from the bottom edge of the screen.
+ *
+ * Two pools anchored below the screen's floor — the hue and a neighbour 18°
+ * away — so it reads as atmosphere rather than a spotlight. Gradients, not
+ * blur, so nothing ends in a hard edge. The screen's bottom edge is the only
+ * place the pools meet a boundary, and a screen edge is a natural one.
+ *
+ * Strength follows calendar days to kick-off; only matchday breathes.
+ */
+function RisingGlow({ height, days, hue }: { height: number; days: number | null; hue: number }) {
+  const target = days === null ? 0 : glowFor(days);
+  const level = useSharedValue(0);
+  const breath = useSharedValue(1);
+
+  useEffect(() => {
+    level.value = withTiming(target, { duration: 600, easing: EASE });
+  }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (days === 0) {
+      breath.value = withRepeat(
+        withSequence(
+          withTiming(0.7, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+        ),
+        -1,
+      );
+    } else {
+      cancelAnimation(breath);
+      breath.value = withTiming(1, { duration: 400 });
+    }
+  }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const style = useAnimatedStyle(() => ({ opacity: level.value * breath.value }));
+
+  if (height <= 0) return null;
+  const H = height;
+  const a = hsla(hue, 95, 58);
+  const b = hsla(hue + 18, 95, 64);
+
+  return (
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
+      <Svg width={W} height={H}>
+        <Defs>
+          <RadialGradient id="riseA" cx="50%" cy="50%" r="50%">
+            <Stop offset={0} stopColor={a} stopOpacity={0.75} />
+            <Stop offset={0.55} stopColor={a} stopOpacity={0.32} />
+            <Stop offset={1} stopColor={a} stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id="riseB" cx="50%" cy="50%" r="50%">
+            <Stop offset={0} stopColor={b} stopOpacity={0.55} />
+            <Stop offset={0.5} stopColor={b} stopOpacity={0.2} />
+            <Stop offset={1} stopColor={b} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        {/* Centres sit at the floor, so the pools rise upward from it. */}
+        <Ellipse cx={W * 0.3} cy={H} rx={W * 1.0} ry={H * 0.95} fill="url(#riseA)" />
+        <Ellipse cx={W * 0.85} cy={H} rx={W * 0.75} ry={H * 0.75} fill="url(#riseB)" />
+      </Svg>
+    </Animated.View>
+  );
+}
+
+/** How lit the glow is, by calendar days to kick-off. A trace up to a week out. */
+function glowFor(days: number): number {
+  if (days <= 0) return 1;
+  if (days === 1) return 0.6;
+  if (days <= 3) return 0.35;
+  if (days <= 7) return 0.18;
+  return 0.08;
+}
+
+// ── Tiles ──────────────────────────────────────────────────────────────────
+
+/**
+ * What is next, across the full width.
+ *
+ * The time is the headline, set thin and very large in the event's colour, so
+ * the tile reads from arm's length. What and where sit beside it, right-aligned
+ * on the same baseline, so the tile has two ends instead of one stack.
+ */
+function LeadTile({ height, accent, kind, when, figure, title, place }: {
+  height: number; accent: MatteAccent; kind: string | null; when: string | null;
+  figure: string; title: string; place: string | null;
+}) {
+  return (
+    <View style={[styles.lead, { height }]}>
+      <View style={styles.tileTop}>
+        <View style={styles.labelRow}>
+          <View style={[styles.dot, { backgroundColor: accent.ink }]} />
+          <Text style={styles.label}>{kind ? `Next · ${kind}` : 'Next up'}</Text>
+        </View>
+        {when && <Text style={styles.label}>{when}</Text>}
+      </View>
+
+      <View style={styles.leadBottom}>
+        <Text allowFontScaling={false} numberOfLines={1} style={styles.leadFigure}>
+          {figure}
+        </Text>
+        <View style={styles.leadText}>
+          <Text style={styles.leadTitle} numberOfLines={2}>{title}</Text>
+          {place ? <Text style={styles.leadPlace} numberOfLines={1}>{place}</Text> : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/** A narrow tile: dot and label, a thin figure, one or two words under it. */
+function Tile({ label, figure, unit, detail, accent }: {
+  label: string; figure: string; unit?: string; detail?: string; accent: MatteAccent;
+}) {
+  const size = figure.length <= 2 ? 64 : 48;
+  return (
+    <View style={styles.tile}>
+      <View style={styles.labelRow}>
+        <View style={[styles.dot, { backgroundColor: accent.ink }]} />
+        <Text style={styles.label} numberOfLines={1}>{label}</Text>
+      </View>
+
+      <View>
+        <View style={styles.figureRow}>
+          <Text
+            allowFontScaling={false}
+            numberOfLines={1}
+            style={[styles.figure, { fontSize: size, lineHeight: Math.round(size * 1.08) }]}
+          >
+            {figure}
+          </Text>
+          {unit ? <Text allowFontScaling={false} style={styles.unit}>{unit}</Text> : null}
+        </View>
+        {detail ? <Text style={styles.detail} numberOfLines={2}>{detail}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+// ── Dates ──────────────────────────────────────────────────────────────────
+
+/**
+ * Whole calendar days between today and the day of `iso`, in local time.
+ * Not `ceil(ms / 86400000)`: seen at 11:00 on Sunday, a Monday 20:00 kick-off is
+ * 33 hours away and would round up to "in 2 days" when it is tomorrow.
+ */
+function calendarDaysUntil(iso: string): number {
+  const d = new Date(iso);
+  const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.max(0, Math.round((day - today) / 86400000));
+}
+
+/** Never slice a timestamptz — the wire format is UTC. Date applies the device zone. */
+function localTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+function relativeDay(days: number): string {
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Tomorrow';
+  return `In ${days} days`;
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function mockKickoff(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  d.setHours(20, 0, 0, 0);
+  return d.toISOString();
+}
+
+// ── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  scroll: { paddingHorizontal: PAD, paddingTop: TOP_PAD, gap: GAP },
+  root: { flex: 1 },
+  scroll: { flexGrow: 1 },
+  spacer: { flex: 1, minHeight: 24 },
 
-  mainInner: { flex: 1, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 14 },
-  mainRow: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between' },
-  // Was an all-caps "NEXT GAME IN" eyebrow. A label that names the card tells
-  // the athlete something they can already see; the kick-off is information
-  // they actually came for, in the same space.
-  kickoff: {
-    fontFamily: 'Inter_400Regular', fontSize: 13,
-    color: 'rgba(255,255,255,0.5)',
+  match: {
+    paddingHorizontal: TEXT_INSET,
+    paddingTop: 20,
   },
-  hero: {
-    fontFamily: 'Inter_700Bold', fontSize: 96, lineHeight: 98,
-    color: '#FFFFFF', letterSpacing: HERO_TRACK,
-    // Reclaims the trailing tracking so the last digit is not clipped.
-    paddingRight: -HERO_TRACK,
-    // Tabular figures so the number does not jump sideways when 9 becomes 10.
-    fontVariant: ['tabular-nums'],
+  matchWhen: {
+    fontFamily: UI_FONT_REGULAR, fontSize: 16,
+    color: TEXT.primary,
   },
-  heroUnit: {
-    fontFamily: 'Inter_500Medium', fontSize: 15,
-    color: 'rgba(255,255,255,0.55)', marginTop: 2,
+  matchName: {
+    fontFamily: LIGHT_FONT, fontSize: 44, lineHeight: 52,
+    color: TEXT.primary, letterSpacing: -1.2,
+    marginTop: 4,
   },
-  opponent: {
-    fontSize: 26, lineHeight: 30,
-    color: '#FFFFFF', letterSpacing: -0.8, textAlign: 'right',
-    flexShrink: 1, marginLeft: 16, marginBottom: 12,
+  matchVenue: {
+    fontFamily: THIN_FONT, fontSize: 44,
+    color: TEXT.primary, letterSpacing: -1.2,
+  },
+  matchTime: {
+    fontFamily: UI_FONT_REGULAR, fontSize: 16,
+    color: TEXT.primary,
+    marginTop: 4,
   },
 
-  grid: { flexDirection: 'row', gap: GAP },
-  // Centred, not pinned to the corners: the number is the content, so it sits
-  // in the middle of the card and the label hangs off it.
-  smallInner: {
-    flex: 1, paddingHorizontal: 14, paddingVertical: 14,
-    alignItems: 'center', justifyContent: 'center',
+  panel: {
+    marginHorizontal: PAD,
+    gap: GROOVE,
   },
-  stat: {
-    fontFamily: 'Inter_700Bold', fontSize: 92, lineHeight: 94,
-    color: '#FFFFFF', letterSpacing: HERO_TRACK, textAlign: 'center',
-    // Without this the box is 4pt narrower than the digits, so a centred number
-    // sits 2pt right of centre and its last glyph clips. Both symptoms, one cause.
-    paddingRight: -HERO_TRACK,
-    fontVariant: ['tabular-nums'],
-  },
-  fontBar: { position: 'absolute', left: PAD, right: PAD, gap: 6 },
-  fontRow: { flexDirection: 'row', gap: 6 },
-  fontChip: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.10)' },
-  fontChipOn: { backgroundColor: 'rgba(255,255,255,0.30)' },
-  fontChipTxt: { fontFamily: 'Inter_500Medium', fontSize: 11, color: 'rgba(255,255,255,0.6)' },
-  fontChipTxtOn: { color: '#fff' },
+  row: { flexDirection: 'row', gap: GROOVE },
 
-  statLabel: {
-    fontFamily: 'Inter_500Medium', fontSize: 13, lineHeight: 17,
-    color: 'rgba(255,255,255,0.55)', textAlign: 'center', marginTop: 4,
+  lead: {
+    borderRadius: RADIUS.lg,
+    backgroundColor: SURFACE.raised,
+    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    justifyContent: 'space-between',
+  },
+  tile: {
+    flex: 1,
+    borderRadius: RADIUS.lg,
+    backgroundColor: SURFACE.raised,
+    paddingHorizontal: 14, paddingTop: 16, paddingBottom: 14,
+    justifyContent: 'space-between',
+  },
+
+  tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  dot: { width: 7, height: 7, borderRadius: RADIUS.pill },
+  label: {
+    fontFamily: UI_FONT_REGULAR, fontSize: 14,
+    color: TEXT.primary,
+  },
+
+  leadBottom: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
+  leadFigure: {
+    fontFamily: THIN_FONT, fontSize: 96, lineHeight: 100,
+    color: TEXT.primary,
+    letterSpacing: -4,
+    // Negative tracking leaves the box narrower than the ink; give it back.
+    paddingRight: 4,
+    marginBottom: -8,
+  },
+  leadText: { flexShrink: 1, alignItems: 'flex-end', paddingBottom: 6 },
+  leadTitle: {
+    fontFamily: LIGHT_FONT, fontSize: 20, lineHeight: 24,
+    color: TEXT.primary, textAlign: 'right', letterSpacing: -0.3,
+  },
+  leadPlace: {
+    fontFamily: UI_FONT_REGULAR, fontSize: 14,
+    color: TEXT.primary, textAlign: 'right', marginTop: 3,
+  },
+
+  figureRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  figure: {
+    fontFamily: THIN_FONT,
+    color: TEXT.primary,
+    letterSpacing: -2.5,
+    paddingRight: 2,
+  },
+  unit: {
+    fontFamily: LIGHT_FONT, fontSize: 18,
+    color: TEXT.primary,
+  },
+  detail: {
+    fontFamily: UI_FONT_REGULAR, fontSize: 13, lineHeight: 17,
+    color: TEXT.primary, marginTop: 2,
   },
 });

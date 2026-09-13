@@ -17,8 +17,8 @@ import { SURFACE_BASE } from '../../utils/theme';
 
 export interface AthleteFrameProps {
   /**
-   * `brand` is the redesigned Home header: the wordmark centred, the greeting
-   * under it, no chips and no rule. `default` is the older header the other
+   * `brand` is the redesigned Home header: the wordmark centred and the avatar,
+   * nothing else — no greeting, no chips, no rule. `default` is the older header the other
    * four tabs still use — they are being redesigned one at a time, and a tab
    * that has not been done yet looking like itself is better than every tab
    * looking half-done.
@@ -72,9 +72,8 @@ export default function AthleteFrame({
                 </View>
               </TouchableOpacity>
             </View>
-            <Text style={styles.brandGreeting}>
-              {greeting}{name ? `, ${name.split(' ')[0]}` : ''}
-            </Text>
+            {/* No greeting. Removed from Home (2026-09-13) as part of stripping
+                it to the floor; the match is the first thing under the wordmark. */}
           </View>
 
           <View style={styles.content}>{children}</View>
@@ -139,7 +138,6 @@ const styles = StyleSheet.create({
   wordmark:      { fontFamily: 'SpaceGrotesk_400Regular', fontSize: 27, color: '#FFFFFF', letterSpacing: -0.3 },
   avatarSmall:   { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
   avatarSmallText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
-  brandGreeting: { fontFamily: 'Inter_500Medium', fontSize: 17, color: 'rgba(255,255,255,0.55)', marginTop: 22 },
 
   header: { paddingTop: 6, paddingBottom: 14, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },

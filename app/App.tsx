@@ -7,7 +7,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import { SpaceGrotesk_400Regular, SpaceGrotesk_500Medium } from '@expo-google-fonts/space-grotesk';
-import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import { Inter_200ExtraLight, Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { ChakraPetch_300Light, ChakraPetch_400Regular, ChakraPetch_500Medium } from '@expo-google-fonts/chakra-petch';
 import { Archivo_300Light, Archivo_400Regular, Archivo_500Medium } from '@expo-google-fonts/archivo';
 import { Rajdhani_300Light, Rajdhani_400Regular, Rajdhani_500Medium } from '@expo-google-fonts/rajdhani';
@@ -42,7 +42,7 @@ export default function App() {
   // characterful, which is right for a logo and wrong at 90pt on a card.
   const [fontsLoaded] = useFonts({
     SpaceGrotesk_400Regular, SpaceGrotesk_500Medium,
-    Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
+    Inter_200ExtraLight, Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold,
     ...(__DEV__ ? DISPLAY_CANDIDATES : {}),
   });
   if (!fontsLoaded) return null;

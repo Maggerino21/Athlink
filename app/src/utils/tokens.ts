@@ -15,16 +15,24 @@
  * Use these. Do not write a raw grey or radius in a component.
  */
 
-/** The ground, and the two surfaces that sit on it. */
+/**
+ * The ground, and the surfaces that sit on it.
+ *
+ * **Opaque, always.** These used to be translucent white (raised was white at
+ * 6%), which is the default look of generated dark UI and picks up whatever
+ * sits behind a card — a glow, a gradient, another card. Each value below is
+ * exactly what the old alpha looked like composited onto `base`, so nothing
+ * changes on a flat page; it just stops being see-through.
+ */
 export const SURFACE = {
   /** The page itself. Not pure black — see SURFACE_BASE in theme.ts. */
   base: '#0A0A0C',
-  /** A card. The default raised thing. */
-  raised: 'rgba(255,255,255,0.06)',
-  /** A card that is deliberately quieter — a day with nothing on it. */
-  recessed: 'rgba(255,255,255,0.025)',
-  /** A card that is active or current, without resorting to colour. */
-  active: 'rgba(255,255,255,0.11)',
+  /** A card. The default raised thing. (was white 6% over base) */
+  raised: '#19191B',
+  /** A card that is deliberately quieter — a day with nothing on it. (was 2.5%) */
+  recessed: '#101012',
+  /** A card that is active or current, without resorting to colour. (was 11%) */
+  active: '#252527',
 } as const;
 
 /** Hairlines and card edges. */
