@@ -24,7 +24,7 @@ import type { SharedValue } from 'react-native-reanimated';
 import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
 import { eventMeta, eventAccent, type EventType, type CalEvent } from '../eventTypes';
 import { SURFACE, LINE, TEXT, RADIUS } from '../../../utils/tokens';
-import { DISPLAY_FONT, DISPLAY_FONT_LARGE, UI_FONT } from '../../../utils/type';
+import { DISPLAY_FONT, UI_FONT, UI_FONT_REGULAR, THIN_FONT, LIGHT_FONT } from '../../../utils/type';
 import haptics from '../../../utils/haptics';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -1108,8 +1108,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     gap: 9,
   },
+  // Light rather than ExtraLight: at 24pt the thinnest weight loses its strokes.
   slimNum: {
-    fontFamily: DISPLAY_FONT_LARGE, fontSize: 24, lineHeight: 28,
+    fontFamily: LIGHT_FONT, fontSize: 24, lineHeight: 28,
     color: TEXT.secondary, letterSpacing: -0.8,
   },
   slimNumToday: { color: TEXT.primary },
@@ -1129,15 +1130,15 @@ const styles = StyleSheet.create({
     color: TEXT.tertiary,
     marginBottom: 6,
   },
-  // The number and the month are one object at one size, stacked. Set in the
-  // plainer weight — at this size the stroke does not need to add emphasis,
-  // the size already has it.
+  // The number and the month are one object at one size, stacked. Thin Inter,
+  // the same face as Home's figures, so the two screens set dates alike.
+  // Line heights are unchanged: CARD_FULL_H and the snap offsets depend on them.
   dateNum: {
-    fontFamily: DISPLAY_FONT_LARGE, fontSize: 58, lineHeight: 58,
+    fontFamily: THIN_FONT, fontSize: 58, lineHeight: 58,
     color: TEXT.primary, letterSpacing: -2,
   },
   dateMon: {
-    fontFamily: DISPLAY_FONT_LARGE, fontSize: 58, lineHeight: 60,
+    fontFamily: THIN_FONT, fontSize: 58, lineHeight: 60,
     color: TEXT.secondary, letterSpacing: -1,
   },
 
@@ -1158,12 +1159,15 @@ const styles = StyleSheet.create({
   },
   evTypeRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 6 },
   evType: { fontFamily: UI_FONT, fontSize: 11, letterSpacing: 0.3 },
+  // Inter, one weight above the dates' ExtraLight, so an opened day reads as one
+  // family. Line heights unchanged — EVENT_CARD_H depends on them.
   evTitle: {
-    fontFamily: DISPLAY_FONT, fontSize: 20, lineHeight: 25,
+    fontFamily: LIGHT_FONT, fontSize: 20, lineHeight: 25,
     color: TEXT.primary, letterSpacing: -0.4,
   },
+  // Regular, not Light: at 13pt on a tinted card Light goes faint.
   evSub: {
-    fontFamily: UI_FONT, fontSize: 13,
+    fontFamily: UI_FONT_REGULAR, fontSize: 13,
     color: 'rgba(255,255,255,0.66)', marginTop: 5,
   },
 });

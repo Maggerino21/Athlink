@@ -5,7 +5,7 @@
  *
  * - **The match sits at the top as text**, not a card.
  * - **Light rises from the bottom of the screen** in the competition's hue,
- *   strengthening toward matchday. It shows in the space between the match and
+ *   clearly visible every day, and more vivid on matchday. It shows in the space between the match and
  *   the panel, and under the tab bar.
  * - **One solid panel, cut into tiles.** Not cards floating on a card — a
  *   single opaque slab divided by thin grooves of the page colour, like a
@@ -300,28 +300,36 @@ function Match({ match }: { match: { opponent: string; isHome: boolean | null; i
 /**
  * Light rising from the bottom edge of the screen.
  *
- * Two pools anchored below the screen's floor — the hue and a neighbour 18°
- * away — so it reads as atmosphere rather than a spotlight. Gradients, not
- * blur, so nothing ends in a hard edge. The screen's bottom edge is the only
- * place the pools meet a boundary, and a screen edge is a natural one.
+ * **Every day** it is fully visible — two pools anchored below the screen's
+ * floor, the hue and a neighbour 18° away, so it reads as atmosphere rather
+ * than a spotlight. It is not earned by the calendar any more: a faint glow on
+ * six days out of seven left Home looking black most of the week.
  *
- * Strength follows calendar days to kick-off; only matchday breathes.
+ * **Matchday** adds a second, more vivid layer on top: denser colour, reaching
+ * higher up the screen, a brighter core low in the middle, and a slow breath.
+ * It fades in over the everyday glow rather than replacing it, so the two can
+ * never disagree about where the light sits.
+ *
+ * Gradients, not blur, so nothing ends in a hard edge. The screen's bottom edge
+ * is the only boundary the pools meet, and a screen edge is a natural one.
  */
 function RisingGlow({ height, days, hue }: { height: number; days: number | null; hue: number }) {
-  const target = days === null ? 0 : glowFor(days);
-  const level = useSharedValue(0);
+  const matchday = days === 0;
+  const base = useSharedValue(0);
+  const boost = useSharedValue(0);
   const breath = useSharedValue(1);
 
   useEffect(() => {
-    level.value = withTiming(target, { duration: 600, easing: EASE });
-  }, [target]); // eslint-disable-line react-hooks/exhaustive-deps
+    base.value = withTiming(days === null ? 0 : 1, { duration: 600, easing: EASE });
+  }, [days === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (days === 0) {
+    boost.value = withTiming(matchday ? 1 : 0, { duration: 700, easing: EASE });
+    if (matchday) {
       breath.value = withRepeat(
         withSequence(
-          withTiming(0.7, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
-          withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.sin) }),
+          withTiming(0.55, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
+          withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
         ),
         -1,
       );
@@ -329,45 +337,66 @@ function RisingGlow({ height, days, hue }: { height: number; days: number | null
       cancelAnimation(breath);
       breath.value = withTiming(1, { duration: 400 });
     }
-  }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [matchday]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const style = useAnimatedStyle(() => ({ opacity: level.value * breath.value }));
+  const baseStyle = useAnimatedStyle(() => ({ opacity: base.value }));
+  const boostStyle = useAnimatedStyle(() => ({ opacity: boost.value * breath.value }));
 
   if (height <= 0) return null;
   const H = height;
   const a = hsla(hue, 95, 58);
   const b = hsla(hue + 18, 95, 64);
+  // Matchday colour: more saturated, and a lighter core so it reads as brighter
+  // light rather than just more of the same paint.
+  const c = hsla(hue, 100, 62);
+  const core = hsla(hue - 12, 100, 72);
 
   return (
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
-      <Svg width={W} height={H}>
-        <Defs>
-          <RadialGradient id="riseA" cx="50%" cy="50%" r="50%">
-            <Stop offset={0} stopColor={a} stopOpacity={0.75} />
-            <Stop offset={0.55} stopColor={a} stopOpacity={0.32} />
-            <Stop offset={1} stopColor={a} stopOpacity={0} />
-          </RadialGradient>
-          <RadialGradient id="riseB" cx="50%" cy="50%" r="50%">
-            <Stop offset={0} stopColor={b} stopOpacity={0.55} />
-            <Stop offset={0.5} stopColor={b} stopOpacity={0.2} />
-            <Stop offset={1} stopColor={b} stopOpacity={0} />
-          </RadialGradient>
-        </Defs>
-        {/* Centres sit at the floor, so the pools rise upward from it. */}
-        <Ellipse cx={W * 0.3} cy={H} rx={W * 1.0} ry={H * 0.95} fill="url(#riseA)" />
-        <Ellipse cx={W * 0.85} cy={H} rx={W * 0.75} ry={H * 0.75} fill="url(#riseB)" />
-      </Svg>
-    </Animated.View>
-  );
-}
+    <>
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, baseStyle]}>
+        <Svg width={W} height={H}>
+          <Defs>
+            <RadialGradient id="riseA" cx="50%" cy="50%" r="50%">
+              <Stop offset={0} stopColor={a} stopOpacity={0.75} />
+              <Stop offset={0.55} stopColor={a} stopOpacity={0.32} />
+              <Stop offset={1} stopColor={a} stopOpacity={0} />
+            </RadialGradient>
+            <RadialGradient id="riseB" cx="50%" cy="50%" r="50%">
+              <Stop offset={0} stopColor={b} stopOpacity={0.55} />
+              <Stop offset={0.5} stopColor={b} stopOpacity={0.2} />
+              <Stop offset={1} stopColor={b} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          {/* Centres sit at the floor, so the pools rise upward from it. */}
+          <Ellipse cx={W * 0.3} cy={H} rx={W * 1.0} ry={H * 0.95} fill="url(#riseA)" />
+          <Ellipse cx={W * 0.85} cy={H} rx={W * 0.75} ry={H * 0.75} fill="url(#riseB)" />
+        </Svg>
+      </Animated.View>
 
-/** How lit the glow is, by calendar days to kick-off. A trace up to a week out. */
-function glowFor(days: number): number {
-  if (days <= 0) return 1;
-  if (days === 1) return 0.6;
-  if (days <= 3) return 0.35;
-  if (days <= 7) return 0.18;
-  return 0.08;
+      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, boostStyle]}>
+        <Svg width={W} height={H}>
+          <Defs>
+            <RadialGradient id="boostWide" cx="50%" cy="50%" r="50%">
+              <Stop offset={0} stopColor={c} stopOpacity={0.85} />
+              <Stop offset={0.5} stopColor={c} stopOpacity={0.4} />
+              <Stop offset={0.88} stopColor={c} stopOpacity={0} />
+            </RadialGradient>
+            <RadialGradient id="boostCore" cx="50%" cy="50%" r="50%">
+              <Stop offset={0} stopColor={core} stopOpacity={0.7} />
+              <Stop offset={0.4} stopColor={core} stopOpacity={0.35} />
+              <Stop offset={1} stopColor={core} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          {/* Reaches as high as the section itself, and no higher: the section
+              is clipped under the header, so a pool that is still coloured at
+              the top edge gets cut into a hard horizontal line there. The
+              gradient ends at 88% of the radius for the same reason. */}
+          <Ellipse cx={W * 0.5} cy={H} rx={W * 1.15} ry={H} fill="url(#boostWide)" />
+          <Ellipse cx={W * 0.45} cy={H} rx={W * 0.7} ry={H * 0.55} fill="url(#boostCore)" />
+        </Svg>
+      </Animated.View>
+    </>
+  );
 }
 
 // ── Tiles ──────────────────────────────────────────────────────────────────
