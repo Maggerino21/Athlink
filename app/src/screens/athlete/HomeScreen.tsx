@@ -1,5 +1,5 @@
 /**
- * HomeScreen — the athlete's five tabs.
+ * HomeScreen — the athlete's four tabs: Home · Tasks · Schedule · Fines.
  *
  * ── Why this uses a native tab bar ──
  *
@@ -43,10 +43,9 @@ import { supabase } from '../../lib/supabase';
 import haptics from '../../utils/haptics';
 import AthleteFrame from '../../components/athlete/AthleteFrame';
 import HomeSection from '../../components/athlete/sections/HomeSection';
-import FeedbackSection from '../../components/athlete/sections/FeedbackSection';
 import ScheduleSection from '../../components/athlete/sections/ScheduleSection';
 import TasksSection from '../../components/athlete/sections/TasksSection';
-import ProgressSection from '../../components/athlete/sections/ProgressSection';
+import FinesSection from '../../components/athlete/sections/FinesSection';
 import GlassLab from '../dev/GlassLab';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SURFACE_BASE } from '../../utils/theme';
@@ -55,13 +54,17 @@ import { SURFACE_BASE } from '../../utils/theme';
  * SF Symbols rather than Ionicons — the native tab bar renders these itself, at
  * the exact weight and optical size iOS uses for its own bars, and they inherit
  * the Liquid Glass treatment. A bitmap icon would not.
+ *
+ * Icons only, no labels, and plain outline glyphs that stay outlined when
+ * selected: the selection lens already says which tab is current, so a filled
+ * variant was a second signal for the same thing. `label` is only read by
+ * VoiceOver.
  */
 const SECTIONS = [
-  { id: 'this-week', label: 'Home',     sf: 'house',                      sfActive: 'house.fill',            Component: HomeSection },
-  { id: 'feedback',  label: 'Feedback', sf: 'bubble.left',                sfActive: 'bubble.left.fill',      Component: FeedbackSection },
-  { id: 'schedule',  label: 'Schedule', sf: 'calendar',                   sfActive: 'calendar',              Component: ScheduleSection },
-  { id: 'tasks',     label: 'Tasks',    sf: 'checkmark.circle',           sfActive: 'checkmark.circle.fill', Component: TasksSection    },
-  { id: 'progress',  label: 'Progress', sf: 'chart.line.uptrend.xyaxis',  sfActive: 'chart.line.uptrend.xyaxis', Component: ProgressSection },
+  { id: 'this-week', label: 'Home',     sf: 'house',     Component: HomeSection     },
+  { id: 'tasks',     label: 'Tasks',    sf: 'checklist', Component: TasksSection    },
+  { id: 'schedule',  label: 'Schedule', sf: 'calendar',  Component: ScheduleSection },
+  { id: 'fines',     label: 'Fines',    sf: 'banknote',  Component: FinesSection    },
 ] as const;
 
 function getInitials(name: string) {
@@ -94,7 +97,6 @@ export default function HomeScreen() {
    * world (two rapid taps, say) instead of applying it out of order.
    */
   const [provenance, setProvenance] = useState(0);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [nextMatchLabel, setNextMatchLabel] = useState<string | null>(null);
   const [glassLabOpen, setGlassLabOpen] = useState(false);
 
@@ -107,13 +109,6 @@ export default function HomeScreen() {
 
   const loadHeaderData = useCallback(async () => {
     if (!profile) return;
-
-    supabase
-      .from('match_feedback')
-      .select('id', { count: 'exact', head: true })
-      .eq('athlete_id', profile.id)
-      .eq('acknowledged', false)
-      .then(({ count }) => setUnreadCount(count ?? 0));
 
     if (profile.club_id) {
       supabase
@@ -209,17 +204,15 @@ export default function HomeScreen() {
           tabBarMinimizeBehavior: 'onScrollDown',
         }}
       >
-        {SECTIONS.map(({ id, label, sf, sfActive, Component }) => (
+        {SECTIONS.map(({ id, label, sf, Component }) => (
           <Tabs.Screen
             key={id}
             screenKey={id}
-            title={label}
-            badgeValue={id === 'feedback' && unreadCount > 0 ? String(unreadCount) : undefined}
+            // No visible title, but VoiceOver still needs to say which tab it is.
+            tabBarItemAccessibilityLabel={label}
             ios={{
-              // SF Symbols, rendered by the bar itself at the system's optical
-              // size and weight — a bitmap icon does not get that treatment.
               icon: { type: 'sfSymbol', name: sf },
-              selectedIcon: { type: 'sfSymbol', name: sfActive },
+              selectedIcon: { type: 'sfSymbol', name: sf },
             }}
           >
             <AthleteFrame {...frameProps} variant={id === 'this-week' ? 'brand' : 'bare'}>
