@@ -13,9 +13,10 @@
  * - **You have paid** = your payments in the open season.
  * - **Leaderboard** = fines this season per player, in kr.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { readCache, writeCache } from '../../utils/cache';
 import { matteAccent, type MatteAccent } from '../../utils/theme';
 
 export const REACTIONS = ['😂', '💀', '🔥', '👏', '🤡'] as const;
@@ -85,12 +86,26 @@ const EMPTY: FineBox = {
 const sum = (rows: { amount: number }[] | null | undefined) =>
   (rows ?? []).reduce((acc, r) => acc + r.amount, 0);
 
+/**
+ * A load that failed keeps what is already on screen — usually last session's
+ * box, from the cache — instead of replacing it with zeros. It still counts as
+ * loaded, so a first load that fails ends the wait rather than spinning.
+ */
+const keep = (prev: FineBox): FineBox => (prev.loaded ? prev : { ...prev, loaded: true });
+
 export function useFineBox(isActive?: boolean) {
   const { profile } = useAuth();
-  const [box, setBox] = useState<FineBox>(EMPTY);
+  // Last session's box, so the tab opens on it instead of waiting.
+  const [box, setBox] = useState<FineBox>(
+    () => (profile && readCache<FineBox>(profile.id, 'fines')) || EMPTY,
+  );
 
   const load = useCallback(async () => {
-    if (!profile?.club_id) return;
+    if (!profile) return;
+    if (!profile.club_id) {
+      setBox({ ...EMPTY, loaded: true });
+      return;
+    }
     const club = profile.club_id;
     const me = profile.id;
 
@@ -102,6 +117,10 @@ export function useFineBox(isActive?: boolean) {
       supabase.from('fines').select('amount').eq('athlete_id', me).is('voided_at', null),
       supabase.from('fine_payments').select('amount').eq('athlete_id', me),
     ]);
+    if ([clubRes, seasonRes, membersRes, myFinesRes, myPaysRes].some(r => r.error)) {
+      setBox(keep);
+      return;
+    }
 
     const names = new Map<string, string>(
       (membersRes.data ?? []).map((p: { id: string; full_name: string | null }) => [p.id, p.full_name ?? 'Unknown']),
@@ -118,13 +137,25 @@ export function useFineBox(isActive?: boolean) {
     }
 
     const [finesRes, paysRes] = await Promise.all([
-      supabase.from('fines').select('id, athlete_id, name, amount, note, created_at')
+      // Reactions ride along on the fines rather than following in a third
+      // round trip once the feed's ids are known. That fetches them for the
+      // whole season, not just the feed — a few bytes each, against ~130ms.
+      supabase.from('fines')
+        .select('id, athlete_id, name, amount, note, created_at, fine_reactions(profile_id, emoji)')
         .eq('season_id', season.id).is('voided_at', null)
         .order('created_at', { ascending: false }),
       supabase.from('fine_payments').select('athlete_id, amount').eq('season_id', season.id),
     ]);
+    if (finesRes.error || paysRes.error) {
+      setBox(keep);
+      return;
+    }
 
-    type FineRow = { id: string; athlete_id: string; name: string; amount: number; note: string | null; created_at: string };
+    type ReactionRow = { profile_id: string; emoji: Reaction };
+    type FineRow = {
+      id: string; athlete_id: string; name: string; amount: number; note: string | null; created_at: string;
+      fine_reactions: ReactionRow[] | null;
+    };
     const fines = (finesRes.data ?? []) as FineRow[];
     const pays = (paysRes.data ?? []) as { athlete_id: string; amount: number }[];
 
@@ -134,17 +165,10 @@ export function useFineBox(isActive?: boolean) {
       .map(([id, amount]) => ({ id, name: names.get(id) ?? 'Former player', amount }))
       .sort((a, b) => b.amount - a.amount);
 
-    const recent = fines.slice(0, FEED_LIMIT);
-    const reactRes = recent.length
-      ? await supabase.from('fine_reactions').select('fine_id, profile_id, emoji').in('fine_id', recent.map(f => f.id))
-      : { data: [] };
-    const reactions = (reactRes.data ?? []) as { fine_id: string; profile_id: string; emoji: Reaction }[];
-
-    const feed: FeedItem[] = recent.map(f => {
+    const feed: FeedItem[] = fines.slice(0, FEED_LIMIT).map(f => {
       const counts: Partial<Record<Reaction, number>> = {};
       let mine: Reaction | null = null;
-      for (const r of reactions) {
-        if (r.fine_id !== f.id) continue;
+      for (const r of f.fine_reactions ?? []) {
         counts[r.emoji] = (counts[r.emoji] ?? 0) + 1;
         if (r.profile_id === me) mine = r.emoji;
       }
@@ -167,7 +191,21 @@ export function useFineBox(isActive?: boolean) {
     });
   }, [profile?.club_id, profile?.id]);
 
-  useEffect(() => { if (isActive !== false) load(); }, [isActive, load]);
+  // Load on mount even while the tab is hidden: HomeScreen mounts every tab in
+  // the background after launch precisely so the first visit finds its data
+  // waiting. Gating this on `isActive` skipped that, and Fines opened on "0 kr"
+  // for ~400ms. After mount, reload each time the tab comes back into view.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; load(); return; }
+    if (isActive) load();
+  }, [isActive, load]);
+
+  // Whatever is on screen is what the next launch opens on — reactions
+  // included, since those change the box without a reload.
+  useEffect(() => {
+    if (box.loaded && profile) writeCache(profile.id, 'fines', box);
+  }, [box, profile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     listeners.add(load);
     return () => { listeners.delete(load); };

@@ -25,6 +25,7 @@ import Animated, { ZoomIn, ZoomOut } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PressableScale from '../../ui/PressableScale';
+import Reveal from '../../ui/Reveal';
 import haptics from '../../../utils/haptics';
 import { SURFACE, TEXT, RADIUS } from '../../../utils/tokens';
 import { DISPLAY_FONT, THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR, FLOURISH_FONT } from '../../../utils/type';
@@ -103,214 +104,217 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
         <Text style={styles.headerTitle}>Fines</Text>
       </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        // Scrolling away is the natural "never mind" for an open picker.
-        onScrollBeginDrag={() => setPicking(null)}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />}
-        // The bøtesjef's floating button sits over the list, so their list needs
-        // enough extra room at the end to scroll the last fine clear of it.
-        contentContainerStyle={{ paddingHorizontal: PAD, paddingBottom: insets.bottom + TAB_BAR + 24 + (box.isFineManager ? 64 : 0), gap: GAP }}
-      >
-        {/* A box nobody runs never fills. Say so, and who can fix it. */}
-        {box.loaded && !box.hasManager && (
-          <View style={styles.card}>
-            <Text style={styles.label}>No bøtesjef yet</Text>
-            <Text style={styles.emptyText}>Your staff choose who runs the fine box.</Text>
-          </View>
-        )}
-
-        {/* The box itself. One figure, the way Home leads with one. */}
-        <View style={styles.card}>
-          <Text style={[styles.label, styles.centered]}>In the box</Text>
-
-          <Svg width={CARD_W - 36} height={CHROME_H} style={styles.chrome}>
-            <Defs>
-              <LinearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
-                {CHROME.map(([offset, color]) => (
-                  <Stop key={offset} offset={offset} stopColor={color} />
-                ))}
-              </LinearGradient>
-            </Defs>
-            {/* Laid out by hand rather than with textAnchor="middle": the two
-                parts are different sizes, so SVG would centre the number and
-                let "kr" hang off the right edge (where it gets clipped). */}
-            <SvgText
-              x={chromeX.num}
-              y={CHROME_H * 0.74}
-              fontFamily={CHROME_FONT}
-              fontSize={CHROME_SIZE}
-              fill="url(#chrome)"
-            >
-              {chromeText}
-            </SvgText>
-            <SvgText
-              x={chromeX.unit}
-              y={CHROME_H * 0.74}
-              fontFamily={CHROME_FONT}
-              fontSize={CHROME_UNIT}
-              fill="url(#chrome)"
-            >
-              kr
-            </SvgText>
-          </Svg>
-
-          {box.goal && (
-            <View style={styles.goal}>
-              <View style={styles.goalTrack}>
-                <View style={[styles.goalFill, { width: `${goalPct * 100}%` }]} />
-              </View>
-              <View style={styles.goalRow}>
-                <Text style={styles.goalLabel}>{box.goal.label ?? 'Goal'}</Text>
-                <Text style={styles.goalLabel}>{kr(box.goal.amount)} kr</Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* You. Owed first, because that is what you came to check. */}
-        <View style={styles.row}>
-          <View style={[styles.card, styles.halfCard]}>
-            <Text style={styles.label}>You owe</Text>
-            <View style={styles.amountRow}>
-              <Text style={styles.figure} allowFontScaling={false}>{kr(box.owed)}</Text>
-              <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
-            </View>
-          </View>
-          <View style={[styles.card, styles.halfCard]}>
-            <Text style={styles.label}>You have paid</Text>
-            <View style={styles.amountRow}>
-              <Text style={styles.figure} allowFontScaling={false}>{kr(box.paid)}</Text>
-              <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Podium: three columns of different heights, then the rest as a list. */}
-        <View style={styles.card}>
-          <Text style={styles.label}>Season leaderboard</Text>
-
-          {podium.length === 0 ? (
-            <Text style={styles.emptyText}>Nobody has been fined yet this season.</Text>
-          ) : (
-            <View style={styles.podium}>
-              {[1, 0, 2].map(rank => {
-                const p = podium[rank];
-                if (!p) return <View key={rank} style={styles.podiumCol} />;
-                const height = rank === 0 ? 96 : rank === 1 ? 74 : 60;
-                return (
-                  <View key={p.id} style={styles.podiumCol}>
-                    <Text style={styles.podiumName} numberOfLines={1}>{firstName(p.name)}</Text>
-                    <Text style={styles.podiumAmount} allowFontScaling={false}>{kr(p.amount)}</Text>
-                    <View style={[styles.podiumBlock, { height, backgroundColor: MEDAL[rank] }]}>
-                      <Text style={styles.podiumRank} allowFontScaling={false}>{rank + 1}</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-
-          {box.leaderboard.slice(3).map((p, i) => (
-            <View key={p.id} style={styles.rankRow}>
-              <Text style={styles.rankNum} allowFontScaling={false}>{i + 4}</Text>
-              <Text style={styles.rankName} numberOfLines={1}>{p.name}</Text>
-              <Text style={styles.rankAmount} allowFontScaling={false}>{kr(p.amount)} kr</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* The feed. Where the banter lives, so reactions sit right on it. */}
-        <Text style={[styles.label, styles.feedLabel]}>Latest fines</Text>
-
-        {box.loaded && box.feed.length === 0 && (
-          <View style={styles.card}>
-            <Text style={styles.emptyText}>No fines yet. Enjoy it while it lasts.</Text>
-          </View>
-        )}
-
-        {box.feed.map(f => {
-          const chosen = f.mine;
-          const counts = f.counts;
-          const used = REACTIONS.filter(e => (counts[e] ?? 0) > 0);
-
-          return (
-            <PressableScale
-              key={f.id}
-              style={styles.card}
-              scaleTo={0.985}
-              dim={false}
-              haptic="none"
-              onPress={() => setPicking(picking === f.id ? null : f.id)}
-              onLongPress={() => setPicking(f.id)}
-            >
-              <View style={styles.fineTop}>
-                <View style={styles.fineWho}>
-                  <Text style={styles.fineName} numberOfLines={1}>{f.who}</Text>
-                  <Text style={styles.fineWhat} numberOfLines={1}>
-                    {f.what}{f.note ? `  ·  ${f.note}` : ''}
-                  </Text>
-                </View>
-                <View style={styles.fineRight}>
-                  <Text style={styles.fineAmount} allowFontScaling={false}>{kr(f.amount)} kr</Text>
-                  <Text style={styles.fineWhen}>{when(f.createdAt)}</Text>
-                </View>
-              </View>
-
-              {/* Only reactions people have actually given. */}
-              {used.length > 0 && (
-                <View style={styles.reactionRow}>
-                  {used.map(e => (
-                    <PressableScale
-                      key={e}
-                      style={[styles.reaction, chosen === e && styles.reactionMine]}
-                      scaleTo={0.9}
-                      onPress={() => react(f.id, e, chosen)}
-                    >
-                      <Text style={styles.reactionEmoji}>{e}</Text>
-                      <Text style={styles.reactionCount} allowFontScaling={false}>{counts[e]}</Text>
-                    </PressableScale>
-                  ))}
-                </View>
-              )}
-
-              {/* Tapback: springs up over the card, and is gone once you pick. */}
-              {picking === f.id && (
-                <Animated.View
-                  entering={ZoomIn.springify().damping(17).mass(0.5)}
-                  exiting={ZoomOut.duration(120)}
-                  style={styles.picker}
-                >
-                  {REACTIONS.map(e => (
-                    <PressableScale
-                      key={e}
-                      style={[styles.pickerItem, chosen === e && styles.pickerItemMine]}
-                      scaleTo={0.85}
-                      dim={false}
-                      onPress={() => react(f.id, e, chosen)}
-                    >
-                      <Text style={styles.pickerEmoji}>{e}</Text>
-                    </PressableScale>
-                  ))}
-                </Animated.View>
-              )}
-            </PressableScale>
-          );
-        })}
-
-      </ScrollView>
-
-      {/* Only the bøtesjef sees this. Everything they can do lives behind it. */}
-      {box.isFineManager && (
-        <PressableScale
-          style={[styles.fab, { bottom: insets.bottom + TAB_BAR + 16 }]}
-          scaleTo={0.96}
-          haptic="medium"
-          onPress={() => navigation.navigate('GiveFine')}
+      {/* Title first, content when it is all in — see Reveal. */}
+      <Reveal ready={box.loaded}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          // Scrolling away is the natural "never mind" for an open picker.
+          onScrollBeginDrag={() => setPicking(null)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />}
+          // The bøtesjef's floating button sits over the list, so their list needs
+          // enough extra room at the end to scroll the last fine clear of it.
+          contentContainerStyle={{ paddingHorizontal: PAD, paddingBottom: insets.bottom + TAB_BAR + 24 + (box.isFineManager ? 64 : 0), gap: GAP }}
         >
-          <Text style={styles.fabText}>Give a fine</Text>
-        </PressableScale>
-      )}
+          {/* A box nobody runs never fills. Say so, and who can fix it. */}
+          {box.loaded && !box.hasManager && (
+            <View style={styles.card}>
+              <Text style={styles.label}>No bøtesjef yet</Text>
+              <Text style={styles.emptyText}>Your staff choose who runs the fine box.</Text>
+            </View>
+          )}
+
+          {/* The box itself. One figure, the way Home leads with one. */}
+          <View style={styles.card}>
+            <Text style={[styles.label, styles.centered]}>In the box</Text>
+
+            <Svg width={CARD_W - 36} height={CHROME_H} style={styles.chrome}>
+              <Defs>
+                <LinearGradient id="chrome" x1="0" y1="0" x2="0" y2="1">
+                  {CHROME.map(([offset, color]) => (
+                    <Stop key={offset} offset={offset} stopColor={color} />
+                  ))}
+                </LinearGradient>
+              </Defs>
+              {/* Laid out by hand rather than with textAnchor="middle": the two
+                  parts are different sizes, so SVG would centre the number and
+                  let "kr" hang off the right edge (where it gets clipped). */}
+              <SvgText
+                x={chromeX.num}
+                y={CHROME_H * 0.74}
+                fontFamily={CHROME_FONT}
+                fontSize={CHROME_SIZE}
+                fill="url(#chrome)"
+              >
+                {chromeText}
+              </SvgText>
+              <SvgText
+                x={chromeX.unit}
+                y={CHROME_H * 0.74}
+                fontFamily={CHROME_FONT}
+                fontSize={CHROME_UNIT}
+                fill="url(#chrome)"
+              >
+                kr
+              </SvgText>
+            </Svg>
+
+            {box.goal && (
+              <View style={styles.goal}>
+                <View style={styles.goalTrack}>
+                  <View style={[styles.goalFill, { width: `${goalPct * 100}%` }]} />
+                </View>
+                <View style={styles.goalRow}>
+                  <Text style={styles.goalLabel}>{box.goal.label ?? 'Goal'}</Text>
+                  <Text style={styles.goalLabel}>{kr(box.goal.amount)} kr</Text>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* You. Owed first, because that is what you came to check. */}
+          <View style={styles.row}>
+            <View style={[styles.card, styles.halfCard]}>
+              <Text style={styles.label}>You owe</Text>
+              <View style={styles.amountRow}>
+                <Text style={styles.figure} allowFontScaling={false}>{kr(box.owed)}</Text>
+                <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
+              </View>
+            </View>
+            <View style={[styles.card, styles.halfCard]}>
+              <Text style={styles.label}>You have paid</Text>
+              <View style={styles.amountRow}>
+                <Text style={styles.figure} allowFontScaling={false}>{kr(box.paid)}</Text>
+                <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Podium: three columns of different heights, then the rest as a list. */}
+          <View style={styles.card}>
+            <Text style={styles.label}>Season leaderboard</Text>
+
+            {podium.length === 0 ? (
+              <Text style={styles.emptyText}>Nobody has been fined yet this season.</Text>
+            ) : (
+              <View style={styles.podium}>
+                {[1, 0, 2].map(rank => {
+                  const p = podium[rank];
+                  if (!p) return <View key={rank} style={styles.podiumCol} />;
+                  const height = rank === 0 ? 96 : rank === 1 ? 74 : 60;
+                  return (
+                    <View key={p.id} style={styles.podiumCol}>
+                      <Text style={styles.podiumName} numberOfLines={1}>{firstName(p.name)}</Text>
+                      <Text style={styles.podiumAmount} allowFontScaling={false}>{kr(p.amount)}</Text>
+                      <View style={[styles.podiumBlock, { height, backgroundColor: MEDAL[rank] }]}>
+                        <Text style={styles.podiumRank} allowFontScaling={false}>{rank + 1}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            {box.leaderboard.slice(3).map((p, i) => (
+              <View key={p.id} style={styles.rankRow}>
+                <Text style={styles.rankNum} allowFontScaling={false}>{i + 4}</Text>
+                <Text style={styles.rankName} numberOfLines={1}>{p.name}</Text>
+                <Text style={styles.rankAmount} allowFontScaling={false}>{kr(p.amount)} kr</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* The feed. Where the banter lives, so reactions sit right on it. */}
+          <Text style={[styles.label, styles.feedLabel]}>Latest fines</Text>
+
+          {box.loaded && box.feed.length === 0 && (
+            <View style={styles.card}>
+              <Text style={styles.emptyText}>No fines yet. Enjoy it while it lasts.</Text>
+            </View>
+          )}
+
+          {box.feed.map(f => {
+            const chosen = f.mine;
+            const counts = f.counts;
+            const used = REACTIONS.filter(e => (counts[e] ?? 0) > 0);
+
+            return (
+              <PressableScale
+                key={f.id}
+                style={styles.card}
+                scaleTo={0.985}
+                dim={false}
+                haptic="none"
+                onPress={() => setPicking(picking === f.id ? null : f.id)}
+                onLongPress={() => setPicking(f.id)}
+              >
+                <View style={styles.fineTop}>
+                  <View style={styles.fineWho}>
+                    <Text style={styles.fineName} numberOfLines={1}>{f.who}</Text>
+                    <Text style={styles.fineWhat} numberOfLines={1}>
+                      {f.what}{f.note ? `  ·  ${f.note}` : ''}
+                    </Text>
+                  </View>
+                  <View style={styles.fineRight}>
+                    <Text style={styles.fineAmount} allowFontScaling={false}>{kr(f.amount)} kr</Text>
+                    <Text style={styles.fineWhen}>{when(f.createdAt)}</Text>
+                  </View>
+                </View>
+
+                {/* Only reactions people have actually given. */}
+                {used.length > 0 && (
+                  <View style={styles.reactionRow}>
+                    {used.map(e => (
+                      <PressableScale
+                        key={e}
+                        style={[styles.reaction, chosen === e && styles.reactionMine]}
+                        scaleTo={0.9}
+                        onPress={() => react(f.id, e, chosen)}
+                      >
+                        <Text style={styles.reactionEmoji}>{e}</Text>
+                        <Text style={styles.reactionCount} allowFontScaling={false}>{counts[e]}</Text>
+                      </PressableScale>
+                    ))}
+                  </View>
+                )}
+
+                {/* Tapback: springs up over the card, and is gone once you pick. */}
+                {picking === f.id && (
+                  <Animated.View
+                    entering={ZoomIn.springify().damping(17).mass(0.5)}
+                    exiting={ZoomOut.duration(120)}
+                    style={styles.picker}
+                  >
+                    {REACTIONS.map(e => (
+                      <PressableScale
+                        key={e}
+                        style={[styles.pickerItem, chosen === e && styles.pickerItemMine]}
+                        scaleTo={0.85}
+                        dim={false}
+                        onPress={() => react(f.id, e, chosen)}
+                      >
+                        <Text style={styles.pickerEmoji}>{e}</Text>
+                      </PressableScale>
+                    ))}
+                  </Animated.View>
+                )}
+              </PressableScale>
+            );
+          })}
+
+        </ScrollView>
+
+        {/* Only the bøtesjef sees this. Everything they can do lives behind it. */}
+        {box.isFineManager && (
+          <PressableScale
+            style={[styles.fab, { bottom: insets.bottom + TAB_BAR + 16 }]}
+            scaleTo={0.96}
+            haptic="medium"
+            onPress={() => navigation.navigate('GiveFine')}
+          >
+            <Text style={styles.fabText}>Give a fine</Text>
+          </PressableScale>
+        )}
+      </Reveal>
     </View>
   );
 }

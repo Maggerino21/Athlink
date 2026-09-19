@@ -14,6 +14,8 @@ import { Ionicons } from '@expo/vector-icons';
 import GlassCard from '../../components/ui/GlassCard';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useFeedbackMatch, NO_MATCH_MESSAGE } from '../../lib/feedbackMatch';
+import { TEXT } from '../../utils/tokens';
 import { clubGradientOrbs } from '../../utils/theme';
 import { StaffStackParamList } from '../../navigation/RootNavigator';
 
@@ -32,7 +34,6 @@ interface FeedbackItem {
   is_ai_processed: boolean;
   acknowledged: boolean;
   reaction: string | null;
-  athlete_reply: string | null;
   acknowledged_at: string | null;
   created_at: string;
   staff_name: string;
@@ -104,7 +105,7 @@ export default function StaffAthleteDetailScreen() {
         .from('match_feedback')
         .select(`
           id, title, feedback_text, processed_text, action_point,
-          is_ai_processed, acknowledged, reaction, athlete_reply,
+          is_ai_processed, acknowledged, reaction,
           acknowledged_at, created_at,
           staff:profiles!match_feedback_created_by_fkey(full_name)
         `)
@@ -130,7 +131,6 @@ export default function StaffAthleteDetailScreen() {
         is_ai_processed: r.is_ai_processed ?? false,
         acknowledged: r.acknowledged,
         reaction: r.reaction,
-        athlete_reply: r.athlete_reply,
         acknowledged_at: r.acknowledged_at,
         created_at: r.created_at,
         staff_name: r.staff?.full_name ?? 'Staff',
@@ -295,6 +295,7 @@ export default function StaffAthleteDetailScreen() {
         visible={feedbackModal}
         athleteId={athleteId}
         staffId={profile?.id ?? ''}
+        clubId={profile?.club_id ?? ''}
         onClose={() => { setFeedbackModal(false); load(); }}
       />
       <QuickTaskModal
@@ -388,13 +389,6 @@ function FeedbackCard({ item }: { item: FeedbackItem }) {
           <Text style={fbStyles.ackRowText}>Acknowledged</Text>
         </View>
       )}
-
-      {item.athlete_reply && (
-        <View style={fbStyles.replyBox}>
-          <Text style={fbStyles.replyLabel}>Athlete reply</Text>
-          <Text style={fbStyles.replyText}>{item.athlete_reply}</Text>
-        </View>
-      )}
     </GlassCard>
   );
 }
@@ -442,13 +436,6 @@ const fbStyles = StyleSheet.create({
   ackRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8 },
   ackRowText: { fontSize: 12, color: 'rgba(74,222,128,0.6)', fontWeight: '500' },
   reactionText: { fontSize: 14 },
-  replyBox: {
-    marginTop: 8, backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 8, padding: 8,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.07)',
-  },
-  replyLabel: { fontSize: 10, fontWeight: '600', color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 },
-  replyText:  { fontSize: 12, color: 'rgba(255,255,255,0.45)', lineHeight: 17 },
 });
 
 // ── Task Card (staff view) ─────────────────────────────────────────────────────
@@ -538,11 +525,12 @@ const emptyStyles = StyleSheet.create({
 
 // ── Quick Feedback Modal ───────────────────────────────────────────────────────
 function QuickFeedbackModal({
-  visible, athleteId, staffId, onClose,
+  visible, athleteId, staffId, clubId, onClose,
 }: {
   visible: boolean;
   athleteId: string;
   staffId: string;
+  clubId: string;
   onClose: () => void;
 }) {
   const [title, setTitle]           = useState('');
@@ -550,6 +538,8 @@ function QuickFeedbackModal({
   const [actionPoint, setActionPoint] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError]           = useState('');
+  // Feedback is given on a match — see lib/feedbackMatch.
+  const { match: about, loaded: aboutLoaded } = useFeedbackMatch(visible, clubId);
 
   useEffect(() => {
     if (visible) { setTitle(''); setBody(''); setActionPoint(''); setError(''); }
@@ -557,11 +547,13 @@ function QuickFeedbackModal({
 
   const submit = async () => {
     if (!body.trim()) { setError('Feedback text is required.'); return; }
+    if (!about) { setError(NO_MATCH_MESSAGE); return; }
     setError('');
     setSubmitting(true);
     const { error: err } = await supabase.from('match_feedback').insert({
       athlete_id: athleteId,
       created_by: staffId,
+      match_id: about.id,
       title: title.trim() || null,
       feedback_text: body.trim(),
       action_point: actionPoint.trim() || null,
@@ -591,6 +583,11 @@ function QuickFeedbackModal({
 
   return (
     <ModalShell visible={visible} title="Give Feedback" onClose={onClose}>
+      <Text style={mStyles.fieldLabel}>About</Text>
+      <Text style={mStyles.about}>
+        {about ? about.label : aboutLoaded ? NO_MATCH_MESSAGE : ' '}
+      </Text>
+
       <Text style={mStyles.fieldLabel}>Title (optional)</Text>
       <ModalInput value={title} onChangeText={setTitle} placeholder="e.g. Press triggers in transition" />
 
@@ -839,6 +836,7 @@ const styles = StyleSheet.create({
 });
 
 const mStyles = StyleSheet.create({
+  about: { fontSize: 15, color: TEXT.primary, marginBottom: 16 },
   fieldLabel: {
     fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.4)',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8,

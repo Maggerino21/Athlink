@@ -105,11 +105,9 @@ CREATE POLICY "Athletes can read own feedback"
   ON match_feedback FOR SELECT TO authenticated
   USING (athlete_id = auth.uid());
 
--- Athletes can update reaction/reply on their own feedback
-CREATE POLICY "Athletes can react to own feedback"
-  ON match_feedback FOR UPDATE TO authenticated
-  USING (athlete_id = auth.uid())
-  WITH CHECK (athlete_id = auth.uid());
+-- Athletes have NO direct UPDATE: "Got it" goes through acknowledge_feedback().
+-- A row policy let them rewrite any column, coach's text included. See
+-- supabase/athlete_actions.sql.
 
 -- Staff can do everything for feedback belonging to athletes in their club
 CREATE POLICY "Staff can manage match feedback"
@@ -156,11 +154,8 @@ CREATE POLICY "Athletes can read own tasks"
   ON tasks FOR SELECT TO authenticated
   USING (assigned_to = auth.uid());
 
--- Athletes can update status on their own tasks
-CREATE POLICY "Athletes can update own task status"
-  ON tasks FOR UPDATE TO authenticated
-  USING (assigned_to = auth.uid())
-  WITH CHECK (assigned_to = auth.uid());
+-- Athletes have NO direct UPDATE: ticking off goes through set_task_done().
+-- See supabase/athlete_actions.sql.
 
 -- Staff can do everything for their club's tasks
 CREATE POLICY "Staff can manage tasks"

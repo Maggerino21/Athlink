@@ -17,12 +17,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
+import { readCache, writeCache } from '../../../utils/cache';
 import PressableScale from '../../ui/PressableScale';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SharedValue } from 'react-native-reanimated';
 import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
 import { eventMeta, eventAccent, type EventType, type CalEvent } from '../eventTypes';
+import {
+  TASK_SELECT, FEEDBACK_SELECT, toTaskItem, toFeedbackItem, onToDoChanged,
+} from '../useToDo';
 import { SURFACE, LINE, TEXT, RADIUS } from '../../../utils/tokens';
 import { DISPLAY_FONT, UI_FONT, UI_FONT_REGULAR, THIN_FONT, LIGHT_FONT } from '../../../utils/type';
 import haptics from '../../../utils/haptics';
@@ -246,12 +250,22 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
     return d;
   }, []);
 
-  const [events, setEvents]         = useState<CalEvent[]>([]);
+  /**
+   * Last session's months around today — see `utils/cache`. The list draws
+   * from these on its first frame. `loadedRange` stays empty, so the first
+   * load still runs and replaces them if anything changed.
+   */
+  const [cached] = useState(() => (profile ? readCache<CalEvent[]>(profile.id, 'schedule') : undefined));
+  /** Today, already open if the cached events put anything on it. */
+  const [cachedOpen] = useState<Record<string, true>>(() =>
+    cached?.some(e => e.date === toYMD(today)) ? { [toYMD(today)]: true } : {});
+
+  const [events, setEvents]         = useState<CalEvent[]>(cached ?? []);
   /** Latest events without making the reset depend on them. */
   const eventsRef = useRef<CalEvent[]>([]);
   eventsRef.current = events;
   /** True once events have loaded — the lists wait for it. See MonthList. */
-  const [ready, setReady] = useState(false);
+  const [ready, setReady] = useState(!!cached);
   const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
   /**
    * Which days are open — each on its own, not one per month.
@@ -267,7 +281,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
    * independently, and a day you are not looking at is never changed by a tap
    * somewhere else.
    */
-  const [openDays, setOpenDays] = useState<Record<string, true>>({});
+  const [openDays, setOpenDays] = useState<Record<string, true>>(cachedOpen);
   /** Bumped on every reset, so each month's list scrolls back to its landing. */
   const [resetToken, setResetToken] = useState(0);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -275,7 +289,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
 
   const [monthAnchor, setMonthAnchor] = useState<Date>(startOfMonth(today));
   /** Today opens itself once, and only if there is something to open. */
-  const seededToday = useRef(false);
+  const seededToday = useRef(Object.keys(cachedOpen).length > 0);
 
   /** What `events` currently covers, so a step inside it skips the query. */
   const loadedRange = useRef<{ from: Date; to: Date } | null>(null);
@@ -301,7 +315,8 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   }, []);
 
   const handleEventPress = useCallback((e: CalEvent) => {
-    navigation.navigate('EventDetail', { event: e });
+    if (e.note) navigation.navigate('ToDo', { item: e.note });
+    else navigation.navigate('EventDetail', { event: e });
   }, [navigation]);
 
   /**
@@ -375,7 +390,8 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   // ── Data ──────────────────────────────────────────────────────────────────
 
   const load = useCallback(async (force = false) => {
-    if (!profile?.club_id) return;
+    // No club, nothing to fetch — but the empty month still has to be drawn.
+    if (!profile?.club_id) { setReady(true); return; }
 
     // Five months, not the three on screen.
     //
@@ -395,7 +411,12 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
       return;
     }
 
-    const [{ data: evData }, { data: matchData }] = await Promise.all([
+    const [
+      { data: evData, error: evError },
+      { data: matchData, error: matchError },
+      { data: taskData, error: taskError },
+      { data: feedbackData, error: feedbackError },
+    ] = await Promise.all([
       // Server-side resolution of "which events am I supposed to see".
       // An absent event_assignments row means WHOLE SQUAD, but RLS only lets an
       // athlete read their own assignment rows — so the client genuinely cannot
@@ -415,7 +436,23 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
         .gte('match_date', from.toISOString())
         .lt('match_date', to.toISOString())
         .order('match_date', { ascending: true }),
+      // What the staff sent this player, placed on its day — see useToDo.
+      supabase.from('tasks').select(TASK_SELECT)
+        .eq('assigned_to', profile.id)
+        .gte('due_date', from.toISOString())
+        .lt('due_date', to.toISOString()),
+      // Feedback's day is its match's, which a filter here cannot see, so
+      // fetch this player's feedback and place it below. A season is tens.
+      supabase.from('match_feedback').select(FEEDBACK_SELECT)
+        .eq('athlete_id', profile.id)
+        .order('created_at', { ascending: false })
+        .limit(200),
     ]);
+
+    // A failed refresh keeps what is drawn — often last session's, from the
+    // cache — rather than emptying every month. The range stays unloaded, so
+    // the next visit tries again.
+    if (evError || matchError || taskError || feedbackError) { setReady(true); return; }
 
     const mapped: CalEvent[] = [
       ...(evData ?? []).flatMap((e: any) => expandEvent(e)),
@@ -434,9 +471,38 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
         opponent_logo_url: m.opponent_logo_url ?? null,
         is_home: m.is_home,
       })),
+      // After the day's events: they have no time of their own. The whole item
+      // rides along as `note`, so a tap opens it without a second query.
+      ...(taskData ?? []).map(toTaskItem).map(t => ({
+        id: t.id,
+        type: 'task' as EventType,
+        title: t.title,
+        start_time: null,
+        location: t.done ? 'Done' : `From ${t.from}`,
+        description: t.description,
+        date: localYMD(t.due!),
+        source: 'task' as const,
+        note: t,
+      })),
+      ...(feedbackData ?? []).map(toFeedbackItem)
+        .filter(f => { const d = new Date(f.dayOf); return d >= from && d < to; })
+        .map(f => ({
+          id: f.id,
+          type: 'feedback' as EventType,
+          title: f.title ?? 'Feedback',
+          start_time: null,
+          location: f.done ? `From ${f.from}` : `From ${f.from}  ·  New`,
+          description: null,
+          date: localYMD(f.dayOf),
+          source: 'feedback' as const,
+          note: f,
+        })),
     ];
 
     loadedRange.current = { from, to };
+    // Only the window around today is worth keeping: that is where the next
+    // launch lands.
+    if (monthKey(monthAnchor) === monthKey(today)) writeCache(profile.id, 'schedule', mapped);
     // Today opens in the SAME render the events arrive, not one after.
     //
     // This used to be an effect watching `events`, which runs after the render
@@ -451,13 +517,23 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
     }
     // A background refresh that returns the same rows must not re-render every
     // mounted card for nothing. Compare a cheap signature first.
-    const sig = (xs: CalEvent[]) => xs.map(e => `${e.id}|${e.date}|${e.start_time}|${e.title}`).join('~');
+    // `location` too: it is where a task shows "Done" and feedback "New".
+    const sig = (xs: CalEvent[]) => xs.map(e => `${e.id}|${e.date}|${e.start_time}|${e.title}|${e.location}`).join('~');
     if (sig(mapped) !== sig(eventsRef.current)) setEvents(mapped);
     setReady(true);
-  }, [profile?.club_id, monthAnchor]);
+  }, [profile?.club_id, profile?.id, monthAnchor, today]);
 
+  // Mounted hidden — by HomeScreen's post-launch prefetch — so load now, and
+  // the first visit finds the month already drawn. This used to wait for the
+  // tab to be opened, which left it empty for ~450ms every session. Mounted
+  // visible, the activation effect below loads instead.
+  useEffect(() => { if (!isActive) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-
+  // A tick in the To do sheet changes a row here — "Done", or "New" gone. The
+  // sheet is another route, so it says so through useToDo's listeners.
+  const loadRef = useRef(load);
+  loadRef.current = load;
+  useEffect(() => onToDoChanged(() => { loadRef.current(true); }), []);
 
   /**
    * Leaving the section puts it back to its defaults.
@@ -470,6 +546,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
   // Swiping to a new month may step outside the fetched window. Not on mount —
   // the effect below already loads then, and running both would fetch twice.
   const anchorMounted = useRef(false);
+
   useEffect(() => {
     if (!anchorMounted.current) { anchorMounted.current = true; return; }
     if (isActive) load();
@@ -925,10 +1002,12 @@ const DayCard = React.memo(function DayCard({
               <Text allowFontScaling={false} style={styles.dateMon}>{monthLabel}</Text>
             </View>
 
-            {/* One dot per KIND of thing, not per event. */}
+            {/* One dot per KIND of thing, not per event — keyed by colour, since
+                a task and feedback share one and two identical dots would read
+                as two different kinds. */}
             <View style={styles.dotRow}>
-              {[...new Set(day.events.map(e => e.type))].slice(0, 4).map(type => (
-                <View key={type} style={[styles.bigDot, { backgroundColor: eventAccent(type).edge }]} />
+              {[...new Set(day.events.map(e => eventAccent(e.type).edge))].slice(0, 4).map(edge => (
+                <View key={edge} style={[styles.bigDot, { backgroundColor: edge }]} />
               ))}
             </View>
           </TouchableOpacity>

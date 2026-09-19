@@ -632,7 +632,6 @@ function FeedbackCard({ fb }: { fb: MatchFeedback }) {
       )}
       <div className="t-label" style={{ marginTop: 8 }}>
         {new Date(fb.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-        {fb.reaction && <span style={{ marginLeft: 8, textTransform: 'none', letterSpacing: 0 }}>{fb.reaction}</span>}
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { AvatarCircle } from '../athletes/AthletesClient';
+import OpponentCrest from '@/components/OpponentCrest';
 import type { MatchFeedback } from '@/lib/database.types';
 
 type AthleteRow = {
@@ -12,7 +13,19 @@ type AthleteRow = {
   unread: number;
 };
 
-type FeedbackDetail = MatchFeedback & { athlete_name?: string };
+type MatchRef = { opponent: string; match_date: string; is_home: boolean | null };
+type FeedbackDetail = MatchFeedback & { athlete_name?: string; match?: MatchRef | null };
+
+/** A match feedback can be given on. */
+type MatchOption = MatchRef & { id: string; opponent_logo_url: string | null };
+
+function matchLabel(m: MatchRef): string {
+  return `${m.is_home === false ? 'Away vs' : 'vs'} ${m.opponent}`;
+}
+
+function matchDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+}
 
 export default function FeedbackTab({ staffId, clubId }: { staffId: string; clubId: string }) {
   const supabase = createClient();
@@ -67,7 +80,8 @@ export default function FeedbackTab({ staffId, clubId }: { staffId: string; club
     setLoadingFb(true);
     const { data } = await supabase
       .from('match_feedback')
-      .select('*')
+      // Name the key: match_feedback links to profiles twice as well.
+      .select('*, match:matches!match_feedback_match_id_fkey(opponent, match_date, is_home)')
       .eq('athlete_id', athleteId)
       .order('created_at', { ascending: false })
       .limit(30);
@@ -209,6 +223,7 @@ export default function FeedbackTab({ staffId, clubId }: { staffId: string; club
         <SendFeedbackModal
           athlete={selected}
           staffId={staffId}
+          clubId={clubId}
           onClose={() => setShowModal(false)}
           onSent={() => { setShowModal(false); loadFeedback(selected.id); }}
         />
@@ -218,7 +233,7 @@ export default function FeedbackTab({ staffId, clubId }: { staffId: string; club
 }
 
 /* ── Feedback card ────────────────────────────────────────────────── */
-function FeedbackCard({ fb }: { fb: MatchFeedback }) {
+function FeedbackCard({ fb }: { fb: FeedbackDetail }) {
   const [expanded, setExpanded] = useState(false);
   const text = fb.processed_text ?? fb.feedback_text;
   const isLong = text.length > 180;
@@ -237,8 +252,10 @@ function FeedbackCard({ fb }: { fb: MatchFeedback }) {
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexShrink: 0, marginLeft: 8 }}>
           {fb.is_ai_processed && <span className="badge badge-info" style={{ fontSize: 10 }}>AI</span>}
+          {/* "Seen" is the player tapping Got it — the only answer there is.
+              Emoji reactions and replies are gone: Athlink is not a chat. */}
           {fb.acknowledged
-            ? <span className="badge badge-success" style={{ fontSize: 10 }}>{fb.reaction ? fb.reaction + ' Acknowledged' : 'Acknowledged'}</span>
+            ? <span className="badge badge-success" style={{ fontSize: 10 }}>Seen</span>
             : <span className="badge badge-info" style={{ fontSize: 10 }}>Unread</span>
           }
         </div>
@@ -270,19 +287,9 @@ function FeedbackCard({ fb }: { fb: MatchFeedback }) {
         </div>
       )}
 
-      {fb.athlete_reply && (
-        <div style={{
-          marginTop: 10, padding: '8px 12px',
-          borderRadius: 'var(--radius-sm)',
-          background: 'var(--surface-2)',
-        }}>
-          <div className="t-label" style={{ marginBottom: 3 }}>Athlete reply</div>
-          <div className="t-small" style={{ color: 'var(--text-secondary)' }}>{fb.athlete_reply}</div>
-        </div>
-      )}
-
       <div className="t-label" style={{ marginTop: 10 }}>
-        {new Date(fb.created_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+        {fb.match ? `${matchLabel(fb.match)} · ` : ''}
+        Sent {new Date(fb.created_at).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
       </div>
     </div>
   );
@@ -290,10 +297,11 @@ function FeedbackCard({ fb }: { fb: MatchFeedback }) {
 
 /* ── Send Feedback Modal ──────────────────────────────────────────── */
 function SendFeedbackModal({
-  athlete, staffId, onClose, onSent,
+  athlete, staffId, clubId, onClose, onSent,
 }: {
   athlete: AthleteRow;
   staffId: string;
+  clubId: string;
   onClose: () => void;
   onSent: () => void;
 }) {
@@ -307,6 +315,36 @@ function SendFeedbackModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSending,    setIsSending]    = useState(false);
   const [error,        setError]        = useState<string | null>(null);
+  const [matches,      setMatches]      = useState<MatchOption[] | null>(null);
+  const [matchId,      setMatchId]      = useState('');
+
+  // Feedback is given on a match — the staff policy on match_feedback refuses
+  // a row without one, which is why every send from this form used to fail.
+  // It also puts the feedback on that match in the player's calendar.
+  //
+  // Recent matches first, defaulting to the last one played: almost always the
+  // one being talked about. The next two follow, for a word before kick-off.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const now = new Date().toISOString();
+      const cols = 'id, opponent, match_date, is_home, opponent_logo_url';
+      const [played, upcoming] = await Promise.all([
+        supabase.from('matches').select(cols).eq('club_id', clubId).is('suppressed_at', null)
+          .lte('match_date', now).order('match_date', { ascending: false }).limit(30),
+        supabase.from('matches').select(cols).eq('club_id', clubId).is('suppressed_at', null)
+          .gt('match_date', now).order('match_date', { ascending: true }).limit(2),
+      ]);
+      if (cancelled) return;
+      const list = [...(played.data ?? []), ...(upcoming.data ?? [])] as MatchOption[];
+      setMatches(list);
+      setMatchId(list[0]?.id ?? '');
+    })();
+    return () => { cancelled = true; };
+  }, [clubId]);
+
+  const match = matches?.find(m => m.id === matchId) ?? null;
+  const noMatches = matches !== null && matches.length === 0;
 
   const processWithAI = async () => {
     if (!feedbackText.trim()) return;
@@ -331,11 +369,13 @@ function SendFeedbackModal({
   };
 
   const send = async (withAI: boolean) => {
+    if (!matchId) return;
     setIsSending(true);
     setError(null);
     const { error: insertErr } = await supabase.from('match_feedback').insert({
       athlete_id:       athlete.id,
       created_by:       staffId,
+      match_id:         matchId,
       title:            title.trim() || null,
       feedback_text:    feedbackText.trim(),
       processed_text:   withAI && preview ? preview.feedback : null,
@@ -371,7 +411,9 @@ function SendFeedbackModal({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border-default)' }}>
           <div>
             <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>Send feedback</div>
-            <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>to {athlete.full_name}</div>
+            <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>
+              to {athlete.full_name}{match ? ` · ${matchLabel(match)}` : ''}
+            </div>
           </div>
           <button onClick={onClose} className="btn-ghost" style={{ width: 32, height: 32, padding: 0 }}>
             <CloseIcon />
@@ -383,8 +425,18 @@ function SendFeedbackModal({
           {step === 'compose' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
+                <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Match</label>
+                {noMatches ? (
+                  <div className="t-small" style={{ color: 'var(--text-tertiary)' }}>
+                    Feedback is given on a match, and there are no matches in the calendar yet.
+                  </div>
+                ) : (
+                  <MatchSelect matches={matches ?? []} value={matchId} onChange={setMatchId} />
+                )}
+              </div>
+              <div>
                 <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Title (optional)</label>
-                <input className="input" placeholder="e.g. Match performance — vs Brann" value={title} onChange={(e) => setTitle(e.target.value)} />
+                <input className="input" placeholder="e.g. Pressing triggers" value={title} onChange={(e) => setTitle(e.target.value)} />
               </div>
               <div>
                 <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Feedback *</label>
@@ -449,11 +501,11 @@ function SendFeedbackModal({
             <>
               <button onClick={onClose} className="btn-ghost">Cancel</button>
               {useAi ? (
-                <button onClick={processWithAI} disabled={!feedbackText.trim() || isProcessing} className="btn-primary">
+                <button onClick={processWithAI} disabled={!matchId || !feedbackText.trim() || isProcessing} className="btn-primary">
                   {isProcessing ? 'Processing…' : 'Process with AI →'}
                 </button>
               ) : (
-                <button onClick={() => send(false)} disabled={!feedbackText.trim() || isSending} className="btn-primary">
+                <button onClick={() => send(false)} disabled={!matchId || !feedbackText.trim() || isSending} className="btn-primary">
                   {isSending ? 'Sending…' : 'Send feedback'}
                 </button>
               )}
@@ -461,7 +513,7 @@ function SendFeedbackModal({
           ) : (
             <>
               <button onClick={() => setStep('compose')} className="btn-ghost">← Edit</button>
-              <button onClick={() => send(true)} disabled={isSending} className="btn-primary">
+              <button onClick={() => send(true)} disabled={!matchId || isSending} className="btn-primary">
                 {isSending ? 'Sending…' : 'Confirm & send'}
               </button>
             </>
@@ -469,6 +521,118 @@ function SendFeedbackModal({
         </div>
       </div>
     </div>
+  );
+}
+
+/* ── Match picker ─────────────────────────────────────────────────── */
+/**
+ * Custom rather than a native <select>, whose OS-drawn list ignores the dark
+ * theme (CLAUDE.md). Same shape as TasksTab's AthleteSelect.
+ */
+function MatchSelect({
+  matches, value, onChange,
+}: {
+  matches: MatchOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const selected = matches.find(m => m.id === value);
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="input"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          cursor: 'pointer', textAlign: 'left',
+          display: 'flex', alignItems: 'center', gap: 10,
+          borderColor: open ? 'var(--accent-border)' : undefined,
+        }}
+      >
+        {selected ? <MatchRow m={selected} /> : <span style={{ color: 'var(--text-tertiary)' }}>Loading matches…</span>}
+        <span style={{ marginLeft: 'auto', display: 'flex', color: 'var(--text-tertiary)',
+                       transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+          <ChevronDownIcon />
+        </span>
+      </button>
+
+      {open && (
+        <div
+          role="listbox"
+          style={{
+            position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10,
+            background: 'var(--bg-base)',
+            border: '1px solid var(--border-default)',
+            borderRadius: 'var(--radius-md)',
+            maxHeight: 240, overflowY: 'auto',
+            boxShadow: '0 12px 32px rgba(0,0,0,0.55)',
+            padding: 4,
+          }}
+        >
+          {matches.map(m => {
+            const active = m.id === value;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => { onChange(m.id); setOpen(false); }}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 10px', borderRadius: 'var(--radius-sm)',
+                  fontFamily: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer',
+                  background: active ? 'var(--accent-subtle)' : 'transparent',
+                  border: '1px solid ' + (active ? 'var(--accent-border)' : 'transparent'),
+                  color: 'var(--text-primary)',
+                  transition: 'background 0.1s',
+                }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+              >
+                <MatchRow m={m} />
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MatchRow({ m }: { m: MatchOption }) {
+  return (
+    <>
+      <OpponentCrest url={m.opponent_logo_url} name={m.opponent} size={22} />
+      <span style={{ color: 'var(--text-primary)' }}>{matchLabel(m)}</span>
+      <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>{matchDate(m.match_date)}</span>
+    </>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
   );
 }
 

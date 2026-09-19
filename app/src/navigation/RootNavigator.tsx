@@ -8,8 +8,10 @@ import HomeScreen from '../screens/athlete/HomeScreen';
 import EventDetailScreen from '../screens/athlete/EventDetailScreen';
 import BriefingScreen from '../screens/athlete/BriefingScreen';
 import GiveFineScreen from '../screens/athlete/GiveFineScreen';
+import ToDoScreen from '../screens/athlete/ToDoScreen';
 import { SURFACE } from '../utils/tokens';
 import type { CalEvent } from '../components/athlete/eventTypes';
+import type { ToDoItem } from '../components/athlete/useToDo';
 import StaffHomeScreen from '../screens/staff/StaffHomeScreen';
 import StaffAthleteDetailScreen from '../screens/staff/StaffAthleteDetailScreen';
 
@@ -30,6 +32,11 @@ export type AthleteStackParamList = {
   EventDetail: { event: CalEvent };
   /** The bøtesjef hands out a fine. Opened from the Fines tab. */
   GiveFine: undefined;
+  /**
+   * What the staff sent you. From Home: everything still open (no params).
+   * From Schedule: the one item tapped, passed whole like `EventDetail`'s event.
+   */
+  ToDo: { item?: ToDoItem } | undefined;
   Briefing: {
     headline: string;
     fullSummary: string;
@@ -130,6 +137,13 @@ function AthleteNavigator() {
             presentation: 'modal',
             contentStyle: { backgroundColor: SURFACE.base },
           }}
+        />
+        <AthleteStack.Screen
+          name="ToDo"
+          component={ToDoScreen}
+          // A page sheet for the same reason as GiveFine: feedback can run
+          // long, and a formSheet cannot scroll.
+          options={{ presentation: 'modal', contentStyle: { backgroundColor: SURFACE.base } }}
         />
       </AthleteStack.Group>
     </AthleteStack.Navigator>

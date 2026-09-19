@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import GlassCard from '../../components/ui/GlassCard';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useFeedbackMatch, NO_MATCH_MESSAGE } from '../../lib/feedbackMatch';
+import { TEXT } from '../../utils/tokens';
 import { clubGradientOrbs } from '../../utils/theme';
 
 const { width: W, height: H } = Dimensions.get('window');
@@ -326,7 +328,7 @@ const qaStyles = StyleSheet.create({
 type AIStep = 'idle' | 'loading' | 'preview';
 
 function FeedbackModal({
-  visible, athletes, preselected, staffId, onClose,
+  visible, athletes, preselected, staffId, clubId, onClose,
 }: {
   visible: boolean;
   athletes: Athlete[];
@@ -344,6 +346,8 @@ function FeedbackModal({
   const [previewAction, setPreviewAction]    = useState('');
   const [submitting, setSubmitting]          = useState(false);
   const [error, setError]                   = useState('');
+  // Feedback is given on a match — see lib/feedbackMatch.
+  const { match: about, loaded: aboutLoaded } = useFeedbackMatch(visible, clubId);
 
   useEffect(() => {
     if (visible) {
@@ -384,12 +388,14 @@ function FeedbackModal({
     const fbText  = isAI ? previewFeedback.trim() : body.trim();
     const actText = isAI ? previewAction.trim()   : actionPoint.trim();
     if (!fbText) { setError('Feedback text is required.'); return; }
+    if (!about) { setError(NO_MATCH_MESSAGE); return; }
     setError('');
     setSubmitting(true);
 
     const { error: err } = await supabase.from('match_feedback').insert({
       athlete_id:       selectedAthlete.id,
       created_by:       staffId,
+      match_id:         about.id,
       title:            title.trim() || null,
       feedback_text:    body.trim(),
       processed_text:   isAI ? fbText  : null,
@@ -493,6 +499,11 @@ function FeedbackModal({
     <ModalShell visible={visible} title="Give Feedback" onClose={onClose}>
       <Text style={modalStyles.fieldLabel}>Athlete</Text>
       <AthletePicker athletes={athletes} selected={selectedAthlete} onSelect={setSelected} />
+
+      <Text style={modalStyles.fieldLabel}>About</Text>
+      <Text style={modalStyles.about}>
+        {about ? about.label : aboutLoaded ? NO_MATCH_MESSAGE : ' '}
+      </Text>
 
       <Text style={modalStyles.fieldLabel}>Title (optional)</Text>
       <ModalInput value={title} onChangeText={setTitle} placeholder="e.g. Press triggers in transition" />
@@ -1109,6 +1120,7 @@ const styles = StyleSheet.create({
 });
 
 const modalStyles = StyleSheet.create({
+  about: { fontSize: 15, color: TEXT.primary, marginBottom: 16 },
   fieldLabel: {
     fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.4)',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8,

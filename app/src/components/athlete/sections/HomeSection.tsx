@@ -20,7 +20,7 @@
  * "unassigned" from "assigned to someone else" under RLS.
  */
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, Dimensions, type LayoutChangeEvent } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence, cancelAnimation, Easing,
@@ -28,12 +28,17 @@ import Animated, {
 import Svg, { Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
+import { readCache, writeCache } from '../../../utils/cache';
+import Reveal from '../../ui/Reveal';
+import PressableScale from '../../ui/PressableScale';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
+import { useToDo } from '../useToDo';
 import { SURFACE, TEXT, RADIUS } from '../../../utils/tokens';
 import { THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR } from '../../../utils/type';
 import { hsla, matteAccent, type MatteAccent } from '../../../utils/theme';
 import { eventAccent } from '../eventTypes';
-
-const { width: W } = Dimensions.get('window');
 
 /** Schedule's gutter. */
 const PAD = 8;
@@ -66,9 +71,10 @@ const COMPETITION_HUE = 200;
  * sit in Schedule's family. "Next up" takes whatever the event's type is.
  * Today, Tasks and Fines are not event types, so their hues are chosen here.
  */
-const CATEGORY: Record<'today' | 'tasks' | 'fines' | 'none', MatteAccent> = {
+const CATEGORY: Record<'today' | 'todo' | 'fines' | 'none', MatteAccent> = {
   today: matteAccent('#3B82F6'),
-  tasks: matteAccent('#14B8A6'),
+  // Matches EVENT_META's task/feedback hue, so To do reads the same in Schedule.
+  todo: matteAccent('#14B8A6'),
   fines: matteAccent('#EF4444'),
   none: matteAccent('#6B7280'),
 };
@@ -85,7 +91,6 @@ const MOCK = {
   opponent: 'Brann', isHome: false, daysUntil: 8,
   next: { title: 'Team training', days: 1, time: '18:00', location: 'Lerkendal kunstgress' },
   today: 2,
-  tasks: 3,
   fines: 150,
 };
 
@@ -103,70 +108,100 @@ interface UpcomingEvent {
   location: string | null;
 }
 
+/** What Home keeps between sessions — see `utils/cache`. */
+interface HomeCache {
+  nextMatch: NextMatch | null;
+  events: UpcomingEvent[];
+}
+
+/**
+ * Last session's Home, minus whatever has happened since. A match that kicked
+ * off yesterday must not open today's app as "Match today" while the refresh is
+ * still on its way.
+ */
+function fromCache(userId: string | undefined): HomeCache | undefined {
+  const c = userId ? readCache<HomeCache>(userId, 'home') : undefined;
+  if (!c) return undefined;
+  const now = Date.now();
+  const ahead = (iso: string) => new Date(iso).getTime() >= now;
+  return {
+    nextMatch: c.nextMatch && ahead(c.nextMatch.match_date) ? c.nextMatch : null,
+    events: c.events.filter(e => ahead(e.event_date)),
+  };
+}
+
 export default function HomeSection({ isActive }: { isActive?: boolean }) {
   const { profile } = useAuth();
   const insets = useSafeAreaInsets();
-  const [nextMatch, setNextMatch] = useState<NextMatch | null>(null);
-  const [events, setEvents] = useState<UpcomingEvent[]>([]);
-  const [pendingCount, setPendingCount] = useState(0);
+  const [cached] = useState(() => fromCache(profile?.id));
+  const [nextMatch, setNextMatch] = useState<NextMatch | null>(cached?.nextMatch ?? null);
+  const [events, setEvents] = useState<UpcomingEvent[]>(cached?.events ?? []);
+  // Open tasks and unread feedback — see useToDo. Its own load and cache.
+  const todo = useToDo(isActive);
+  const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
+  /** Nothing below the header is drawn until this — see `Reveal`. */
+  const [loaded, setLoaded] = useState(!!cached);
   const [refreshing, setRefreshing] = useState(false);
-  const [viewH, setViewH] = useState(0);
-  const [matchH, setMatchH] = useState(0);
 
   const fetchData = useCallback(async () => {
     if (!profile) return;
+    try {
+      const [matchRes, eventsRes] = await Promise.all([
+        profile.club_id
+          ? supabase
+              .from('matches')
+              .select('opponent, match_date, is_home')
+              .eq('club_id', profile.club_id)
+              .eq('status', 'upcoming')
+              // Fixtures a coach removed are hidden, not deleted — a real DELETE
+              // would be undone by the next provider sync. Every read must filter.
+              .is('suppressed_at', null)
+              .gte('match_date', new Date().toISOString())
+              .order('match_date', { ascending: true })
+              .limit(1)
+              // Not .single(): that reports "no upcoming match" as an error,
+              // and an error here now means "keep what is on screen".
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
 
-    const [matchRes, tasksRes, eventsRes] = await Promise.all([
-      profile.club_id
-        ? supabase
-            .from('matches')
-            .select('opponent, match_date, is_home')
-            .eq('club_id', profile.club_id)
-            .eq('status', 'upcoming')
-            // Fixtures a coach removed are hidden, not deleted — a real DELETE
-            // would be undone by the next provider sync. Every read must filter.
-            .is('suppressed_at', null)
-            .gte('match_date', new Date().toISOString())
-            .order('match_date', { ascending: true })
-            .limit(1)
-            .single()
-        : Promise.resolve({ data: null }),
+        // Squad-wide events have NO event_assignments rows, and RLS only lets an
+        // athlete read their own — so filtering client-side by assignment hides
+        // every event meant for the whole squad. Resolved server-side instead.
+        (async () => {
+          const from = new Date();
+          const to = new Date();
+          to.setDate(to.getDate() + 21);
+          const { data, error } = await supabase.rpc('visible_events_for_me', {
+            p_from: from.toISOString(),
+            p_to: to.toISOString(),
+          });
+          return { data, error };
+        })(),
+      ]);
 
-      supabase
-        .from('tasks')
-        .select('id', { count: 'exact', head: true })
-        .eq('assigned_to', profile.id)
-        .eq('status', 'pending'),
+      // A refresh that failed — offline, a dropped connection — must not replace
+      // a good screen (usually last session's, from the cache) with zeros.
+      if (matchRes.error || eventsRes.error) return;
 
-      // Squad-wide events have NO event_assignments rows, and RLS only lets an
-      // athlete read their own — so filtering client-side by assignment hides
-      // every event meant for the whole squad. Resolved server-side instead.
-      (async () => {
-        const from = new Date();
-        const to = new Date();
-        to.setDate(to.getDate() + 21);
-        const { data } = await supabase.rpc('visible_events_for_me', {
-          p_from: from.toISOString(),
-          p_to: to.toISOString(),
-        });
-        return { data };
-      })(),
-    ]);
-
-    const tk = tasksRes as { count?: number | null };
-    setNextMatch((matchRes.data as NextMatch) ?? null);
-    setPendingCount(tk.count ?? 0);
-    // The RPC does not promise an order, and "next up" is whatever sorts first.
-    // Unsorted, a recovery session two days out was shown as next while two
-    // events were still to come today.
-    const list = ((eventsRes.data as UpcomingEvent[]) ?? [])
-      .slice()
-      .sort((a, b) => a.event_date.localeCompare(b.event_date));
-    setEvents(list);
+      const match = (matchRes.data as NextMatch) ?? null;
+      // The RPC does not promise an order, and "next up" is whatever sorts first.
+      // Unsorted, a recovery session two days out was shown as next while two
+      // events were still to come today.
+      const list = ((eventsRes.data as UpcomingEvent[]) ?? [])
+        .slice()
+        .sort((a, b) => a.event_date.localeCompare(b.event_date));
+      setNextMatch(match);
+      setEvents(list);
+      writeCache(profile.id, 'home', { nextMatch: match, events: list } satisfies HomeCache);
+    } finally {
+      // Even a failed first load has to end the wait, or the tab spins forever.
+      setLoaded(true);
+    }
   }, [profile]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { if (isActive) fetchData(); }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
+  // On mount and each time the tab comes back into view. This used to be two
+  // effects that both fired on mount, so every launch queried Home twice.
+  useEffect(() => { if (isActive !== false) fetchData(); }, [isActive, fetchData]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -176,7 +211,9 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const mock = USE_MOCK;
+  // Stand-ins fill real zeros only once the real answer is in. Before that they
+  // were the first thing on screen, and cut to the real match ~350ms later.
+  const mock = USE_MOCK && loaded;
 
   const match = nextMatch
     ? { opponent: nextMatch.opponent, isHome: nextMatch.is_home, iso: nextMatch.match_date }
@@ -190,80 +227,75 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
 
   // The events RPC starts at "now", so this counts what is still to come today.
   const todayCount = events.filter(e => calendarDaysUntil(e.event_date) === 0).length || (mock ? MOCK.today : 0);
-  const tasks = pendingCount || (mock ? MOCK.tasks : 0);
+  // Never mocked: the tile opens the real list, and a stand-in "3" that opens
+  // nothing reads as broken.
+  const toDoCount = todo.items.length;
 
-  const onLayout = (e: LayoutChangeEvent) => {
-    const h = Math.round(e.nativeEvent.layout.height);
-    setViewH(prev => (prev === h ? prev : h));
-  };
-  const onMatchLayout = (e: LayoutChangeEvent) => {
-    const h = Math.round(e.nativeEvent.layout.height);
-    setMatchH(prev => (prev === h ? prev : h));
-  };
-
-  // The panel takes what is left once the match and the glow have their room.
   const bottom = insets.bottom + TAB_BAR + BOTTOM_GAP;
-  const panelH = viewH && matchH
-    ? Math.max(PANEL_MIN, viewH - matchH - GLOW_ROOM - bottom)
-    : PANEL_MIN;
-  const rowH = ROW_H;
-  const leadH = panelH - GROOVE - rowH;
 
   const nextAccent = nextType ? eventAccent(nextType) : CATEGORY.none;
 
   return (
-    <View style={styles.root} onLayout={onLayout}>
+    <View style={styles.root}>
       {/* Behind everything, so it lights the space above the panel and reaches
           under the tab bar, whose glass picks it up. */}
-      <RisingGlow height={viewH} days={match ? calendarDaysUntil(match.iso) : null} hue={COMPETITION_HUE} />
+      <RisingGlow days={match ? calendarDaysUntil(match.iso) : null} hue={COMPETITION_HUE} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.scroll, { paddingBottom: bottom }]}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />
-        }
-      >
-        <View onLayout={onMatchLayout}>
+      {/* Both halves, so the To do figure never arrives after the rest. */}
+      <Reveal ready={loaded && todo.loaded}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.scroll, { paddingBottom: bottom }]}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />
+          }
+        >
           <Match match={match} />
-        </View>
 
-        {/* Pushes the panel to the bottom. */}
-        <View style={styles.spacer} />
+          {/* Open space for the glow, between the match and the panel. */}
+          <View style={styles.spacer} />
 
-        <View style={[styles.panel, { height: panelH }]}>
-          <LeadTile
-            height={leadH}
-            accent={nextAccent}
-            kind={nextType ? capitalise(nextType) : null}
-            when={next ? relativeDay(next.days) : null}
-            figure={next ? next.time : '—'}
-            title={next?.title ?? 'Nothing planned'}
-            place={next?.location ?? null}
-          />
-          <View style={[styles.row, { height: rowH }]}>
-            <Tile
-              accent={CATEGORY.today}
-              label="Today"
-              figure={String(todayCount)}
-              detail={todayCount === 0 ? 'nothing on' : todayCount === 1 ? 'event' : 'events'}
+          {/* Flexbox, not measurement: the panel grows into whatever the match
+              leaves, and the lead tile into whatever the row leaves. This was
+              computed from two onLayout heights, both 0 on the first frame —
+              so a Home drawn from the cache opened at the minimum size and
+              jumped once measured. */}
+          <View style={styles.panel}>
+            <LeadTile
+              accent={nextAccent}
+              kind={nextType ? capitalise(nextType) : null}
+              when={next ? relativeDay(next.days) : null}
+              figure={next ? next.time : '—'}
+              title={next?.title ?? 'Nothing planned'}
+              place={next?.location ?? null}
             />
-            <Tile
-              accent={CATEGORY.tasks}
-              label="Tasks"
-              figure={String(tasks)}
-              detail={tasks === 0 ? 'all done' : 'to do'}
-            />
-            <Tile
-              accent={CATEGORY.fines}
-              label="Fines"
-              figure={mock ? String(MOCK.fines) : '—'}
-              unit={mock ? 'kr' : undefined}
-              detail={mock ? 'unpaid' : undefined}
-            />
+            <View style={styles.row}>
+              <Tile
+                accent={CATEGORY.today}
+                label="Today"
+                figure={String(todayCount)}
+                detail={todayCount === 0 ? 'nothing on' : todayCount === 1 ? 'event' : 'events'}
+              />
+              <Tile
+                accent={CATEGORY.todo}
+                label="To do"
+                figure={String(toDoCount)}
+                detail={toDoCount === 0 ? 'all done' : 'for you'}
+                // Only when there is something to open: an empty sheet is a
+                // tap spent on nothing.
+                onPress={toDoCount > 0 ? () => navigation.navigate('ToDo') : undefined}
+              />
+              <Tile
+                accent={CATEGORY.fines}
+                label="Fines"
+                figure={mock ? String(MOCK.fines) : '—'}
+                unit={mock ? 'kr' : undefined}
+                detail={mock ? 'unpaid' : undefined}
+              />
+            </View>
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </Reveal>
     </View>
   );
 }
@@ -312,11 +344,18 @@ function Match({ match }: { match: { opponent: string; isHome: boolean | null; i
  *
  * Gradients, not blur, so nothing ends in a hard edge. The screen's bottom edge
  * is the only boundary the pools meet, and a screen edge is a natural one.
+ *
+ * Drawn in a 100×100 viewBox stretched to the section (`preserveAspectRatio
+ * "none"`): every pool was already sized as a fraction of the width across and
+ * the height down, so stretching draws exactly the same shapes — and the glow
+ * is there on the first frame instead of waiting for a measured height.
  */
-function RisingGlow({ height, days, hue }: { height: number; days: number | null; hue: number }) {
+function RisingGlow({ days, hue }: { days: number | null; hue: number }) {
   const matchday = days === 0;
-  const base = useSharedValue(0);
-  const boost = useSharedValue(0);
+  // Start where the first render says, not at 0: a Home drawn from the cache
+  // already knows its match, and the light should be on from the first frame.
+  const base = useSharedValue(days === null ? 0 : 1);
+  const boost = useSharedValue(matchday ? 1 : 0);
   const breath = useSharedValue(1);
 
   useEffect(() => {
@@ -342,8 +381,6 @@ function RisingGlow({ height, days, hue }: { height: number; days: number | null
   const baseStyle = useAnimatedStyle(() => ({ opacity: base.value }));
   const boostStyle = useAnimatedStyle(() => ({ opacity: boost.value * breath.value }));
 
-  if (height <= 0) return null;
-  const H = height;
   const a = hsla(hue, 95, 58);
   const b = hsla(hue + 18, 95, 64);
   // Matchday colour: more saturated, and a lighter core so it reads as brighter
@@ -354,7 +391,7 @@ function RisingGlow({ height, days, hue }: { height: number; days: number | null
   return (
     <>
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, baseStyle]}>
-        <Svg width={W} height={H}>
+        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
           <Defs>
             <RadialGradient id="riseA" cx="50%" cy="50%" r="50%">
               <Stop offset={0} stopColor={a} stopOpacity={0.75} />
@@ -368,13 +405,13 @@ function RisingGlow({ height, days, hue }: { height: number; days: number | null
             </RadialGradient>
           </Defs>
           {/* Centres sit at the floor, so the pools rise upward from it. */}
-          <Ellipse cx={W * 0.3} cy={H} rx={W * 1.0} ry={H * 0.95} fill="url(#riseA)" />
-          <Ellipse cx={W * 0.85} cy={H} rx={W * 0.75} ry={H * 0.75} fill="url(#riseB)" />
+          <Ellipse cx={30} cy={100} rx={100} ry={95} fill="url(#riseA)" />
+          <Ellipse cx={85} cy={100} rx={75} ry={75} fill="url(#riseB)" />
         </Svg>
       </Animated.View>
 
       <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, boostStyle]}>
-        <Svg width={W} height={H}>
+        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
           <Defs>
             <RadialGradient id="boostWide" cx="50%" cy="50%" r="50%">
               <Stop offset={0} stopColor={c} stopOpacity={0.85} />
@@ -391,8 +428,8 @@ function RisingGlow({ height, days, hue }: { height: number; days: number | null
               is clipped under the header, so a pool that is still coloured at
               the top edge gets cut into a hard horizontal line there. The
               gradient ends at 88% of the radius for the same reason. */}
-          <Ellipse cx={W * 0.5} cy={H} rx={W * 1.15} ry={H} fill="url(#boostWide)" />
-          <Ellipse cx={W * 0.45} cy={H} rx={W * 0.7} ry={H * 0.55} fill="url(#boostCore)" />
+          <Ellipse cx={50} cy={100} rx={115} ry={100} fill="url(#boostWide)" />
+          <Ellipse cx={45} cy={100} rx={70} ry={55} fill="url(#boostCore)" />
         </Svg>
       </Animated.View>
     </>
@@ -408,12 +445,12 @@ function RisingGlow({ height, days, hue }: { height: number; days: number | null
  * the tile reads from arm's length. What and where sit beside it, right-aligned
  * on the same baseline, so the tile has two ends instead of one stack.
  */
-function LeadTile({ height, accent, kind, when, figure, title, place }: {
-  height: number; accent: MatteAccent; kind: string | null; when: string | null;
+function LeadTile({ accent, kind, when, figure, title, place }: {
+  accent: MatteAccent; kind: string | null; when: string | null;
   figure: string; title: string; place: string | null;
 }) {
   return (
-    <View style={[styles.lead, { height }]}>
+    <View style={styles.lead}>
       <View style={styles.tileTop}>
         <View style={styles.labelRow}>
           <View style={[styles.dot, { backgroundColor: accent.ink }]} />
@@ -436,12 +473,13 @@ function LeadTile({ height, accent, kind, when, figure, title, place }: {
 }
 
 /** A narrow tile: dot and label, a thin figure, one or two words under it. */
-function Tile({ label, figure, unit, detail, accent }: {
+function Tile({ label, figure, unit, detail, accent, onPress }: {
   label: string; figure: string; unit?: string; detail?: string; accent: MatteAccent;
+  onPress?: () => void;
 }) {
   const size = figure.length <= 2 ? 64 : 48;
-  return (
-    <View style={styles.tile}>
+  const content = (
+    <>
       <View style={styles.labelRow}>
         <View style={[styles.dot, { backgroundColor: accent.ink }]} />
         <Text style={styles.label} numberOfLines={1}>{label}</Text>
@@ -460,7 +498,14 @@ function Tile({ label, figure, unit, detail, accent }: {
         </View>
         {detail ? <Text style={styles.detail} numberOfLines={2}>{detail}</Text> : null}
       </View>
-    </View>
+    </>
+  );
+  return onPress ? (
+    <PressableScale style={styles.tile} scaleTo={0.96} dim={false} haptic="medium" onPress={onPress}>
+      {content}
+    </PressableScale>
+  ) : (
+    <View style={styles.tile}>{content}</View>
   );
 }
 
@@ -506,7 +551,7 @@ function mockKickoff(days: number): string {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flexGrow: 1 },
-  spacer: { flex: 1, minHeight: 24 },
+  spacer: { height: GLOW_ROOM },
 
   match: {
     paddingHorizontal: TEXT_INSET,
@@ -516,8 +561,15 @@ const styles = StyleSheet.create({
     fontFamily: UI_FONT_REGULAR, fontSize: 16,
     color: TEXT.primary,
   },
+  // No lineHeight, deliberately. With `adjustsFontSizeToFit`, iOS shrinks the
+  // font until the text fits its frame, and Yoga's pixel rounding can hand
+  // that frame back a third of a point shorter than it measured. A fixed line
+  // height never shrinks with the font, so nothing ever fits and the fitter
+  // falls to its 4pt floor (on Fabric it ignores `minimumFontScale`) — the
+  // name drew as a smudge. A natural line height shrinks with the font, so the
+  // same rounding costs a fraction of a point instead.
   matchName: {
-    fontFamily: LIGHT_FONT, fontSize: 44, lineHeight: 52,
+    fontFamily: LIGHT_FONT, fontSize: 44,
     color: TEXT.primary, letterSpacing: -1.2,
     marginTop: 4,
   },
@@ -532,12 +584,15 @@ const styles = StyleSheet.create({
   },
 
   panel: {
+    flexGrow: 1,
+    minHeight: PANEL_MIN,
     marginHorizontal: PAD,
     gap: GROOVE,
   },
-  row: { flexDirection: 'row', gap: GROOVE },
+  row: { flexDirection: 'row', gap: GROOVE, height: ROW_H },
 
   lead: {
+    flex: 1,
     borderRadius: RADIUS.lg,
     backgroundColor: SURFACE.raised,
     paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,

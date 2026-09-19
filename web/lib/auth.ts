@@ -33,9 +33,12 @@ export const getSessionProfile = cache(async (): Promise<SessionProfile | null> 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // `!profiles_club_id_fkey` names which link to follow: clubs.fine_manager_id
+  // also points at profiles, and a bare `clubs(...)` is then ambiguous —
+  // PostgREST refuses it with PGRST201 and the dashboard loads no profile.
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, role, language, club_id, is_club_manager, created_at, clubs(name, primary_color, invite_code, staff_invite_code, external_team_id, external_synced_at)')
+    .select('id, full_name, role, language, club_id, is_club_manager, created_at, clubs!profiles_club_id_fkey(name, primary_color, invite_code, staff_invite_code, external_team_id, external_synced_at)')
     .eq('id', user.id)
     .single();
 

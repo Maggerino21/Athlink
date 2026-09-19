@@ -5,6 +5,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
+import { cacheReady, clearCache } from '../utils/cache';
 import i18n from '../i18n';
 
 export interface Profile {
@@ -111,6 +112,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           club_name:  clubs?.name          ?? null,
           club_color: clubs?.primary_color ?? '#3B82F6',
         };
+        // The tabs seed their first frame from the cache, synchronously, the
+        // moment they mount — which is right after this. It has been loading
+        // since launch and is a few ms of disk against a network round trip,
+        // so this wait is ~0; it is here so "~0" can never become "missed".
+        await cacheReady;
         setProfile(profile);
         setProfileError(null);
         settle();
@@ -196,6 +202,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLoading(true);
           setTimeout(() => { void fetchProfile(newSession.user.id); }, 0);
         } else {
+          // Signing out takes the last-seen tabs with it — see utils/cache.
+          if (_event === 'SIGNED_OUT') void clearCache();
           setProfile(null);
           setProfileError(null);
           settle();

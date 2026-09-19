@@ -1,5 +1,8 @@
 /**
- * HomeScreen — the athlete's four tabs: Home · Tasks · Schedule · Fines.
+ * HomeScreen — the athlete's three tabs: Home · Schedule · Fines.
+ *
+ * There is no Tasks or Feedback tab: what the staff send a player lives on
+ * Home while it is open and in Schedule on its day — see useToDo.
  *
  * ── Why this uses a native tab bar ──
  *
@@ -44,7 +47,6 @@ import haptics from '../../utils/haptics';
 import AthleteFrame from '../../components/athlete/AthleteFrame';
 import HomeSection from '../../components/athlete/sections/HomeSection';
 import ScheduleSection from '../../components/athlete/sections/ScheduleSection';
-import TasksSection from '../../components/athlete/sections/TasksSection';
 import FinesSection from '../../components/athlete/sections/FinesSection';
 import GlassLab from '../dev/GlassLab';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -62,7 +64,6 @@ import { SURFACE_BASE } from '../../utils/theme';
  */
 const SECTIONS = [
   { id: 'this-week', label: 'Home',     sf: 'house',     Component: HomeSection     },
-  { id: 'tasks',     label: 'Tasks',    sf: 'checklist', Component: TasksSection    },
   { id: 'schedule',  label: 'Schedule', sf: 'calendar',  Component: ScheduleSection },
   { id: 'fines',     label: 'Fines',    sf: 'banknote',  Component: FinesSection    },
 ] as const;

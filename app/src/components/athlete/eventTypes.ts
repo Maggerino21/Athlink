@@ -11,10 +11,13 @@
  */
 
 import { matteAccent, type MatteAccent } from '../../utils/theme';
+import type { ToDoItem } from './useToDo';
 
 export type EventType =
   | 'training' | 'home' | 'rehab' | 'exercise' | 'recovery'
-  | 'travel' | 'meeting' | 'match' | 'vacation' | 'other';
+  | 'travel' | 'meeting' | 'match' | 'vacation' | 'other'
+  // Not events — things the staff sent this player, placed on their day. See useToDo.
+  | 'task' | 'feedback';
 
 export interface CalEvent {
   id: string;
@@ -25,7 +28,7 @@ export interface CalEvent {
   location: string | null;
   description: string | null;
   date: string; // YYYY-MM-DD, local
-  source: 'event' | 'match';
+  source: 'event' | 'match' | 'task' | 'feedback';
   /** Multi-day blocks are expanded across days for display; 1-based. */
   spanDay?: number;
   spanTotal?: number;
@@ -35,6 +38,8 @@ export interface CalEvent {
   notes?: string | null;
   opponent_logo_url?: string | null;
   is_home?: boolean | null;
+  /** Set on `task` / `feedback` rows: what the sheet shows when one is tapped. */
+  note?: ToDoItem;
 }
 
 export const EVENT_META: Record<EventType, { icon: string; color: string }> = {
@@ -48,6 +53,11 @@ export const EVENT_META: Record<EventType, { icon: string; color: string }> = {
   match:    { icon: 'football',         color: '#F97316' },
   vacation: { icon: 'partly-sunny',     color: '#FBBF24' },
   other:    { icon: 'calendar-outline', color: '#6B7280' },
+  // One colour for both: to a player they are the same kind of thing — from
+  // your staff, addressed to you — and the type palette is already crowded.
+  // Home's To do tile uses the same hue.
+  task:     { icon: 'checkbox-outline', color: '#14B8A6' },
+  feedback: { icon: 'chatbox-ellipses-outline', color: '#14B8A6' },
 };
 
 /**

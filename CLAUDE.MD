@@ -47,7 +47,7 @@ app/
   src/
     components/
       athlete/
-        sections/         # Tab content: ThisWeek, Feedback, Schedule, Tasks, Progress
+        sections/         # Tab content: Home, Schedule, Fines
         LiquidGlassTabBar.tsx
       ui/
         GlassCard.tsx
@@ -193,18 +193,28 @@ Because it is a route, the detail data travels as navigation params. `CalEvent` 
 object of primitives so it is serialisable; pass it directly rather than refetching what
 the list already had.
 
+**A formSheet cannot hold a scrolling list.** It takes over any ScrollView
+inside it and resizes it to the full screen (measured: asked for 786pt, laid out
+at 874pt), so the list slides under a header or off the bottom however it is
+arranged. Screens whose content must scroll — `GiveFineScreen`'s player list —
+use `presentation: 'modal'` instead: a native iOS page sheet, still swipe to
+dismiss, that lays out like a normal screen. A page sheet has **no grabber**, so
+it does get a close button (grey circle, ×, top right) — the "no close button"
+rule above is for formSheets, whose grabber already says "swipe me". Keep `formSheet` for fixed-height
+detail views like EventDetail.
+
 `components/ui/SlideUpSheet.tsx` is the superseded hand-built version — kept for reference,
-used by nothing. **Don't wire it back in.** Feedback and task detail views should become
-sheet routes in the same group.
+used by nothing. **Don't wire it back in.** Tasks and feedback open in `ToDoScreen`, a
+page-sheet route in the same group (see Athlete app — tabs).
 
 ## Database schema (key tables)
 
 | Table | Purpose |
 |---|---|
-| `profiles` | Extends `auth.users`. Has `role`, `club_id`, `language`, `push_token`, `avatar_url`, `is_club_manager`, `removed_at` |
+| `profiles` | Extends `auth.users`. Has `role`, `club_id`, `language`, `push_token`, `avatar_url`, `is_club_manager`, `removed_at`, `squad_number` (nullable; not in the self-update grant — staff set it, UI not built yet) |
 | `clubs` | `name`, `sport`, `invite_code` + `staff_invite_code` (6-char), `primary_color`, and the provider link: `external_provider`, `external_team_id`, `external_team_name`, `external_badge_url`, `external_synced_at` |
-| `match_feedback` | Coach → athlete feedback. Has `title`, `feedback_text`, `processed_text` (AI), `is_ai_processed`, `action_point`, `athlete_language`, `acknowledged`, `reaction` (emoji), `athlete_reply` |
-| `tasks` | Assigned tasks. `title`, `description`, `due_date`, `status`, `assigned_to`, `created_by`, `club_id`, `completed_at` |
+| `match_feedback` | Staff → athlete feedback. Has `match_id` (**required in practice** — the staff policy refuses a row whose match is not in the caller's club, so a NULL is refused), `title`, `feedback_text`, `processed_text` (AI), `is_ai_processed`, `action_point`, `athlete_language`, `acknowledged`. `reaction` and `athlete_reply` are legacy — nothing writes them; replies were cut (no chat) |
+| `tasks` | Assigned tasks. `title`, `description`, `due_date` (optional), `status`, `assigned_to`, `created_by`, `club_id`, `completed_at` |
 | `matches` | Fixtures. Provider-owned: `opponent`, `opponent_logo_url`, `match_date`, `is_home`, `location`. Club-owned: `meet_time`, `meet_location`, `notes`. Plus `source` ('manual'\|'api'), `external_id`, `suppressed_at` |
 | `events` | Generic events. `type`, `title`, `event_date`, `end_date`, `location`, `description`, `pdf_url`, `line_items` (jsonb) |
 | `event_assignments` | Joins `event_id` → `athlete_id`. Absent rows = whole squad |
@@ -212,6 +222,13 @@ sheet routes in the same group.
 | `group_members` | Joins `group_id` → `athlete_id` |
 | `match_plans` | Defined in SQL; **no app or web code reads it yet** |
 | `self_assessments` | Defined in SQL; **no app or web code reads it yet** |
+| `fine_seasons` / `fine_rules` / `fines` / `fine_payments` / `fine_reactions` | The fine box. **Players only** — staff can read none of it; staff only pick the bøtesjef (`clubs.fine_manager_id`, via `set_fine_manager`). All writes except reactions and rules go through SECURITY DEFINER functions. See `supabase/fine_box.sql` |
+
+> **`profiles` ↔ `clubs` has two foreign keys** — `profiles.club_id` and
+> `clubs.fine_manager_id`. A bare `clubs(...)` embed from `profiles` (or the
+> reverse) is ambiguous and PostgREST rejects it with **PGRST201**. Always name
+> the link: `clubs!profiles_club_id_fkey(...)`. Adding the second key broke
+> sign-in on mobile and the web dashboard until both queries were fixed.
 
 RLS is enabled on every table. PDF uploads go to the **`event-pdfs`** storage bucket
 (path `{club_id}/{timestamp}_{filename}`), read back via `getPublicUrl`.
@@ -334,39 +351,60 @@ no policy changes at all.**
 ## Home — read this before touching it
 
 **`HomeSection` is the live file. `ThisWeekSection` is not rendered by anything.**
-CLAUDE.md said otherwise until 2026-09-12 and it cost a real detour.
 
-**Home shows mock data in dev.** `USE_MOCK = __DEV__`, and `fill(real, mock)`
-substitutes a mock whenever a real count is 0 — so "12 Feedback" is fiction when
-the true unread count is zero, and the "Days to next" card can never say
-"Nothing on". Judge Home's data with that flag off.
+**Home shows mock data in dev.** `USE_MOCK = __DEV__` fills in stand-in values
+wherever a real count is 0 — judge Home's data with that flag off.
 
-**Home's cards are `Blob`, and `Blob` is the most considered design code in the
-repo.** A rim-lit squircle from the Figma sheet, built from stacked *inset*
-box-shadows and radial gradients, with `BlobLab` for tuning it. Its own docblock
-explains why it cannot use RN's blur filter. Do not casually replace it.
+**Home's Fines card is still mock-only** — the fine box itself is live
+(`useFineBox`), the Home card just has not been wired to it yet.
 
-**The open tension.** Home's rule is *"big cards, big numbers, close together"* —
-each card answers one question with one figure, and "a card that needs a sentence
-is a card that has not decided what it is for." Schedule was since rebuilt flat
-and matte. Blob's **neutral** variant is the bridge: the same four layers with
-the pinks swapped for white alphas, which is a matte card with a lit rim rather
-than a flat fill. Home is the centrepiece and should lead the design — do not
-flatten Home to match Schedule without asking.
+**The design is still being iterated** — the code is the reference for the
+current layout. Rules learned so far that hold regardless of layout:
 
-**Home's hero card carries the club hue**, which is now the only prominent club
-colour left in mobile (see the design system below). That is either the one
-deliberate exception or something to remove — an open question, not a decision.
+- **Never draw a card translucent.** `SURFACE` tokens are opaque hex; do not
+  reintroduce alpha fills, gradient "lighting" or hairline highlights on cards.
+- **Days to an event are calendar days**, not `ceil(ms / 86400000)` — a Monday
+  20:00 kick-off seen at 11:00 Sunday is "tomorrow", not "in 2 days".
+- **`visible_events_for_me` returns events unordered** — sort by `event_date`
+  before treating `[0]` as next.
+- **Nothing stores a match's competition yet** — `football` receives `league`,
+  but `matches` has no column for it.
+- **`react-native-svg`'s `FeGaussianBlur` works in Expo Go on iOS**, unlike RN's
+  `filter: blur` (see `Blob.tsx`).
 
 ## Athlete app — tabs
 
+Three tabs, **icons only** (SF Symbols, outline in both states, no titles):
+Home · Schedule · Fines.
+
 | Tab | Component | Notes |
 |---|---|---|
-| Home | `HomeSection` | Fixture countdown + four stat cards. **`ThisWeekSection` is dead code** — still in the tree, rendered by nothing. Delete it rather than edit it |
-| Feedback | `FeedbackSection` | Unread/read feedback cards, emoji reactions, athlete reply |
+| Home | `HomeSection` | Next match + next up / today / to do / fines. **`ThisWeekSection` is dead code** — delete it rather than edit it |
 | Schedule | `ScheduleSection` | Month pager of day cards; tap a day to reveal its events; event detail sheet |
-| Tasks | `TasksSection` | Assigned tasks with due dates and completion |
-| Progress | `ProgressSection` | Placeholder — Phase D |
+| Fines | `FinesSection` | The fine box (bøtekasse). Live data via `useFineBox`. The bøtesjef's "Give a fine" opens `GiveFineScreen`: two sliding pages — fine cards (Schedule's day-card style, colour-coded via `fine_rules.color`, falling back to `fineAccent()`'s id-derived colour) → players by squad number → Give. Managing rules, payments, goal and reset not built yet. Schema + rules in `supabase/fine_box.sql` |
+
+**There is no Tasks or Feedback tab (decided 2026-09-19).** On the athlete side they are
+one thing — something the staff sent *you* — and a player has 0–3 of them at a time; a
+tab for a list that is usually empty is the admin-software feel the app avoids. They live
+where they matter:
+
+- **Home**, while open: the "To do" tile counts open tasks + unread feedback and opens
+  `ToDoScreen` (page sheet). One tap per item — "Done" or "Got it"; ticking off the last
+  closes the sheet.
+- **Schedule**, for good: a task on its due day, feedback on its match's day (or the day
+  it was sent, for legacy rows without one). Tapping opens the same sheet with that one
+  item. This is also the history — old feedback is found by finding the match.
+
+`useToDo` owns the reads and the row → item mapping (Schedule shares it). Tasks without a
+due date appear on Home only. **No replies** — Athlink is not a chat.
+
+**Players have no direct UPDATE on `tasks` or `match_feedback`.** The row policies they
+had, plus a table-wide column grant, let a player rewrite a coach's feedback text or a
+task's title and due date (verified before the fix). Their only writes are
+`set_task_done(id, done)` and `acknowledge_feedback(id)` — SECURITY DEFINER, athlete-only,
+own rows only. See `supabase/athlete_actions.sql`. Don't add the policies back.
+
+`TasksSection`, `FeedbackSection` and `ProgressSection` are deleted.
 
 ## Staff — mobile screens
 
@@ -461,8 +499,8 @@ force.
 It is identity, not information, and every drop spent on chrome competes with
 the event colours, which are the only colour that tells you anything. "Current"
 is drawn with weight and brightness instead: today's card is `SURFACE.active`,
-nothing is tinted. `grep clubColor` in `ScheduleSection` returns nothing. The one
-survivor is Home's fixture card — see Home above.
+nothing is tinted. `grep clubColor` in `ScheduleSection` returns nothing. Home's fixture card
+used to be the one survivor; it is now plain text — see Home above.
 
 **The type palette is derived, and that is now its weakness.** `matteAccent()`
 mixes each hue toward clay by a fixed `FILL_MIX`, which found the territory but
@@ -470,9 +508,9 @@ does not make ten *good* colours: match (rust) and training (slate) work, the
 pinks and purples are flat. The next move is probably to hand-pick ten rather
 than keep tuning one dial — ten is few enough to actually design.
 
-> Converted so far: **ScheduleSection** (incl. the month pager) and the event
-> sheet. Home, Feedback, Tasks and the staff screens still carry the old
-> ad-hoc greys — sweep them before adding anything new to those files.
+> Converted so far: **ScheduleSection** (incl. the month pager), the event
+> sheet, **HomeSection**, **FinesSection** and **ToDoScreen**. The staff screens still
+> carry the old ad-hoc greys — sweep them before adding anything new to those files.
 
 ## UI system
 
@@ -555,6 +593,12 @@ SELECT name, invite_code, primary_color FROM clubs;
 
 **Both apps**
 
+- **Feedback and tasks are never pushed from the web.** Only the staff *mobile* forms call
+  `send-notification`, and its source is not in this repo (deployed only). A player learns
+  about web-sent feedback the next time they open Home. The app also has no handler for
+  tapping a notification, so a push lands on Home rather than on the item. Fix both
+  together: resolve tokens server-side from athlete ids (the function currently takes raw
+  tokens from the client) and route a tap to `ToDo`.
 - **Settings** — mobile still has no UI to change language post-signup. The web Profile
   tab now does, and signup hardcodes `en`, so web is currently the only way to set `no`.
 - **GDPR / minors** — no retention policy, no deletion path, no processor agreement. Not a
@@ -753,6 +797,33 @@ mount and fire their query batches simultaneously, saturating JS exactly as the 
 visible. Mounting them on page-crossing instead would move the cost into the middle of a
 gesture, which is why it's a post-interaction prefetch rather than on-demand.
 
+**A tab loads on mount, not on first visit.** The prefetch above is worthless if the
+section then waits for `isActive` before querying — Fines and Schedule did, so each opened
+on its loading state every session. Load on mount; reload when `isActive` turns true.
+
+**How a tab waits (2026-09-19).** Three layers, cheapest first:
+
+1. **`utils/cache.ts`** — each tab's last result, in AsyncStorage, read into memory at
+   launch (AuthContext awaits `cacheReady` before handing over the profile). Sections seed
+   their initial `useState` from it, so after the first-ever launch every tab draws real
+   data on its first frame and refreshes underneath. Keyed per user, cleared on
+   `SIGNED_OUT`. A **failed refresh must keep what is on screen** — never overwrite good
+   (cached) data with the zeros of an errored query. Bump `VERSION` if a cached shape
+   changes.
+2. **`components/ui/Reveal.tsx`** — for the cold case. Nothing below the tab title until
+   the data is in, then one fade. A spinner only after 700ms. **Never draw a value you do
+   not have yet**: Home's dev mock, "0 kr" and "Nobody has been fined yet" were all drawn
+   before load and cut to the real thing ~400ms later.
+3. **First-frame layout must not depend on `onLayout`.** Home sized its panel from two
+   measured heights, both 0 on frame one, so a cached Home jumped as it settled. It is
+   flexbox now, and the glow is a stretched 100×100 viewBox.
+
+> **`adjustsFontSizeToFit` + a fixed `lineHeight` can draw text at 4pt.** Yoga's pixel
+> rounding can make the frame a third of a point shorter than measured; a fixed line
+> height never shrinks, so nothing fits and the fitter falls to its floor — on Fabric
+> `minimumFontSize` (default 4), not `minimumFontScale`. Home's opponent name hit this.
+> Give fitted text a natural line height.
+
 **Not yet verified on a device.** All of the above typechecks and produces a clean
 production bundle (`npx expo export --platform ios`), and the worklets are confirmed to
 compile, but no one has run it on hardware. Judge it from a **release** build — dev-mode
@@ -760,8 +831,6 @@ Expo Go is not a fair test of any of this.
 
 **Polish / deferred**
 
-- **Dashboard SlideUpSheet (mobile)** — feedback and task cards should use `SlideUpSheet` for
-  detail view (component is built, not yet wired to those cards)
 - **i18n coverage** — `LandingScreen` fully translated; other screens are English-only
   (acceptable for MVP since EN is default). The web app has no i18n at all.
 - **Video integration** — Phase 3, not started
