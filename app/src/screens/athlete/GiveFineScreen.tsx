@@ -3,7 +3,7 @@
  *
  * 1. **Which fine.** Cards built like Schedule's day cards — a small spaced
  *    label, then the amount set large with a small "kr" beside it — with the
- *    fine type's colour as the dot, and as the whole card's fill once picked.
+ *    fine type's colour in the name, and as the whole card's fill once picked.
  * 2. **Who.** Shorter cards, one per player, numbered players first by squad
  *    number ("#7", in the flourish face), anyone without a number last. Pick
  *    one or several.
@@ -17,6 +17,10 @@
  * A native iOS page sheet (`presentation: 'modal'`), not a `formSheet` like
  * EventDetail — a formSheet resizes any list inside it to the full screen, so
  * a scrolling list cannot live in one. See CLAUDE.md.
+ *
+ * **It has a close button**, unlike the formSheets. A page sheet has no
+ * grabber, so nothing on screen says it can be swiped away; the × in the
+ * corner is the iOS convention for exactly that case.
  *
  * The write is `give_fine(rule, players[], note)`, which checks on the server
  * that the caller is the bøtesjef and that every player is in the club.
@@ -154,8 +158,9 @@ export default function GiveFineScreen({ navigation }: Props) {
 
         {/* ── Step 1: which fine ─────────────────────────────────────────── */}
         <View style={styles.page}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Give a fine</Text>
+          <View style={[styles.header, styles.headerRow, styles.headerStep1]}>
+            <Text style={[styles.title, styles.headerText]}>Give a fine</Text>
+            <CloseButton onPress={() => navigation.goBack()} />
           </View>
           <SearchField value={fineQuery} onChange={setFineQuery} placeholder="Search fines" />
 
@@ -200,6 +205,7 @@ export default function GiveFineScreen({ navigation }: Props) {
               <Text style={styles.title} numberOfLines={1}>{rule?.name ?? 'Choose players'}</Text>
               {rule && <Text style={styles.subtitle}>{rule.amount} kr</Text>}
             </View>
+            <CloseButton onPress={() => navigation.goBack()} />
           </View>
           <SearchField value={playerQuery} onChange={setPlayerQuery} placeholder="Search name or number" />
 
@@ -248,10 +254,15 @@ export default function GiveFineScreen({ navigation }: Props) {
 
 /**
  * Schedule's day card, for a fine: the name where the weekday sits, the amount
- * where the date sits, the type's dot on the right. "kr" is small and beside
- * the figure rather than stacked at full size — the currency is not news.
- * Picked, the card takes the fine's colour, the way an event card wears its
- * type's colour when a day opens.
+ * where the date sits. "kr" is small and beside the figure rather than stacked
+ * at full size — the currency is not news.
+ *
+ * The colour is in the NAME, and nowhere else until picked. Two things were
+ * tried and rejected: a dot on the right (on a card shaped like a day, a dot
+ * says "something is on this day", Schedule's own meaning for it) and a strip
+ * down the left edge (the stock accent-stripe of generated UI). Text carries
+ * colour without adding a shape. Picked, the card takes the fine's colour, the
+ * way an event card wears its type's colour when a day opens.
  */
 function FineCard({ rule, selected, onPress }: { rule: Rule; selected: boolean; onPress: () => void }) {
   const accent = fineAccent(rule.id, rule.color);
@@ -264,15 +275,15 @@ function FineCard({ rule, selected, onPress }: { rule: Rule; selected: boolean; 
       onPress={onPress}
     >
       <View style={styles.fineBlock}>
-        <Text style={styles.fineName} numberOfLines={2}>{rule.name.toUpperCase()}</Text>
+        <Text style={[styles.fineName, { color: selected ? TEXT.primary : accent.ink }]} numberOfLines={2}>
+          {rule.name.toUpperCase()}
+        </Text>
         <View style={styles.amountRow}>
           <Text style={styles.fineAmount} allowFontScaling={false}>{rule.amount}</Text>
           <Text style={styles.fineUnit} allowFontScaling={false}>kr</Text>
         </View>
       </View>
-      {selected
-        ? <Ionicons name="checkmark-circle" size={26} color={TEXT.primary} />
-        : <View style={[styles.dot, { backgroundColor: accent.edge }]} />}
+      {selected && <Ionicons name="checkmark-circle" size={26} color={TEXT.primary} />}
     </PressableScale>
   );
 }
@@ -301,6 +312,15 @@ function PlayerCard({ player, selected, onPress }: { player: Player; selected: b
       </Text>
       <Text style={[styles.playerName, selected && styles.onText]} numberOfLines={1}>{player.name}</Text>
       {selected && <Ionicons name="checkmark" size={20} color={SURFACE.base} />}
+    </PressableScale>
+  );
+}
+
+/** The iOS close button: a small grey circle with an ×. */
+function CloseButton({ onPress }: { onPress: () => void }) {
+  return (
+    <PressableScale style={styles.close} scaleTo={0.9} onPress={onPress}>
+      <Ionicons name="close" size={18} color={TEXT.secondary} />
     </PressableScale>
   );
 }
@@ -357,7 +377,14 @@ const styles = StyleSheet.create({
   page: { width: W, flex: 1 },
 
   header: { paddingHorizontal: 24, paddingTop: 22, paddingBottom: 14 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 12 },
+  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 12, paddingRight: 16 },
+  // Step 1 has no back button, so its title keeps the usual inset.
+  headerStep1: { paddingLeft: 24 },
+  close: {
+    width: 32, height: 32, borderRadius: RADIUS.pill,
+    backgroundColor: SURFACE.raised,
+    alignItems: 'center', justifyContent: 'center',
+  },
   headerText: { flex: 1 },
   back: { padding: 6 },
   title: { fontFamily: DISPLAY_FONT, fontSize: 24, color: TEXT.primary, letterSpacing: -0.6 },
@@ -399,7 +426,6 @@ const styles = StyleSheet.create({
     fontFamily: LIGHT_FONT, fontSize: 17,
     color: TEXT.secondary,
   },
-  dot: { width: 13, height: 13, borderRadius: RADIUS.pill },
 
   // ── Player card — Schedule's slim card.
   playerCard: {
