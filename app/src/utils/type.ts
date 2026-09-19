@@ -27,4 +27,11 @@ export const UI_FONT_REGULAR = 'Inter_400Regular';
  * ground, so keep it to headline sizes.
  */
 export const THIN_FONT = 'Inter_200ExtraLight';
+
+/**
+ * The fine box's flourish face — the wordmark's Space Grotesk, used only where
+ * the fine box shows off: the chrome total and squad numbers. Kept to those so
+ * it stays a flourish rather than becoming a third body face.
+ */
+export const FLOURISH_FONT = 'SpaceGrotesk_500Medium';
 export const LIGHT_FONT = 'Inter_300Light';

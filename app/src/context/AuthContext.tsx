@@ -84,9 +84,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // PostgrestBuilder is a thenable, not a real Promise, so it has no
       // .finally() — clear the deadline explicitly instead.
+      // `!profiles_club_id_fkey` names which link to follow: clubs.fine_manager_id
+      // also points at profiles, and a bare `clubs(...)` is then ambiguous —
+      // PostgREST refuses it with PGRST201 and nobody can sign in.
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, role, full_name, avatar_url, club_id, language, removed_at, clubs(name, primary_color)')
+        .select('id, role, full_name, avatar_url, club_id, language, removed_at, clubs!profiles_club_id_fkey(name, primary_color)')
         .eq('id', userId)
         .abortSignal(controller.signal)
         .single();

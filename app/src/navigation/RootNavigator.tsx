@@ -7,6 +7,8 @@ import LandingScreen from '../screens/auth/LandingScreen';
 import HomeScreen from '../screens/athlete/HomeScreen';
 import EventDetailScreen from '../screens/athlete/EventDetailScreen';
 import BriefingScreen from '../screens/athlete/BriefingScreen';
+import GiveFineScreen from '../screens/athlete/GiveFineScreen';
+import { SURFACE } from '../utils/tokens';
 import type { CalEvent } from '../components/athlete/eventTypes';
 import StaffHomeScreen from '../screens/staff/StaffHomeScreen';
 import StaffAthleteDetailScreen from '../screens/staff/StaffAthleteDetailScreen';
@@ -26,6 +28,8 @@ export type AthleteStackParamList = {
    * serialisable and avoids a refetch just to render what the list already had.
    */
   EventDetail: { event: CalEvent };
+  /** The bøtesjef hands out a fine. Opened from the Fines tab. */
+  GiveFine: undefined;
   Briefing: {
     headline: string;
     fullSummary: string;
@@ -116,6 +120,17 @@ function AthleteNavigator() {
           }}
         />
         <AthleteStack.Screen name="Briefing" component={BriefingScreen} />
+        <AthleteStack.Screen
+          name="GiveFine"
+          component={GiveFineScreen}
+          options={{
+            // A page sheet, not the group's formSheet: a formSheet resizes any
+            // ScrollView inside it to the full screen, and this screen's player
+            // list has to scroll. See GiveFineScreen.
+            presentation: 'modal',
+            contentStyle: { backgroundColor: SURFACE.base },
+          }}
+        />
       </AthleteStack.Group>
     </AthleteStack.Navigator>
   );

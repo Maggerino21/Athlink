@@ -1,10 +1,9 @@
 /**
  * FinesSection — the fine box (bøtekasse).
  *
- * **Mock data.** The tables exist only as a draft migration that has not been
- * applied yet, so everything here is stand-in content. Every number and name
- * below comes from `MOCK`; wiring it up means replacing that object with the
- * `fine_*` queries, not rebuilding the screen.
+ * Data comes from `useFineBox`; see that file for what each number means.
+ * "Give a fine" opens `GiveFineScreen` as a sheet; managing the fine list,
+ * payments, the goal and resets are not built yet.
  *
  * Design notes:
  * - Cards follow the rest of the app: opaque `SURFACE` fills, `RADIUS.lg`, the
@@ -20,15 +19,19 @@
  *   it is rebuilt here. The important half is what is NOT shown: a fine with no
  *   reactions shows nothing at all, instead of five grey glyphs on every card.
  */
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Dimensions, RefreshControl } from 'react-native';
 import Animated, { ZoomIn, ZoomOut } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import PressableScale from '../../ui/PressableScale';
 import haptics from '../../../utils/haptics';
 import { SURFACE, TEXT, RADIUS } from '../../../utils/tokens';
-import { DISPLAY_FONT, THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR } from '../../../utils/type';
+import { DISPLAY_FONT, THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR, FLOURISH_FONT } from '../../../utils/type';
+import { useFineBox, REACTIONS, type Reaction } from '../useFineBox';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
 
 const { width: W } = Dimensions.get('window');
 
@@ -48,7 +51,7 @@ const CARD_W = W - PAD * 2;
  * sizes, and at 62pt it read as a crease folded across every digit.
  */
 const CHROME_H = 92;
-const CHROME_FONT = 'SpaceGrotesk_500Medium';
+const CHROME_FONT = FLOURISH_FONT;
 const CHROME_SIZE = 62;
 const CHROME_UNIT = 26;
 /** Gap between the figure and its unit. */
@@ -67,47 +70,31 @@ const TAB_BAR = 49;
  */
 const MEDAL = ['#C9A227', '#A8B0BA', '#B06A3B'] as const;
 
-const REACTIONS = ['😂', '💀', '🔥', '👏', '🤡'] as const;
-
-const MOCK = {
-  isFineManager: true,
-  total: 6450,
-  goal: { label: 'Christmas party', amount: 10000 },
-  owed: 450,
-  paid: 900,
-  leaderboard: [
-    { id: '1', name: 'Jonas Nyhus', amount: 1350 },
-    { id: '2', name: 'Sander Vik', amount: 1100 },
-    { id: '3', name: 'Ole Kristian Berg', amount: 900 },
-    { id: '4', name: 'Magne Engan', amount: 450 },
-    { id: '5', name: 'Henrik Dahl', amount: 300 },
-    { id: '6', name: 'Even Lie', amount: 150 },
-  ],
-  feed: [
-    { id: 'f1', who: 'Jonas Nyhus', what: 'Late to training', amount: 100, note: '17 minutes', when: '2h', reactions: { '😂': 4, '💀': 1 } },
-    { id: 'f2', who: 'Sander Vik', what: 'Red card', amount: 300, note: 'Two yellows in four minutes', when: 'Yesterday', reactions: { '🤡': 6 } },
-    { id: 'f3', who: 'Magne Engan', what: 'Monthly fee', amount: 150, note: null, when: 'Mon', reactions: {} },
-    { id: 'f4', who: 'Even Lie', what: 'Wrong kit', amount: 50, note: 'Shorts from 2019', when: 'Mon', reactions: { '😂': 2 } },
-  ],
-};
-
-export default function FinesSection(_: { isActive?: boolean }) {
+export default function FinesSection({ isActive }: { isActive?: boolean }) {
   const insets = useSafeAreaInsets();
-  // Local only while this screen is mock — reacting will become a table write.
-  const [mine, setMine] = useState<Record<string, string>>({});
+  const { box, reload, react: writeReaction } = useFineBox(isActive);
+  const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
+  const [refreshing, setRefreshing] = useState(false);
 
   // Which fine has its picker open. One at a time, like a context menu.
   const [picking, setPicking] = useState<string | null>(null);
 
-  const react = (fineId: string, emoji: string) => {
+  const react = (fineId: string, emoji: Reaction, current: Reaction | null) => {
     haptics.selection();
-    setMine(prev => ({ ...prev, [fineId]: prev[fineId] === emoji ? '' : emoji }));
     setPicking(null);
+    writeReaction(fineId, emoji, current);
   };
 
-  const goalPct = MOCK.goal ? Math.min(1, MOCK.total / MOCK.goal.amount) : 0;
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await reload();
+    setRefreshing(false);
+  }, [reload]);
 
-  const chromeText = kr(MOCK.total);
+  const goalPct = box.goal ? Math.min(1, box.total / box.goal.amount) : 0;
+  const podium = box.leaderboard.slice(0, 3);
+
+  const chromeText = kr(box.total);
   const chromeX = chromeLayout(chromeText, CARD_W - 36);
 
   return (
@@ -120,8 +107,19 @@ export default function FinesSection(_: { isActive?: boolean }) {
         showsVerticalScrollIndicator={false}
         // Scrolling away is the natural "never mind" for an open picker.
         onScrollBeginDrag={() => setPicking(null)}
-        contentContainerStyle={{ paddingHorizontal: PAD, paddingBottom: insets.bottom + TAB_BAR + 24, gap: GAP }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />}
+        // The bøtesjef's floating button sits over the list, so their list needs
+        // enough extra room at the end to scroll the last fine clear of it.
+        contentContainerStyle={{ paddingHorizontal: PAD, paddingBottom: insets.bottom + TAB_BAR + 24 + (box.isFineManager ? 64 : 0), gap: GAP }}
       >
+        {/* A box nobody runs never fills. Say so, and who can fix it. */}
+        {box.loaded && !box.hasManager && (
+          <View style={styles.card}>
+            <Text style={styles.label}>No bøtesjef yet</Text>
+            <Text style={styles.emptyText}>Your staff choose who runs the fine box.</Text>
+          </View>
+        )}
+
         {/* The box itself. One figure, the way Home leads with one. */}
         <View style={styles.card}>
           <Text style={[styles.label, styles.centered]}>In the box</Text>
@@ -157,14 +155,14 @@ export default function FinesSection(_: { isActive?: boolean }) {
             </SvgText>
           </Svg>
 
-          {MOCK.goal && (
+          {box.goal && (
             <View style={styles.goal}>
               <View style={styles.goalTrack}>
                 <View style={[styles.goalFill, { width: `${goalPct * 100}%` }]} />
               </View>
               <View style={styles.goalRow}>
-                <Text style={styles.goalLabel}>{MOCK.goal.label}</Text>
-                <Text style={styles.goalLabel}>{kr(MOCK.goal.amount)} kr</Text>
+                <Text style={styles.goalLabel}>{box.goal.label ?? 'Goal'}</Text>
+                <Text style={styles.goalLabel}>{kr(box.goal.amount)} kr</Text>
               </View>
             </View>
           )}
@@ -175,14 +173,14 @@ export default function FinesSection(_: { isActive?: boolean }) {
           <View style={[styles.card, styles.halfCard]}>
             <Text style={styles.label}>You owe</Text>
             <View style={styles.amountRow}>
-              <Text style={styles.figure} allowFontScaling={false}>{kr(MOCK.owed)}</Text>
+              <Text style={styles.figure} allowFontScaling={false}>{kr(box.owed)}</Text>
               <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
             </View>
           </View>
           <View style={[styles.card, styles.halfCard]}>
             <Text style={styles.label}>You have paid</Text>
             <View style={styles.amountRow}>
-              <Text style={styles.figure} allowFontScaling={false}>{kr(MOCK.paid)}</Text>
+              <Text style={styles.figure} allowFontScaling={false}>{kr(box.paid)}</Text>
               <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
             </View>
           </View>
@@ -192,24 +190,28 @@ export default function FinesSection(_: { isActive?: boolean }) {
         <View style={styles.card}>
           <Text style={styles.label}>Season leaderboard</Text>
 
-          <View style={styles.podium}>
-            {[1, 0, 2].map(rank => {
-              const p = MOCK.leaderboard[rank];
-              if (!p) return null;
-              const height = rank === 0 ? 96 : rank === 1 ? 74 : 60;
-              return (
-                <View key={p.id} style={styles.podiumCol}>
-                  <Text style={styles.podiumName} numberOfLines={1}>{firstName(p.name)}</Text>
-                  <Text style={styles.podiumAmount} allowFontScaling={false}>{kr(p.amount)}</Text>
-                  <View style={[styles.podiumBlock, { height, backgroundColor: MEDAL[rank] }]}>
-                    <Text style={styles.podiumRank} allowFontScaling={false}>{rank + 1}</Text>
+          {podium.length === 0 ? (
+            <Text style={styles.emptyText}>Nobody has been fined yet this season.</Text>
+          ) : (
+            <View style={styles.podium}>
+              {[1, 0, 2].map(rank => {
+                const p = podium[rank];
+                if (!p) return <View key={rank} style={styles.podiumCol} />;
+                const height = rank === 0 ? 96 : rank === 1 ? 74 : 60;
+                return (
+                  <View key={p.id} style={styles.podiumCol}>
+                    <Text style={styles.podiumName} numberOfLines={1}>{firstName(p.name)}</Text>
+                    <Text style={styles.podiumAmount} allowFontScaling={false}>{kr(p.amount)}</Text>
+                    <View style={[styles.podiumBlock, { height, backgroundColor: MEDAL[rank] }]}>
+                      <Text style={styles.podiumRank} allowFontScaling={false}>{rank + 1}</Text>
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
+          )}
 
-          {MOCK.leaderboard.slice(3).map((p, i) => (
+          {box.leaderboard.slice(3).map((p, i) => (
             <View key={p.id} style={styles.rankRow}>
               <Text style={styles.rankNum} allowFontScaling={false}>{i + 4}</Text>
               <Text style={styles.rankName} numberOfLines={1}>{p.name}</Text>
@@ -221,10 +223,15 @@ export default function FinesSection(_: { isActive?: boolean }) {
         {/* The feed. Where the banter lives, so reactions sit right on it. */}
         <Text style={[styles.label, styles.feedLabel]}>Latest fines</Text>
 
-        {MOCK.feed.map(f => {
-          const chosen = mine[f.id];
-          const counts: Record<string, number> = { ...(f.reactions as Record<string, number>) };
-          if (chosen) counts[chosen] = (counts[chosen] ?? 0) + 1;
+        {box.loaded && box.feed.length === 0 && (
+          <View style={styles.card}>
+            <Text style={styles.emptyText}>No fines yet. Enjoy it while it lasts.</Text>
+          </View>
+        )}
+
+        {box.feed.map(f => {
+          const chosen = f.mine;
+          const counts = f.counts;
           const used = REACTIONS.filter(e => (counts[e] ?? 0) > 0);
 
           return (
@@ -246,7 +253,7 @@ export default function FinesSection(_: { isActive?: boolean }) {
                 </View>
                 <View style={styles.fineRight}>
                   <Text style={styles.fineAmount} allowFontScaling={false}>{kr(f.amount)} kr</Text>
-                  <Text style={styles.fineWhen}>{f.when}</Text>
+                  <Text style={styles.fineWhen}>{when(f.createdAt)}</Text>
                 </View>
               </View>
 
@@ -258,7 +265,7 @@ export default function FinesSection(_: { isActive?: boolean }) {
                       key={e}
                       style={[styles.reaction, chosen === e && styles.reactionMine]}
                       scaleTo={0.9}
-                      onPress={() => react(f.id, e)}
+                      onPress={() => react(f.id, e, chosen)}
                     >
                       <Text style={styles.reactionEmoji}>{e}</Text>
                       <Text style={styles.reactionCount} allowFontScaling={false}>{counts[e]}</Text>
@@ -280,7 +287,7 @@ export default function FinesSection(_: { isActive?: boolean }) {
                       style={[styles.pickerItem, chosen === e && styles.pickerItemMine]}
                       scaleTo={0.85}
                       dim={false}
-                      onPress={() => react(f.id, e)}
+                      onPress={() => react(f.id, e, chosen)}
                     >
                       <Text style={styles.pickerEmoji}>{e}</Text>
                     </PressableScale>
@@ -294,11 +301,12 @@ export default function FinesSection(_: { isActive?: boolean }) {
       </ScrollView>
 
       {/* Only the bøtesjef sees this. Everything they can do lives behind it. */}
-      {MOCK.isFineManager && (
+      {box.isFineManager && (
         <PressableScale
           style={[styles.fab, { bottom: insets.bottom + TAB_BAR + 16 }]}
           scaleTo={0.96}
-          onPress={() => haptics.medium()}
+          haptic="medium"
+          onPress={() => navigation.navigate('GiveFine')}
         >
           <Text style={styles.fabText}>Give a fine</Text>
         </PressableScale>
@@ -322,6 +330,21 @@ function chromeLayout(text: string, boxWidth: number): { num: number; unit: numb
   const unitW = 1.1 * CHROME_UNIT;
   const start = Math.max(0, (boxWidth - (numW + CHROME_GAP + unitW)) / 2);
   return { num: start, unit: start + numW + CHROME_GAP };
+}
+
+/** "now", "12m", "3h", "Yesterday", "Mon", or "12 Sep" for anything older. */
+function when(iso: string): string {
+  const d = new Date(iso);
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const day = new Date(d); day.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - day.getTime()) / 86400000);
+  if (days === 0) return `${Math.floor(mins / 60)}h`;
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return d.toLocaleDateString('en-GB', { weekday: 'short' });
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
 }
 
 /** 6450 → "6 450". Norwegian grouping, which is a space. */
@@ -351,6 +374,7 @@ const styles = StyleSheet.create({
 
   label: { fontFamily: UI_FONT_REGULAR, fontSize: 14, color: TEXT.primary },
   centered: { textAlign: 'center' },
+  emptyText: { fontFamily: UI_FONT_REGULAR, fontSize: 14, color: TEXT.secondary, marginTop: 6 },
   chrome: { alignSelf: 'center', marginTop: 2 },
   feedLabel: { marginTop: 8, marginLeft: 4 },
 
