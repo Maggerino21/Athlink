@@ -134,7 +134,7 @@ export default function TasksTab({ staffId, clubId }: { staffId: string; clubId:
               padding: '6px 14px', borderRadius: 'var(--radius-full)',
               fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
               cursor: 'pointer', border: 'none',
-              background: filter === f ? 'var(--accent-subtle)' : 'var(--surface-1)',
+              background: filter === f ? 'var(--surface-active)' : 'var(--surface-1)',
               color: filter === f ? 'var(--text-primary)' : 'var(--text-secondary)',
               transition: 'background 0.12s',
             }}
@@ -172,7 +172,12 @@ export default function TasksTab({ staffId, clubId }: { staffId: string; clubId:
             <tbody>
               {filtered.map(task => {
                 const done = task.status === 'completed';
-                const { label: dueLabel, overdue, urgent } = formatDue(task.due_date);
+                // A finished task cannot be late. It used to read "Overdue" in red
+                // next to a ticked box and a struck-through title.
+                const due = formatDue(task.due_date);
+                const dueLabel = done ? due.label.replace('Overdue', 'Was due') : due.label;
+                const overdue  = done ? false : due.overdue;
+                const urgent   = done ? false : due.urgent;
 
                 return (
                   <tr key={task.id} style={{ opacity: done ? 0.55 : 1 }}>
@@ -406,7 +411,7 @@ function AthleteSelect({
         style={{
           cursor: 'pointer', textAlign: 'left',
           display: 'flex', alignItems: 'center', gap: 8,
-          borderColor: open ? 'var(--accent-border)' : undefined,
+          borderColor: open ? 'var(--border-strong)' : undefined,
         }}
       >
         {selected
@@ -451,8 +456,8 @@ function AthleteSelect({
                   width: '100%', display: 'flex', alignItems: 'center', gap: 9,
                   padding: '8px 10px', borderRadius: 'var(--radius-sm)',
                   fontFamily: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer',
-                  background: active ? 'var(--accent-subtle)' : 'transparent',
-                  border: '1px solid ' + (active ? 'var(--accent-border)' : 'transparent'),
+                  background: active ? 'var(--surface-active)' : 'transparent',
+                  border: '1px solid ' + (active ? 'var(--border-strong)' : 'transparent'),
                   color: 'var(--text-primary)',
                   transition: 'background 0.1s',
                 }}
@@ -462,7 +467,7 @@ function AthleteSelect({
                 <AvatarCircle name={a.full_name} size={24} />
                 <span style={{ flex: 1 }}>{a.full_name}</span>
                 {active && (
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--accent)"
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)"
                        strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12" />
                   </svg>

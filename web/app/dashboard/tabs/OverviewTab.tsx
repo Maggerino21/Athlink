@@ -109,7 +109,7 @@ export default function OverviewTab({ clubId, staffName, clubName, inviteCode, s
                       <div className="t-body-medium" style={{ color: 'var(--text-primary)', marginBottom: 2 }}>{m.is_home ? 'vs' : '@'} {m.opponent}</div>
                       <div className="t-small" style={{ color: 'var(--text-tertiary)' }}>{formatDate(m.match_date)}{m.location ? ` · ${m.location}` : ''}</div>
                     </div>
-                    <span className="badge badge-warning">{m.is_home ? 'Home' : 'Away'}</span>
+                    <span className="badge">{m.is_home ? 'Home' : 'Away'}</span>
                   </div>
                 ))
               )}
@@ -126,7 +126,7 @@ export default function OverviewTab({ clubId, staffName, clubName, inviteCode, s
                         <div className="t-body-medium" style={{ color: 'var(--text-primary)', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</div>
                         <div className="t-small" style={{ color: 'var(--text-tertiary)' }}>{formatDate(ev.event_date)}{ev.location ? ` · ${ev.location}` : ''}</div>
                       </div>
-                      <span className="badge" style={{ background: `color-mix(in srgb, var(${cssVar}) 12%, transparent)`, borderColor: `color-mix(in srgb, var(${cssVar}) 28%, transparent)`, color: `var(${cssVar})` }}>{label}</span>
+                      <span className="badge" style={{ background: `var(${cssVar}-fill)`, borderColor: `var(${cssVar}-border)`, color: 'var(--text-primary)' }}>{label}</span>
                     </div>
                   );
                 })
@@ -140,11 +140,14 @@ export default function OverviewTab({ clubId, staffName, clubName, inviteCode, s
 }
 
 type KpiIntent = 'accent' | 'info' | 'success' | 'danger';
-const INTENT_VAR: Record<KpiIntent, string> = { accent: '--accent', info: '--color-info', success: '--color-success', danger: '--color-danger' };
-const INTENT_BORDER: Record<KpiIntent, string> = { accent: '--accent-border', info: '--color-info-border', success: '--color-success-border', danger: '--color-danger-border' };
+// Greyscale unless the number is asking for something. The athlete count used
+// to be set in the club colour, which made the loudest thing on the page the
+// one figure nobody has to do anything about.
+const INTENT_VAR: Record<KpiIntent, string> = { accent: '--text-primary', info: '--color-info', success: '--color-success', danger: '--color-danger' };
+const INTENT_BORDER: Record<KpiIntent, string> = { accent: '--border-subtle', info: '--color-info-border', success: '--color-success-border', danger: '--color-danger-border' };
 
 function KpiCard({ label, value, intent, alert = false }: { label: string; value: number; intent: KpiIntent; alert?: boolean }) {
-  const showColor = intent === 'accent' || alert;
+  const showColor = alert;
   return (
     <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '18px 20px', borderColor: showColor ? `var(${INTENT_BORDER[intent]})` : undefined }}>
       <div style={{ fontSize: 32, fontWeight: 800, color: showColor ? `var(${INTENT_VAR[intent]})` : 'var(--text-primary)', letterSpacing: '-0.03em', lineHeight: 1 }}>{value}</div>

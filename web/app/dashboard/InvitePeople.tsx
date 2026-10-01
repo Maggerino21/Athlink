@@ -41,9 +41,9 @@ export default function InvitePeople({
           onClick={() => setOpen('athlete')}
           className="btn-ghost"
           style={noAthletesYet ? {
-            background:  'var(--accent-subtle)',
-            borderColor: 'var(--accent-border)',
-            color:       'var(--accent)',
+            background:  'var(--surface-active)',
+            borderColor: 'var(--border-strong)',
+            color:       'var(--text-primary)',
             fontWeight:  600,
           } : undefined}
         >

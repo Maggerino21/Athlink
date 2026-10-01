@@ -220,7 +220,7 @@ function ClubDetails({ clubId, clubName, clubColor, canEdit, onSaved }: {
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <div style={{
             width: 40, height: 40, borderRadius: 'var(--radius-sm)', flexShrink: 0,
-            background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)',
+            background: 'var(--surface-active)', border: '1px solid var(--border-strong)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 800, color: clubColor,
           }}>

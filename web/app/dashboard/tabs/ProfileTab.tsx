@@ -132,9 +132,9 @@ export default function ProfileTab({
                     style={{
                       padding: '8px 16px',
                       ...(on ? {
-                        background:  'var(--accent-subtle)',
-                        borderColor: 'var(--accent-border)',
-                        color:       'var(--accent)',
+                        background:  'var(--surface-active)',
+                        borderColor: 'var(--border-strong)',
+                        color:       'var(--text-primary)',
                       } : {}),
                     }}
                   >

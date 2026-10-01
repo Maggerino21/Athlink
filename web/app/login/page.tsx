@@ -68,8 +68,6 @@ export default function LoginPage() {
       }}
     >
       {/* Neutral orbs — no club color on logged-out screen */}
-      <div className="orb-top-neutral" />
-      <div className="orb-bottom-neutral" />
 
       <div style={{ width: '100%', maxWidth: 380, padding: '0 20px', position: 'relative', zIndex: 1 }}>
         {/* Logo */}

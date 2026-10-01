@@ -14,9 +14,23 @@ type EventCategory = {
   key:         string;
   label:       string;
   description: string;
-  color:       string;
   icon:        React.FC<{ size?: number; color?: string; strokeWidth?: number }>;
 };
+
+/**
+ * A category's colour, from the event tokens — the same clay palette the
+ * phone draws. `ink` is the label and the icon, `fill` an opaque ground.
+ * These cards used to be seven raw hexes with translucent fills and a
+ * coloured glow on hover, which is most of what made this screen the
+ * loudest in the dashboard.
+ */
+function catVars(key: string) {
+  return {
+    ink:    `var(--event-${key})`,
+    fill:   `var(--event-${key}-fill)`,
+    border: `var(--event-${key}-border)`,
+  };
+}
 
 type Athlete = { id: string; full_name: string };
 
@@ -31,49 +45,42 @@ const CATEGORIES: EventCategory[] = [
     key:         'match',
     label:       'Match',
     description: 'A fixture — add one, or paste your whole season at once',
-    color:       '#FB923C',
     icon:        Swords,
   },
   {
     key:         'training',
     label:       'Team training',
     description: 'Session for the whole squad — date, time and location',
-    color:       '#60A5FA',
     icon:        Dumbbell,
   },
   {
     key:         'home',
     label:       'Home training',
     description: 'Individual program with PDF — assigned to players',
-    color:       '#A78BFA',
     icon:        Home,
   },
   {
     key:         'rehab',
     label:       'Rehabilitation',
     description: 'Physio rehab protocol — PDF upload, completion tracking',
-    color:       '#34D399',
     icon:        HeartPulse,
   },
   {
     key:         'meeting',
     label:       'Meeting',
     description: 'Team or individual meeting — tactical, administrative',
-    color:       '#F472B6',
     icon:        Users,
   },
   {
     key:         'other',
     label:       'Generic event',
     description: 'Anything else — travel, logistics, custom line items',
-    color:       '#9CA3AF',
     icon:        FileText,
   },
   {
     key:         'vacation',
     label:       'Vacation / Break',
     description: 'Block off a period — winter break, international window',
-    color:       '#94A3B8',
     icon:        Umbrella,
   },
 ];
@@ -130,7 +137,7 @@ export default function NewEventTab({ clubId, clubName, prefilledDate, onCreated
         </h1>
         {prefilledDate ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-            <DateChip date={prefilledDate} color="var(--accent)" bg="var(--accent-subtle)" border="var(--accent-border)" />
+            <DateChip date={prefilledDate} color="var(--text-primary)" bg="var(--surface-active)" border="var(--border-strong)" />
             <span className="t-body" style={{ color: 'var(--text-secondary)' }}>— pick a type below</span>
           </div>
         ) : (
@@ -155,40 +162,41 @@ export default function NewEventTab({ clubId, clubName, prefilledDate, onCreated
 
 /* ── Category picker card ───────────────────────────────────────────── */
 function CategoryCard({ category, onClick }: { category: EventCategory; onClick: () => void }) {
-  const { label, description, color, icon: Icon } = category;
-  const rgb = hexToRgb(color);
+  const { key, label, description, icon: Icon } = category;
+  const { ink, fill, border } = catVars(key);
 
   return (
     <button
       onClick={onClick}
       style={{
-        background: `rgba(${rgb}, 0.07)`, border: `1px solid rgba(${rgb}, 0.22)`,
+        background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)',
         borderRadius: 'var(--radius-lg)', padding: '24px 20px', textAlign: 'left',
-        cursor: 'pointer', transition: 'background 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s',
+        cursor: 'pointer', transition: 'background 0.15s, transform 0.12s',
         display: 'flex', flexDirection: 'column', gap: 12,
         fontFamily: 'inherit', position: 'relative', overflow: 'hidden',
       }}
       onMouseEnter={e => {
         const b = e.currentTarget as HTMLButtonElement;
-        b.style.background = `rgba(${rgb}, 0.13)`; b.style.borderColor = `rgba(${rgb}, 0.40)`;
-        b.style.transform = 'translateY(-2px)'; b.style.boxShadow = `0 8px 32px rgba(${rgb}, 0.18)`;
+        b.style.background = 'var(--surface-active)';
+        b.style.transform = 'translateY(-2px)';
       }}
       onMouseLeave={e => {
         const b = e.currentTarget as HTMLButtonElement;
-        b.style.background = `rgba(${rgb}, 0.07)`; b.style.borderColor = `rgba(${rgb}, 0.22)`;
-        b.style.transform = 'translateY(0)'; b.style.boxShadow = 'none';
+        b.style.background = 'var(--surface-raised)';
+        b.style.transform = 'translateY(0)';
       }}
     >
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: color, borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0' }} />
-      <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: `rgba(${rgb}, 0.14)`, border: `1px solid rgba(${rgb}, 0.28)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-        <Icon size={22} color={color} strokeWidth={1.75} />
+      {/* The type's colour, as an edge and an icon — the way the phone draws it. */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: ink, borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0' }} />
+      <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: fill, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: ink }}>
+        <Icon size={22} color="currentColor" strokeWidth={1.75} />
       </div>
       <div>
-        <div style={{ fontSize: 15, fontWeight: 700, color, marginBottom: 4, letterSpacing: '-0.01em' }}>{label}</div>
+        <div style={{ fontSize: 15, fontWeight: 500, color: ink, marginBottom: 4, letterSpacing: '-0.01em' }}>{label}</div>
         <div className="t-small" style={{ color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{description}</div>
       </div>
-      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+      <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end', color: 'var(--text-tertiary)' }}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
           <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
         </svg>
       </div>
@@ -201,7 +209,8 @@ function EventForm({ category, clubId, clubName, date, onBack, onCreated }: {
   category: EventCategory; clubId: string; clubName: string; date?: string;
   onBack: () => void; onCreated?: () => void;
 }) {
-  const props = { clubId, date, onBack, onCreated, color: category.color };
+  const props = { clubId, date, onBack, onCreated };
+  const { ink, fill, border } = catVars(category.key);
 
   return (
     <div style={{ padding: '36px 40px', maxWidth: 640, margin: '0 auto' }}>
@@ -215,18 +224,18 @@ function EventForm({ category, clubId, clubName, date, onBack, onCreated }: {
 
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: date ? 16 : 32 }}>
-        <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-md)', background: `rgba(${hexToRgb(category.color)}, 0.14)`, border: `1px solid rgba(${hexToRgb(category.color)}, 0.30)`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <category.icon size={24} color={category.color} strokeWidth={1.75} />
+        <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-md)', background: fill, border: `1px solid ${border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: ink }}>
+          <category.icon size={24} color="currentColor" strokeWidth={1.75} />
         </div>
         <div>
           <div className="t-label" style={{ marginBottom: 4 }}>New event</div>
-          <h1 className="t-heading" style={{ color: category.color, margin: 0 }}>{category.label}</h1>
+          <h1 className="t-heading" style={{ color: 'var(--text-primary)', margin: 0 }}>{category.label}</h1>
         </div>
       </div>
 
       {date && (
         <div style={{ marginBottom: 28 }}>
-          <DateChip date={date} color={category.color} bg={`rgba(${hexToRgb(category.color)}, 0.10)`} border={`rgba(${hexToRgb(category.color)}, 0.25)`} />
+          <DateChip date={date} color={ink} bg={fill} border={border} />
         </div>
       )}
 
@@ -245,7 +254,6 @@ function EventForm({ category, clubId, clubName, date, onBack, onCreated }: {
 type FormProps = {
   clubId:     string;
   date?:      string;
-  color:      string;
   onBack:     () => void;
   /** Set only when the flow began on a calendar day — hands control back to the
    *  calendar instead of showing the success banner. */
@@ -278,30 +286,19 @@ function DateChip({ date, color, bg, border }: { date: string; color: string; bg
   );
 }
 
-function SubmitBtn({ color, loading, label = 'Create event', onClick, disabled }: {
-  color: string; loading: boolean; label?: string;
+function SubmitBtn({ loading, label = 'Create event', onClick, disabled }: {
+  loading: boolean; label?: string;
   /** Supplied by forms that aren't wrapped in a <form> (the match form). */
   onClick?: () => void;
   disabled?: boolean;
 }) {
-  const rgb = hexToRgb(color);
   return (
     <button
       type={onClick ? 'button' : 'submit'}
       onClick={onClick}
       disabled={loading || disabled}
-      style={{
-        width: '100%', padding: '13px 18px', fontSize: 14, fontWeight: 600,
-        fontFamily: 'inherit', cursor: (loading || disabled) ? 'not-allowed' : 'pointer',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-        borderRadius: 'var(--radius-md)',
-        background: `rgba(${rgb}, 0.15)`,
-        border: `1px solid rgba(${rgb}, 0.35)`,
-        color,
-        opacity: (loading || disabled) ? 0.5 : 1,
-        transition: 'opacity 0.15s',
-        marginTop: 8,
-      }}
+      className="btn-primary"
+      style={{ width: '100%', padding: '13px 18px', marginTop: 8 }}
     >
       {loading ? 'Creating…' : label}
     </button>
@@ -376,11 +373,11 @@ function AthleteSelector({ clubId, wholeSquad, onWholeSquadChange, selectedAthle
       >
         <div style={{
           width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-          border: wholeSquad ? '2px solid var(--accent)' : '2px solid var(--border-strong)',
-          background: wholeSquad ? 'var(--accent-subtle)' : 'transparent',
+          border: wholeSquad ? '2px solid var(--text-primary)' : '2px solid var(--border-strong)',
+          background: wholeSquad ? 'var(--surface-active)' : 'transparent',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
-          {wholeSquad && <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="2 6 5 9 10 3"/></svg>}
+          {wholeSquad && <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="var(--text-primary)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="2 6 5 9 10 3"/></svg>}
         </div>
         <span className="t-small" style={{ color: 'var(--text-primary)', fontWeight: wholeSquad ? 700 : 400 }}>Whole squad</span>
       </button>
@@ -504,17 +501,17 @@ function AthleteSearch({ athletes, selected, onToggle }: {
             >
               <div style={{
                 width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                border: checked ? '2px solid var(--accent)' : '2px solid var(--border-strong)',
-                background: checked ? 'var(--accent-subtle)' : 'transparent',
+                border: checked ? '2px solid var(--text-primary)' : '2px solid var(--border-strong)',
+                background: checked ? 'var(--surface-active)' : 'transparent',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
-                {checked && <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="2 6 5 9 10 3"/></svg>}
+                {checked && <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="var(--text-primary)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="2 6 5 9 10 3"/></svg>}
               </div>
               <span className="t-small" style={{ color: 'var(--text-primary)', fontWeight: checked ? 600 : 400, flex: 1 }}>
                 {a.full_name}
               </span>
               {checked && !query && (
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-primary)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.6 }}>
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
               )}
@@ -534,9 +531,8 @@ function AthleteSearch({ athletes, selected, onToggle }: {
 }
 
 /* ── PDF upload field ───────────────────────────────────────────────── */
-function PdfUpload({ file, onChange, color }: { file: File | null; onChange: (f: File | null) => void; color: string }) {
+function PdfUpload({ file, onChange }: { file: File | null; onChange: (f: File | null) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const rgb = hexToRgb(color);
 
   return (
     <div>
@@ -548,9 +544,9 @@ function PdfUpload({ file, onChange, color }: { file: File | null; onChange: (f:
         onChange={e => onChange(e.target.files?.[0] ?? null)}
       />
       {file ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 'var(--radius-md)', background: `rgba(${rgb}, 0.08)`, border: `1px solid rgba(${rgb}, 0.25)` }}>
-          <FileIcon size={16} color={color} strokeWidth={1.75} />
-          <span className="t-small" style={{ color, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-active)', border: '1px solid var(--border-subtle)' }}>
+          <FileIcon size={16} color="currentColor" strokeWidth={1.75} />
+          <span className="t-small" style={{ color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</span>
           <button type="button" onClick={() => onChange(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: 2 }}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -563,16 +559,16 @@ function PdfUpload({ file, onChange, color }: { file: File | null; onChange: (f:
           onClick={() => inputRef.current?.click()}
           style={{
             width: '100%', padding: '22px 18px', borderRadius: 'var(--radius-md)',
-            background: `rgba(${rgb}, 0.05)`, border: `1.5px dashed rgba(${rgb}, 0.30)`,
+            background: 'var(--surface-recessed)', border: '1.5px dashed var(--border-default)',
             color: 'var(--text-tertiary)', fontFamily: 'inherit', cursor: 'pointer',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
             transition: 'background 0.15s, border-color 0.15s',
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = `rgba(${rgb}, 0.10)`; (e.currentTarget as HTMLButtonElement).style.borderColor = `rgba(${rgb}, 0.50)`; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = `rgba(${rgb}, 0.05)`; (e.currentTarget as HTMLButtonElement).style.borderColor = `rgba(${rgb}, 0.30)`; }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-raised)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-strong)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-recessed)'; (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border-default)'; }}
         >
-          <Upload size={22} color={color} strokeWidth={1.5} style={{ opacity: 0.8 }} />
-          <span style={{ fontSize: 13, fontWeight: 600, color }}>Upload PDF</span>
+          <Upload size={22} color="currentColor" strokeWidth={1.5} style={{ opacity: 0.8 }} />
+          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)' }}>Upload PDF</span>
           <span style={{ fontSize: 11 }}>Click to browse · max 20 MB</span>
         </button>
       )}
@@ -584,7 +580,7 @@ function PdfUpload({ file, onChange, color }: { file: File | null; onChange: (f:
  * Two ways in, because coaches arrive with their season in two shapes: already written
  * down somewhere (paste it), or one fixture they just heard about (type it).
  */
-function MatchForm({ clubId, clubName, date, color, onBack, onCreated }: FormProps & { clubName: string }) {
+function MatchForm({ clubId, clubName, date, onBack, onCreated }: FormProps & { clubName: string }) {
   const [mode, setMode] = useState<'paste' | 'single'>('paste');
   const [done, setDone] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
@@ -625,17 +621,17 @@ function MatchForm({ clubId, clubName, date, color, onBack, onCreated }: FormPro
       </div>
 
       {mode === 'paste'
-        ? <PasteMatches clubId={clubId} clubName={clubName} color={color}
+        ? <PasteMatches clubId={clubId} clubName={clubName}
             onSaved={(n) => { setSavedCount(n); finish(); }} />
-        : <SingleMatch clubId={clubId} date={date} color={color}
+        : <SingleMatch clubId={clubId} date={date}
             onSaved={() => { setSavedCount(1); finish(); }} />}
     </div>
   );
 }
 
 /* ── Paste a whole season ───────────────────────────────────────────── */
-function PasteMatches({ clubId, clubName, color, onSaved }: {
-  clubId: string; clubName: string; color: string; onSaved: (n: number) => void;
+function PasteMatches({ clubId, clubName, onSaved }: {
+  clubId: string; clubName: string; onSaved: (n: number) => void;
 }) {
   const supabase = createClient();
   const [text, setText]   = useState('');
@@ -720,7 +716,7 @@ function PasteMatches({ clubId, clubName, color, onSaved }: {
                   checked={r.include}
                   onChange={e => update(i, { include: e.target.checked })}
                   disabled={!r.date || !r.opponent}
-                  style={{ accentColor: color, width: 15, height: 15, flexShrink: 0 }}
+                  style={{ accentColor: 'var(--text-primary)', width: 15, height: 15, flexShrink: 0 }}
                 />
                 <div style={{ width: 132, flexShrink: 0 }}>
                   <DateField
@@ -769,7 +765,6 @@ function PasteMatches({ clubId, clubName, color, onSaved }: {
       {error && <ErrorMsg msg={error} />}
 
       <SubmitBtn
-        color={color}
         loading={saving}
         label={usable.length === 0
           ? 'Nothing to add yet'
@@ -782,8 +777,8 @@ function PasteMatches({ clubId, clubName, color, onSaved }: {
 }
 
 /* ── One match at a time ────────────────────────────────────────────── */
-function SingleMatch({ clubId, date, color, onSaved }: {
-  clubId: string; date?: string; color: string; onSaved: () => void;
+function SingleMatch({ clubId, date, onSaved }: {
+  clubId: string; date?: string; onSaved: () => void;
 }) {
   const supabase = createClient();
   const [opponent,  setOpponent]  = useState('');
@@ -859,13 +854,13 @@ function SingleMatch({ clubId, date, color, onSaved }: {
       </Field>
 
       {error && <ErrorMsg msg={error} />}
-      <SubmitBtn color={color} loading={saving} label="Add match" onClick={save} />
+      <SubmitBtn loading={saving} label="Add match" onClick={save} />
     </>
   );
 }
 
 /* ══ FORM: Team training ════════════════════════════════════════════ */
-function TrainingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
+function TrainingForm({ clubId, date, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [eventDate, setEventDate] = useState(date ?? '');
   const [time,      setTime]      = useState('');
@@ -929,13 +924,13 @@ function TrainingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
       </Field>
 
       {error && <ErrorMsg msg={error} />}
-      <SubmitBtn color={color} loading={loading} />
+      <SubmitBtn loading={loading} />
     </form>
   );
 }
 
 /* ══ FORM: Home training / Rehab ════════════════════════════════════ */
-function HomeProgramForm({ clubId, date, color, type, onBack, onCreated }: FormProps & { type: 'home' | 'rehab' }) {
+function HomeProgramForm({ clubId, date, type, onBack, onCreated }: FormProps & { type: 'home' | 'rehab' }) {
   const supabase = createClient();
   const [title,        setTitle]        = useState('');
   const [eventDate,    setEventDate]    = useState(date ?? '');
@@ -1028,7 +1023,7 @@ function HomeProgramForm({ clubId, date, color, type, onBack, onCreated }: FormP
       </div>
 
       <Field label="Program PDF (optional)">
-        <PdfUpload file={pdf} onChange={setPdf} color={color} />
+        <PdfUpload file={pdf} onChange={setPdf} />
       </Field>
 
       <Field label="Assign to">
@@ -1041,13 +1036,13 @@ function HomeProgramForm({ clubId, date, color, type, onBack, onCreated }: FormP
       </Field>
 
       {error && <ErrorMsg msg={error} />}
-      <SubmitBtn color={color} loading={loading} />
+      <SubmitBtn loading={loading} />
     </form>
   );
 }
 
 /* ══ FORM: Meeting ══════════════════════════════════════════════════ */
-function MeetingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
+function MeetingForm({ clubId, date, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [title,     setTitle]     = useState('');
   const [eventDate, setEventDate] = useState(date ?? '');
@@ -1112,7 +1107,7 @@ function MeetingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
       {/* Online / In person toggle */}
       <Field label="Location type">
         <div style={{ display: 'flex', gap: 8 }}>
-          {[{ v: false, l: '📍 In person' }, { v: true, l: '💻 Online' }].map(({ v, l }) => (
+          {[{ v: false, l: 'In person' }, { v: true, l: 'Online' }].map(({ v, l }) => (
             <button key={String(v)} type="button" onClick={() => setOnline(v)}
               style={{ padding: '6px 14px', borderRadius: 'var(--radius-full)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', background: online === v ? 'var(--surface-3)' : 'var(--surface-1)', border: online === v ? '1px solid var(--border-strong)' : '1px solid var(--border-default)', color: online === v ? 'var(--text-primary)' : 'var(--text-secondary)', transition: 'all 0.12s' }}>
               {l}
@@ -1132,13 +1127,13 @@ function MeetingForm({ clubId, date, color, onBack, onCreated }: FormProps) {
       )}
 
       {error && <ErrorMsg msg={error} />}
-      <SubmitBtn color={color} loading={loading} />
+      <SubmitBtn loading={loading} />
     </form>
   );
 }
 
 /* ══ FORM: Generic event ════════════════════════════════════════════ */
-function GenericForm({ clubId, date, color, onBack, onCreated }: FormProps) {
+function GenericForm({ clubId, date, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [title,     setTitle]     = useState('');
   const [eventDate, setEventDate] = useState(date ?? '');
@@ -1250,13 +1245,13 @@ function GenericForm({ clubId, date, color, onBack, onCreated }: FormProps) {
       </Field>
 
       {error && <ErrorMsg msg={error} />}
-      <SubmitBtn color={color} loading={loading} />
+      <SubmitBtn loading={loading} />
     </form>
   );
 }
 
 /* ══ FORM: Vacation / Break ═════════════════════════════════════════ */
-function VacationForm({ clubId, date, color, onBack, onCreated }: FormProps) {
+function VacationForm({ clubId, date, onBack, onCreated }: FormProps) {
   const supabase = createClient();
   const [label,     setLabel]     = useState('');
   const [startDate, setStartDate] = useState(date ?? '');
@@ -1336,7 +1331,7 @@ function VacationForm({ clubId, date, color, onBack, onCreated }: FormProps) {
       </div>
 
       {error && <ErrorMsg msg={error} />}
-      <SubmitBtn color={color} loading={loading} label="Create break" />
+      <SubmitBtn loading={loading} label="Create break" />
     </form>
   );
 }

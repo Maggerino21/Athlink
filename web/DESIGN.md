@@ -2,116 +2,117 @@
 
 ## Philosophy
 
-Dark glass aesthetic. Minimal, data-dense, editorial. The club's primary color is the single accent — it drives every interactive element when logged in. Logged-out screens use a fixed neutral indigo. Everything else is semantic (green = success, red = error, etc.) and never changes with the club theme.
+**The dashboard is a companion to the phone, not a product of its own.** A coach who
+looks at both in one day should see one piece of software, so these tokens mirror the
+mobile app's `app/src/utils/tokens.ts` — same greys, same four text levels, same radii,
+same event palette.
 
-**The one rule above all: never write a raw hex value or `rgba()` directly in a component. Every color must reference a CSS token.**
+Matte, greyscale, data-dense. Three rules carry over from mobile, and they are what
+stopped that app reading as machine-written:
+
+1. **Surfaces are opaque.** No `rgba()` fills, no backdrop blur, no gradients, no glow.
+   A translucent card picks up whatever sits behind it, so nothing in the app has a
+   settled colour.
+2. **The club colour is identity, not atmosphere.** It is drawn in exactly two places:
+   the hairline down the edge of the sidebar (`.club-edge`) and the crest circle that
+   stands in for a badge. It used to fill background orbs, buttons, active nav items,
+   badges and the biggest number on the Overview page — which meant it competed with
+   the event colours, the only colour that tells a coach anything.
+3. **"Current" is weight and brightness, never a tint.** A selected row, an open tab, a
+   focused field: brighter surface, stronger edge.
+
+**The one rule above all: never write a raw hex or `rgba()` in a component.**
 
 ---
 
-## Color tokens
+## Colour tokens
 
-### Base & surfaces (always fixed)
-
-| Token | Value | Use |
-|---|---|---|
-| `--bg-base` | `#080C1E` | Page background — the deepest layer |
-| `--surface-1` | `rgba(255,255,255,0.04)` | Default card, panel background |
-| `--surface-2` | `rgba(255,255,255,0.07)` | Hover state, elevated card |
-| `--surface-3` | `rgba(255,255,255,0.11)` | Sidebar, modal, sheet — highest elevation |
-
-### Borders (always fixed)
+### Ground and surfaces — opaque, identical to mobile
 
 | Token | Value | Use |
 |---|---|---|
-| `--border-subtle` | `rgba(255,255,255,0.06)` | Hairlines, row dividers |
-| `--border-default` | `rgba(255,255,255,0.10)` | Card and panel borders |
-| `--border-strong` | `rgba(255,255,255,0.18)` | Emphasized separators |
+| `--bg-base` | `#0A0A0C` | The page |
+| `--surface-raised` (`--surface-1`) | `#19191B` | A card — the default raised thing |
+| `--surface-recessed` | `#101012` | A quieter card; input wells |
+| `--surface-2` | `#202023` | A focused input |
+| `--surface-active` (`--surface-3`) | `#252527` | Current, hovered or selected |
 
-### Text (always fixed)
-
-| Token | Value | Use |
-|---|---|---|
-| `--text-primary` | `rgba(255,255,255,0.92)` | Headings, body copy, active labels |
-| `--text-secondary` | `rgba(255,255,255,0.50)` | Supporting text, inactive nav, descriptions |
-| `--text-tertiary` | `rgba(255,255,255,0.28)` | Timestamps, column headers, placeholder hints |
-| `--text-disabled` | `rgba(255,255,255,0.18)` | Disabled states only |
-
-### Accent (logged-in only — derived from club's `primary_color`)
-
-Injected as inline CSS variables on the `<div>` wrapping the dashboard layout. **Never hardcode these.** They change per club.
-
-| Token | How it's derived | Use |
-|---|---|---|
-| `--accent` | club hex verbatim | Button bg, active nav bg, focus ring color |
-| `--accent-subtle` | club hex @ 12% opacity | Badge bg, avatar fill, selected row bg |
-| `--accent-border` | club hex @ 28% opacity | Badge border, input focus border, active nav border |
-| `--accent-glow` | club hex @ 18% opacity | Orb backgrounds, button box-shadow |
-
-### Neutral accent (logged-out screens only — always fixed)
+### Borders
 
 | Token | Value | Use |
 |---|---|---|
-| `--neutral-accent` | `#6366F1` | Login button, logo icon |
-| `--neutral-accent-subtle` | `rgba(99,102,241,0.12)` | Login icon bg |
-| `--neutral-accent-border` | `rgba(99,102,241,0.28)` | Login icon border |
-| `--neutral-accent-glow` | `rgba(99,102,241,0.18)` | Login page orbs |
+| `--border-subtle` | white 7% | Card edges, table rules |
+| `--border-default` | white 13% | Dividers that carry structure |
+| `--border-strong` | white 20% | The edge of something current |
 
-### Semantic colors (always fixed — never change with club theme)
+### Text — four levels, and four is the limit
 
-These carry meaning. Only ever use them for their stated purpose.
+`--text-primary` 95% · `--text-secondary` 62% · `--text-tertiary` 40% · `--text-disabled` 22%
 
-| Group | Token | Value | Use |
-|---|---|---|---|
-| **Success** | `--color-success` | `#22C55E` | Completed tasks, positive status |
-| | `--color-success-subtle` | `rgba(34,197,94,0.12)` | Success badge bg |
-| | `--color-success-border` | `rgba(34,197,94,0.25)` | Success badge border |
-| **Warning** | `--color-warning` | `#F59E0B` | Matches, approaching deadlines, away games |
-| | `--color-warning-subtle` | `rgba(245,158,11,0.12)` | Warning badge bg |
-| | `--color-warning-border` | `rgba(245,158,11,0.25)` | Warning badge border |
-| **Danger** | `--color-danger` | `#EF4444` | Overdue tasks, errors, destructive actions |
-| | `--color-danger-subtle` | `rgba(239,68,68,0.12)` | Danger badge bg |
-| | `--color-danger-border` | `rgba(239,68,68,0.25)` | Danger badge border |
-| **Info / AI** | `--color-info` | `#8B5CF6` | AI-processed content, unread feedback status |
-| | `--color-info-subtle` | `rgba(139,92,246,0.12)` | Info/AI badge bg |
-| | `--color-info-border` | `rgba(139,92,246,0.25)` | Info/AI badge border |
+### Fills
 
-> Why purple for AI/unread? It matches the app's established pattern where purple = AI-structured content. Unread feedback is also AI-adjacent in this product.
+`--fill-strong` `#F4F1ED` — the near-white a primary button is filled with, the same
+fill as "Gi en bot" and "Betal alt" on the phone.
 
-### Event type colors (calendar — always fixed)
+### Club colour
 
-| Token | Value | Event type |
-|---|---|---|
-| `--event-training` | `#3B82F6` | Training session |
-| `--event-exercise` | `#8B5CF6` | Exercise / gym |
-| `--event-recovery` | `#22C55E` | Recovery |
-| `--event-travel` | `#F59E0B` | Travel |
-| `--event-meeting` | `#EC4899` | Meeting |
-| `--event-other` | `#6B7280` | Other |
-| `--event-match` | `#F59E0B` | Match (same as warning / travel) |
+| Token | Use |
+|---|---|
+| `--accent-solid` | The true club colour. `.club-edge` and crest circles only |
+| `--accent-on` | Black or white, whichever is legible **on** `--accent-solid` |
+| `--accent` | A lightened variant guaranteed readable on `--bg-base`, for the rare case something has to set the club colour as text |
+
+Injected by `app/dashboard/layout.tsx` via `accentTokens()` in `lib/clubTheme.ts`. There
+are no `--accent-subtle` / `--accent-border` / `--accent-glow` tints any more.
+
+### Status — muted to sit on a matte ground rather than glow on it
+
+`--color-success` / `--color-warning` / `--color-danger` / `--color-info`, each with a
+`-subtle` (an opaque fill) and a `-border`.
+
+### Event types
+
+Ten hues, derived from the mobile `matteAccent()` so a training session is the same
+colour on both screens. Each has three tokens:
+
+| Token | Use |
+|---|---|
+| `--event-{type}` | The label, the icon and the edge |
+| `--event-{type}-fill` | An opaque card ground |
+| `--event-{type}-border` | That card's edge |
+
+Types: `match training home rehab recovery meeting travel vacation exercise other`.
+Read them through a small local helper (`eventVars()` in CalendarTab, `catVars()` in
+NewEventTab) rather than writing the variable names inline.
+
+> The web app used to keep its own hardcoded list, and two entries disagreed with the
+> phone about what they meant — `home` was purple here and green there, `rehab` the
+> other way round.
 
 ---
 
 ## Typography
 
-Font: **Inter** — loaded via `next/font/google` and applied on `<html>`. Never override with another typeface or a system font stack.
+Font: **Inter** — loaded via `next/font/google` on `<html>`. Never override it.
 
-| Class | Size | Weight | Transform | Tracking | Use |
-|---|---|---|---|---|---|
-| `.t-display` | 30px | 800 | — | -0.03em | Page titles (one per page) |
-| `.t-heading` | 22px | 700 | — | -0.02em | Section headings |
-| `.t-subheading` | 17px | 600 | — | -0.01em | Panel headings, card titles |
-| `.t-body` | 14px | 400 | — | 0 | Body copy |
-| `.t-body-medium` | 14px | 600 | — | 0 | Emphasized body text, table cells |
-| `.t-small` | 13px | 500 | — | 0 | Supporting text, descriptions |
-| `.t-label` | 11px | 600 | uppercase | 0.07em | Section labels, column headers — color always `--text-tertiary` |
+| Class | Size | Weight | Use |
+|---|---|---|---|
+| `.t-display` | 30px | 700 | Page titles (one per page) |
+| `.t-heading` | 22px | 600 | Section headings |
+| `.t-subheading` | 17px | 600 | Panel headings, card titles |
+| `.t-body` | 14px | 400 | Body copy |
+| `.t-body-medium` | 14px | 500 | Emphasised body text, table cells |
+| `.t-small` | 13px | 400 | Supporting text |
+| `.t-label` | 11px | 500 | uppercase, 0.07em — section labels, column headers |
+
+Weights come down across the board from the old scale: at 700–800 on a matte ground the
+type was doing the shouting that size should do.
 
 ---
 
 ## Spacing
 
-Use multiples of 4px only. Common values: `4 8 12 16 20 24 32 40 48 64`.
-
-Never use odd values like 9, 11, 13, 18 for spacing (fine for font-sizes, not for padding/gap/margin).
+Multiples of 4 only: `4 8 12 16 20 24 32 40 48 64`.
 
 ---
 
@@ -119,110 +120,61 @@ Never use odd values like 9, 11, 13, 18 for spacing (fine for font-sizes, not fo
 
 | Token | Value | Use |
 |---|---|---|
-| `--radius-sm` | `8px` | Icon buttons, checkboxes, small chips |
-| `--radius-md` | `12px` | Inputs, small cards, badges |
-| `--radius-lg` | `16px` | Cards, panels, table containers |
-| `--radius-xl` | `20px` | Large cards, modals |
-| `--radius-full` | `9999px` | Pills, avatar circles, scrollbar thumbs |
+| `--radius-sm` | `10px` | Icon buttons, inputs, small chips |
+| `--radius-md` | `16px` | Cards, icon tiles |
+| `--radius-lg` / `--radius-xl` | `22px` | Large cards, modals |
+| `--radius-full` | `9999px` | Buttons, badges, avatar circles |
 
 ---
 
-## Glass effect
+## Cards
 
-Two levels. Apply via class — never replicate the blur/backdrop inline.
-
-| Class | Blur | Background | Border | Use |
-|---|---|---|---|---|
-| `.glass` | 16px | `--surface-1` | `--border-default` | Cards, panels, table containers |
-| `.glass-strong` | 24px | `--surface-3` | `--border-default` | Sidebar, modals, slide-in panels |
+`.glass` and `.glass-strong` are historical names — there is no glass left. `.glass` is
+`--surface-raised` with a subtle edge; `.glass-strong` is `--surface-active`. Use them
+for containers, never for interactive elements.
 
 ---
 
 ## Component patterns
 
-### Primary button
-```
-background:   --accent
-border:       1px solid --accent-border
-color:        white
-border-radius: --radius-md
-box-shadow:   0 4px 16px --accent-glow
-hover:        opacity 0.88
-```
-On **logged-out screens** (login page), substitute `--neutral-accent`, `--neutral-accent-border`, `--neutral-accent-glow`.
+### Primary button — `.btn-primary`
+A near-white pill with dark type: `--fill-strong` background, `--bg-base` label,
+`--radius-full`, hover `opacity: 0.88`. No shadow, no club colour. `.btn-primary-neutral`
+is the same thing, kept so the logged-out pages do not need editing.
 
----
+### Ghost button — `.btn-ghost`
+`--surface-raised`, `--border-subtle`, `--text-secondary`, pill. Hover brightens to
+`--surface-active` and `--text-primary`.
 
-### Ghost button
-```
-background:   --surface-1
-border:       1px solid --border-default
-color:        --text-secondary
-border-radius: --radius-sm
-hover → background: --surface-2, color: --text-primary
-```
+### Input — `.input`
+A well: `--surface-recessed` with a `--border-subtle` edge. Focus brightens the field to
+`--surface-2` and the edge to `--border-strong`. Never a coloured focus ring.
 
----
+### Badge — `.badge`
+Neutral by default (`--surface-active`). The semantic variants are for their stated
+semantics only — "Home" / "Away" is a fact, not a warning.
 
-### Badge
-Use only the semantic badge classes. Never create a badge with `--accent` — badges are always semantic or neutral.
+### Active nav item — `.nav-item.active`
+`--surface-active` and `--text-primary`. No tint, no border.
 
-| Intent | Class | Tokens used |
-|---|---|---|
-| Neutral | `.badge` | `--surface-1` / `--border-default` / `--text-secondary` |
-| Success | `.badge-success` | `--color-success-subtle` / `--color-success-border` / `--color-success` |
-| Warning | `.badge-warning` | `--color-warning-subtle` / `--color-warning-border` / `--color-warning` |
-| Danger | `.badge-danger` | `--color-danger-subtle` / `--color-danger-border` / `--color-danger` |
-| Info / AI | `.badge-info` | `--color-info-subtle` / `--color-info-border` / `--color-info` |
-
----
-
-### Avatar circle
-```
-background:    --accent-subtle
-border:        1px solid --accent-border
-color:         --accent
-border-radius: --radius-full
-```
-
----
-
-### Active nav item
-```
-background:   --accent-subtle
-border:       1px solid --accent-border
-color:        --text-primary
-```
-
----
-
-### Input
-```
-background:   --surface-2
-border:       1px solid --border-default
-focus border: --accent-border   (not --accent — full color is too heavy)
-color:        --text-primary
-placeholder:  --text-tertiary
-border-radius: --radius-md
-```
-
----
+### Avatar / crest circle
+The one place besides `.club-edge` that may carry `--accent-solid`, with `--accent-on`
+for the initials. A person's avatar is greyscale (`--surface-active`).
 
 ### Page layout
-All dashboard pages follow this shell:
-```
-padding:   36px 40px
-max-width: 960px (content-dense pages) or unconstrained (full-width like athletes/calendar)
-```
+`padding: 36px 40px`; `max-width: 960px` for content-dense pages, unconstrained for
+full-width ones (athletes, calendar).
 
 ---
 
 ## Rules for AI writing code in this codebase
 
-1. **No raw hex or rgba() in components.** If a color isn't in this doc, add a token first.
-2. **`--accent` tokens only exist inside `/dashboard`.** The layout injects them. Never use `--accent` on the login page or any public route — use `--neutral-accent` instead.
-3. **Semantic colors are for their stated semantics only.** Don't use `--color-success` as a decorative green element.
-4. **`.glass` / `.glass-strong` are for containers, not interactive elements** like buttons or badges.
-5. **Typography classes for font sizes.** Don't write `fontSize: 11` — check if `.t-label` (11px) fits. Only deviate if a specific size falls between scale steps and there's a clear reason.
-6. **Spacing in multiples of 4.** Gap, padding, margin — all multiples of 4.
-7. **Never add a new token without documenting it here first.**
+1. **No raw hex or `rgba()` in components.** If a colour is not in this doc, add a token first.
+2. **No gradients and no blur.** Not on backgrounds, not on cards, not on buttons.
+3. **No emoji anywhere** — in UI copy, labels, empty states or placeholder text. Use an
+   inline SVG icon or nothing.
+4. **Club colour is `.club-edge` and crest circles.** Nothing else.
+5. **Semantic colours are for their stated semantics only.**
+6. **Typography classes for font sizes.** Don't write `fontSize: 11` — check `.t-label` first.
+7. **Spacing in multiples of 4.**
+8. **Never add a token without documenting it here first.**

@@ -1,93 +1,111 @@
 @import "tailwindcss";
 
-/* ── Skeleton pulse ─────────────────────────────────────────────────── */
-@keyframes skeleton-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
-}
-
-.skeleton {
-  animation: skeleton-pulse 1.6s ease-in-out infinite;
-}
-
 /* ─────────────────────────────────────────────────────────────────────
-   Athlink design tokens
-   See DESIGN.md for the full specification and rules.
-   DO NOT write raw hex or rgba() values in components — use these tokens.
+   Athlink — web design tokens.
+
+   These mirror the mobile app's `app/src/utils/tokens.ts` on purpose. The
+   dashboard is a **companion to the phone**, not a product of its own: a
+   coach who looks at both in one day should see one piece of software.
+
+   Three rules, carried over from mobile because they are what stopped that
+   app reading as generated:
+
+   1. **Surfaces are opaque.** No `rgba` fills, no backdrop blur, no glass.
+      A translucent card picks up whatever sits behind it and nothing in the
+      app has a settled colour.
+   2. **No gradients, and no club colour as atmosphere.** Club colour is
+      identity, not information; it survives here as a single line down the
+      edge of the sidebar and nowhere else. Spending it on background orbs
+      meant it competed with the event colours, which are the only colour
+      that tells a coach anything.
+   3. **"Current" is weight and brightness, not colour** — a brighter
+      surface, a stronger edge. Never a tint.
+
+   DO NOT write raw hex or rgba() in components. Use these.
 ───────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* Base */
-  --bg-base: #0B0B0D;
+  /* ── Ground and surfaces. Opaque, always — same values as mobile. ── */
+  --bg-base:          #0A0A0C;  /* the page */
+  --surface-raised:   #19191B;  /* a card: the default raised thing */
+  --surface-recessed: #101012;  /* a card that is deliberately quieter */
+  --surface-active:   #252527;  /* current or hovered, without colour */
 
-  /* Surfaces */
-  --surface-1: rgba(255, 255, 255, 0.04);
-  --surface-2: rgba(255, 255, 255, 0.07);
-  --surface-3: rgba(255, 255, 255, 0.11);
+  /* Legacy names, kept so every component inherits the opaque values. */
+  --surface-1: var(--surface-raised);
+  --surface-2: #202023;
+  --surface-3: var(--surface-active);
 
-  /* Borders */
-  --border-subtle:  rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.10);
-  --border-strong:  rgba(255, 255, 255, 0.18);
+  /* ── Edges ── */
+  --border-subtle:  rgba(255, 255, 255, 0.07);
+  --border-default: rgba(255, 255, 255, 0.13);
+  --border-strong:  rgba(255, 255, 255, 0.20);
 
-  /* Text */
-  --text-primary:   rgba(255, 255, 255, 0.92);
-  --text-secondary: rgba(255, 255, 255, 0.50);
-  --text-tertiary:  rgba(255, 255, 255, 0.28);
-  --text-disabled:  rgba(255, 255, 255, 0.18);
+  /* ── Text. Four levels, and four is the limit. ── */
+  --text-primary:   rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary:  rgba(255, 255, 255, 0.40);
+  --text-disabled:  rgba(255, 255, 255, 0.22);
 
-  /* Neutral accent — logged-out screens. Derived from mark gradient, no club color. */
+  /* The near-white a primary button is filled with — the mark's warm white,
+     and the same fill as "Gi en bot" / "Betal alt" on the phone. */
+  --fill-strong: #F4F1ED;
+
+  /* Kept for the logged-out pages, which have no club. */
   --neutral-accent:        rgba(244, 241, 237, 0.72);
-  --neutral-accent-subtle: rgba(244, 241, 237, 0.07);
-  --neutral-accent-border: rgba(244, 241, 237, 0.16);
-  --neutral-accent-glow:   rgba(244, 241, 237, 0.05);
+  --neutral-accent-subtle: #19191B;
+  --neutral-accent-border: rgba(255, 255, 255, 0.13);
+  --neutral-accent-glow:   transparent;
 
-  /* Semantic colors — never change with club theme */
-  --color-success:        #22C55E;
-  --color-success-subtle: rgba(34, 197, 94,  0.12);
-  --color-success-border: rgba(34, 197, 94,  0.25);
+  /* ── Status. Muted to sit on a matte ground rather than glow on it. ── */
+  --color-success:        #7DAB85;
+  --color-success-subtle: #1A2620;
+  --color-success-border: #30593B;
 
-  --color-warning:        #F59E0B;
-  --color-warning-subtle: rgba(245, 158, 11, 0.12);
-  --color-warning-border: rgba(245, 158, 11, 0.25);
+  --color-warning:        #B09873;
+  --color-warning-subtle: #241F17;
+  --color-warning-border: #5C492A;
 
-  --color-danger:         #EF4444;
-  --color-danger-subtle:  rgba(239, 68,  68, 0.12);
-  --color-danger-border:  rgba(239, 68,  68, 0.25);
+  --color-danger:         #B07C7C;
+  --color-danger-subtle:  #261A1A;
+  --color-danger-border:  #5C3030;
 
-  --color-info:           #94A3B8;
-  --color-info-subtle:    rgba(148, 163, 184, 0.10);
-  --color-info-border:    rgba(148, 163, 184, 0.22);
+  --color-info:           #8A8F99;
+  --color-info-subtle:    #1C1D20;
+  --color-info-border:    #3A3D44;
 
-  /* Event type colors — calendar/schedule */
-  --event-match:    #FB923C;
-  --event-training: #60A5FA;
-  --event-home:     #A78BFA;
-  --event-rehab:    #34D399;
-  --event-recovery: #4ADE80;
-  --event-meeting:  #F472B6;
-  --event-travel:   #FBBF24;
-  --event-vacation: #94A3B8;
-  --event-exercise: #C084FC;
-  --event-other:    #9CA3AF;
+  /* ── Event types.
+     Derived from the mobile `matteAccent()` — same hues, same clay, so a
+     training session is the same colour on both screens. `-fill` is a card
+     ground, the plain token is the label and mark. ── */
+  --event-training: #7D8CA5;  --event-training-fill: #303E57;  --event-training-border: #3D5276;
+  --event-home:     #7DAB93;  --event-home-fill:     #305946;  --event-home-border:     #3D785F;
+  --event-rehab:    #8A78A5;  --event-rehab-fill:    #3B2D57;  --event-rehab-border:    #4C3B76;
+  --event-exercise: #8D78A5;  --event-exercise-fill: #3E2D57;  --event-exercise-border: #503B76;
+  --event-recovery: #7DAB85;  --event-recovery-fill: #30593B;  --event-recovery-border: #3D784F;
+  --event-travel:   #B09873;  --event-travel-fill:   #5C492A;  --event-travel-border:   #7A6138;
+  --event-meeting:  #B0788C;  --event-meeting-fill:  #5C2D40;  --event-meeting-border:  #7A3B57;
+  --event-match:    #B08D73;  --event-match-fill:    #5C3F2A;  --event-match-border:    #7A5438;
+  --event-vacation: #B09D73;  --event-vacation-fill: #5C4D2A;  --event-vacation-border: #7A6738;
+  --event-other:    #7D89A5;  --event-other-fill:    #303C57;  --event-other-border:    #3D4F76;
 
-  /* Border radius */
-  --radius-sm:   8px;
-  --radius-md:   12px;
-  --radius-lg:   16px;
-  --radius-xl:   20px;
+  /* ── Radii. Mobile's four. ── */
+  --radius-sm:   10px;
+  --radius-md:   16px;
+  --radius-lg:   22px;
+  --radius-xl:   22px;
   --radius-full: 9999px;
 
-  /* Accent tokens — injected by dashboard layout for logged-in state.
-     Fallback to neutral grey so nothing shows a blue flash before club color loads.
-     Derived together by accentTokens() in lib/clubTheme.ts — see there for why
-     --accent and --accent-solid differ. */
-  --accent:        #6B7280;  /* readable on --bg-base: text, icon strokes, borders */
-  --accent-solid:  #6B7280;  /* true club color: fills and button backgrounds */
-  --accent-on:     #FFFFFF;  /* label color for text sitting ON --accent-solid */
-  --accent-subtle: rgba(107, 114, 128, 0.12);
-  --accent-border: rgba(107, 114, 128, 0.28);
-  --accent-glow:   rgba(107, 114, 128, 0.12);
+  /* ── Club colour.
+     Injected by the dashboard layout. It is drawn in exactly one place —
+     `.club-edge`, the line down the sidebar — plus the avatar circles that
+     stand in for a crest. Everything else is greyscale. ── */
+  --accent:        #6B7280;  /* readable on --bg-base: text, icon strokes */
+  --accent-solid:  #6B7280;  /* the true club colour */
+  --accent-on:     #FFFFFF;  /* a label sitting ON --accent-solid */
+  --accent-subtle: #19191B;  /* was a tint; "current" is brightness now */
+  --accent-border: rgba(255, 255, 255, 0.20);
+  --accent-glow:   transparent;
 }
 
 /* ── Base reset ──────────────────────────────────────────────────── */
@@ -101,65 +119,50 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Skeleton pulse ──────────────────────────────────────────────── */
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+.skeleton { animation: skeleton-pulse 1.6s ease-in-out infinite; }
+
 /* ── Typography ──────────────────────────────────────────────────── */
-.t-display    { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
-.t-heading    { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; }
+.t-display    { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
+.t-heading    { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
 .t-subheading { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
 .t-body       { font-size: 14px; font-weight: 400; line-height: 1.6; }
-.t-body-medium { font-size: 14px; font-weight: 600; line-height: 1.5; }
-.t-small      { font-size: 13px; font-weight: 500; line-height: 1.5; }
-.t-label      { font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-tertiary); }
+.t-body-medium { font-size: 14px; font-weight: 500; line-height: 1.5; }
+.t-small      { font-size: 13px; font-weight: 400; line-height: 1.5; }
+.t-label      { font-size: 11px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-tertiary); }
 
-/* ── Glass containers ────────────────────────────────────────────── */
+/* ── Cards.
+   `.glass` is a historical name: there is no glass here any more, and the
+   class is kept only because every tab reaches for it. ── */
 .glass {
-  background: var(--surface-1);
-  border: 1px solid var(--border-default);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
 }
-
 .glass-strong {
-  background: var(--surface-3);
+  background: var(--surface-active);
   border: 1px solid var(--border-default);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
 }
 
-/* ── Gradient orbs ───────────────────────────────────────────────── */
-/* Dashboard — uses --accent-glow (club color) */
-.orb-top {
-  pointer-events: none; position: fixed;
-  top: -200px; right: -200px;
-  width: 60vw; height: 60vh;
-  border-radius: var(--radius-full);
-  background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
-  z-index: 0;
-}
-.orb-bottom {
-  pointer-events: none; position: fixed;
-  bottom: -200px; left: -150px;
-  width: 55vw; height: 55vh;
-  border-radius: var(--radius-full);
-  background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
-  z-index: 0;
-}
-
-/* Login page — top orb warm white, bottom orb violet (echoes mark gradient + button color) */
-.orb-top-neutral {
-  pointer-events: none; position: fixed;
-  top: -200px; right: -200px;
-  width: 60vw; height: 60vh;
-  border-radius: var(--radius-full);
-  background: radial-gradient(ellipse, rgba(244, 241, 237, 0.18) 0%, transparent 70%);
-  z-index: 0;
-}
-.orb-bottom-neutral {
-  pointer-events: none; position: fixed;
-  bottom: -200px; left: -150px;
-  width: 55vw; height: 55vh;
-  border-radius: var(--radius-full);
-  background: radial-gradient(ellipse, rgba(130, 110, 200, 0.16) 0%, transparent 70%);
-  z-index: 0;
+/* ── The club's one appearance.
+   A hairline down the outer edge of the sidebar, fading out at both ends so
+   it reads as a nod rather than a rule. The only club colour in the app. ── */
+.club-edge {
+  position: absolute;
+  top: 0; bottom: 0; right: -1px;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--accent-solid) 22%,
+    var(--accent-solid) 78%,
+    transparent 100%
+  );
+  opacity: 0.8;
+  pointer-events: none;
 }
 
 /* ── Scrollbar ───────────────────────────────────────────────────── */
@@ -171,11 +174,11 @@ html, body {
 /* ── Badge ───────────────────────────────────────────────────────── */
 .badge {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: var(--radius-full);
-  font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
-  border: 1px solid var(--border-default);
-  background: var(--surface-1);
+  font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-active);
   color: var(--text-secondary);
   white-space: nowrap;
 }
@@ -184,86 +187,70 @@ html, body {
 .badge-danger  { background: var(--color-danger-subtle);  border-color: var(--color-danger-border);  color: var(--color-danger); }
 .badge-info    { background: var(--color-info-subtle);    border-color: var(--color-info-border);    color: var(--color-info); }
 
-/* ── Buttons ─────────────────────────────────────────────────────── */
-.btn-primary {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 10px 18px;
-  border-radius: var(--radius-md);
-  font-size: 14px; font-weight: 600; font-family: inherit;
-  /* Solid club color as the fill, with a label color picked for legibility against it.
-     Hardcoding #fff here made yellow/green/cyan clubs unreadable (1.92:1 on #EAB308). */
-  background: var(--accent-solid);
-  color: var(--accent-on);
-  border: 1px solid var(--accent-border);
-  cursor: pointer;
-  transition: opacity 0.15s;
-  box-shadow: 0 4px 16px var(--accent-glow);
-}
-.btn-primary:hover    { opacity: 0.88; }
-.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
-
-/* Login page variant — muted violet, derived from the mark's cool gradient end */
+/* ── Buttons.
+   The primary action is a near-white pill with dark type, exactly as on the
+   phone. It used to be the club colour with a glow behind it, which made the
+   loudest thing on every screen a decoration. ── */
+.btn-primary,
 .btn-primary-neutral {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 10px 18px;
-  border-radius: var(--radius-md);
-  font-size: 14px; font-weight: 700; font-family: inherit;
-  background: rgba(130, 110, 200, 0.22);
-  color: rgba(225, 215, 255, 0.95);
-  border: 1px solid rgba(160, 140, 220, 0.45);
+  padding: 11px 20px;
+  border-radius: var(--radius-full);
+  font-size: 14px; font-weight: 500; font-family: inherit;
+  background: var(--fill-strong);
+  color: var(--bg-base);
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
-  box-shadow: 0 0 28px rgba(130, 110, 200, 0.18), inset 0 1px 0 rgba(200, 185, 255, 0.12);
+  transition: opacity 0.15s;
 }
-.btn-primary-neutral:hover    { background: rgba(130, 110, 200, 0.32); border-color: rgba(170, 150, 235, 0.60); box-shadow: 0 0 36px rgba(130, 110, 200, 0.26), inset 0 1px 0 rgba(200, 185, 255, 0.18); }
-.btn-primary-neutral:disabled { opacity: 0.40; cursor: not-allowed; }
+.btn-primary:hover,
+.btn-primary-neutral:hover { opacity: 0.88; }
+.btn-primary:disabled,
+.btn-primary-neutral:disabled { opacity: 0.35; cursor: not-allowed; }
 
 .btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
+  padding: 9px 16px;
+  border-radius: var(--radius-full);
   font-size: 13px; font-weight: 500; font-family: inherit;
-  background: var(--surface-1);
+  background: var(--surface-raised);
   color: var(--text-secondary);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-subtle);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.btn-ghost:hover { background: var(--surface-2); color: var(--text-primary); }
+.btn-ghost:hover { background: var(--surface-active); color: var(--text-primary); }
+.btn-ghost:disabled { opacity: 0.35; cursor: not-allowed; }
 
 /* ── Input ───────────────────────────────────────────────────────── */
 .input {
   width: 100%;
-  padding: 10px 14px;
-  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
   font-size: 14px; font-family: inherit;
-  background: var(--surface-2);
-  border: 1px solid var(--border-default);
+  /* A well, not a card: an input the same colour as the panel it sits in is
+     invisible until you click it. */
+  background: var(--surface-recessed);
+  border: 1px solid var(--border-subtle);
   color: var(--text-primary);
   outline: none;
-  transition: border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s;
 }
-.input::placeholder { color: var(--text-tertiary); }
-.input:focus { border-color: var(--accent-border); }
+.input::placeholder { color: var(--text-disabled); }
+/* Focus is a brighter field and a stronger edge — not a coloured ring. */
+.input:focus,
+.input-neutral:focus { background: var(--surface-2); border-color: var(--border-strong); }
 
-/* Date / time inputs — dark color scheme so the picker popup matches the UI */
+/* Date / time inputs — dark colour scheme so the picker popup matches. */
 .input[type="date"],
-.input[type="time"] {
-  color-scheme: dark;
-}
+.input[type="time"] { color-scheme: dark; }
 .input[type="date"]::-webkit-calendar-picker-indicator,
 .input[type="time"]::-webkit-calendar-picker-indicator {
   filter: invert(0.55);
   cursor: pointer;
 }
-/* Empty date/time — barely visible placeholder, icon remains clickable */
 .input[type="date"][value=""],
-.input[type="time"][value=""] {
-  color: var(--text-disabled);
-}
-
-/* Login input — neutral focus */
-.input-neutral:focus { border-color: var(--neutral-accent-border); }
+.input[type="time"][value=""] { color: var(--text-disabled); }
 
 /* ── Sidebar nav item ────────────────────────────────────────────── */
 .nav-item {
@@ -277,10 +264,10 @@ html, body {
   text-decoration: none;
   border: 1px solid transparent;
 }
-.nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+.nav-item:hover { background: var(--surface-raised); color: var(--text-primary); }
+/* The open tab is brighter, not tinted. */
 .nav-item.active {
-  background: var(--accent-subtle);
-  border-color: var(--accent-border);
+  background: var(--surface-active);
   color: var(--text-primary);
 }
 
@@ -289,17 +276,17 @@ html, body {
 .data-table th {
   text-align: left;
   padding: 10px 16px;
-  font-size: 11px; font-weight: 600;
+  font-size: 11px; font-weight: 500;
   color: var(--text-tertiary);
   text-transform: uppercase; letter-spacing: 0.07em;
   border-bottom: 1px solid var(--border-subtle);
 }
 .data-table td {
-  padding: 12px 16px;
+  padding: 13px 16px;
   font-size: 14px;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-subtle);
 }
 .data-table tr:last-child td { border-bottom: none; }
 .data-table tbody tr { transition: background 0.12s; cursor: pointer; }
-.data-table tbody tr:hover { background: var(--surface-2); }
+.data-table tbody tr:hover { background: var(--surface-active); }

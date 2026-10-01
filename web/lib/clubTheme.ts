@@ -121,13 +121,14 @@ export function accentTokens(clubColor: string) {
   const onSolid =
     contrastRatio([255, 255, 255], solid) >= contrastRatio([0, 0, 0], solid) ? '#FFFFFF' : '#000000';
 
-  const rgb = solid.join(', ');
+  // Three, not six. The tinted `--accent-subtle` / `--accent-border` / `--accent-glow`
+  // are gone with the UI pass (2026-10-01): club colour is drawn in two places —
+  // the hairline down the sidebar and the crest circle — and "selected" is a
+  // brighter surface everywhere else. `--accent` survives for anything that has
+  // to set the colour as readable *text*.
   return {
     '--accent-solid':  clubColor,
     '--accent':        toHex(readable.map(Math.round) as RGB),
     '--accent-on':     onSolid,
-    '--accent-subtle': `rgba(${rgb}, 0.12)`,
-    '--accent-border': `rgba(${rgb}, 0.28)`,
-    '--accent-glow':   `rgba(${rgb}, 0.18)`,
   } as Record<string, string>;
 }

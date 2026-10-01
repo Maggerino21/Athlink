@@ -138,20 +138,30 @@ export default function Sidebar({
 
   return (
     <aside
-      className="glass-strong flex flex-col w-[220px] shrink-0 h-full relative z-20"
-      style={{ borderRight: '1px solid var(--border-default)', borderTop: 'none', borderBottom: 'none', borderLeft: 'none', borderRadius: 0 }}
+      className="flex flex-col w-[220px] shrink-0 h-full relative z-20"
+      style={{
+        background: 'var(--surface-recessed)',
+        borderRight: '1px solid var(--border-subtle)',
+      }}
     >
+      {/* The club's one appearance in the whole dashboard: a hairline down the
+          outer edge, fading out at both ends. Club colour is identity, not
+          information — everything else here is greyscale so the event colours
+          are the only thing that means something. */}
+      <div className="club-edge" />
+
       {/* Club header */}
       <div style={{ padding: '24px 16px 20px', borderBottom: '1px solid var(--border-default)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* The crest stands in for the club, so this one circle keeps the
+              colour — it is identity, the way an avatar is. */}
           <div style={{
             width: 32, height: 32,
             borderRadius: 'var(--radius-sm)',
-            background: 'var(--accent-subtle)',
-            border: '1px solid var(--accent-border)',
+            background: clubColor,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 700,
-            color: clubColor,
+            fontSize: 13, fontWeight: 600,
+            color: 'var(--accent-on)',
             flexShrink: 0,
           }}>
             {clubName[0]?.toUpperCase()}
@@ -175,10 +185,11 @@ export default function Sidebar({
             style={{
               width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
               marginTop: highlight ? 8 : 0,
+              // "New event" is the one thing a coach comes here to do, so it
+              // sits a little brighter than the rest — weight, not colour.
               ...(highlight && activeTab !== tab ? {
-                background:  'var(--accent-subtle)',
-                border:      '1px solid var(--accent-border)',
-                color:       'var(--accent)',
+                background: 'var(--surface-raised)',
+                color:      'var(--text-primary)',
               } : {}),
             }}
           >
@@ -205,10 +216,9 @@ export default function Sidebar({
             <div style={{
               width: 30, height: 30,
               borderRadius: 'var(--radius-full)',
-              background: 'var(--surface-2)',
-              border: '1px solid var(--border-default)',
+              background: 'var(--surface-active)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, fontWeight: 700,
+              fontSize: 11, fontWeight: 500,
               color: 'var(--text-secondary)',
               flexShrink: 0,
             }}>

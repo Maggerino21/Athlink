@@ -138,8 +138,8 @@ export default function FeedbackTab({ staffId, clubId }: { staffId: string; club
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                   padding: '9px 10px', borderRadius: 'var(--radius-md)',
-                  background: selected?.id === a.id ? 'var(--accent-subtle)' : 'transparent',
-                  border: selected?.id === a.id ? '1px solid var(--accent-border)' : '1px solid transparent',
+                  background: selected?.id === a.id ? 'var(--surface-active)' : 'transparent',
+                  border: selected?.id === a.id ? '1px solid var(--border-strong)' : '1px solid transparent',
                   cursor: 'pointer', textAlign: 'left',
                   transition: 'background 0.12s',
                 }}
@@ -455,7 +455,7 @@ function SendFeedbackModal({
                 <input className="input" placeholder="One concrete thing to work on" value={actionPoint} onChange={(e) => setActionPoint(e.target.value)} />
               </div>
               <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border-default)' }}>
-                <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ accentColor: 'var(--accent)', width: 16, height: 16 }} />
+                <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ accentColor: 'var(--text-primary)', width: 16, height: 16 }} />
                 <div>
                   <div className="t-small" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Translate & structure with AI</div>
                   <div className="t-label" style={{ marginTop: 2 }}>Rewrites in athlete's language ({athlete.language.toUpperCase()}) with clear structure</div>
@@ -564,7 +564,7 @@ function MatchSelect({
         style={{
           cursor: 'pointer', textAlign: 'left',
           display: 'flex', alignItems: 'center', gap: 10,
-          borderColor: open ? 'var(--accent-border)' : undefined,
+          borderColor: open ? 'var(--border-strong)' : undefined,
         }}
       >
         {selected ? <MatchRow m={selected} /> : <span style={{ color: 'var(--text-tertiary)' }}>Loading matches…</span>}
@@ -600,8 +600,8 @@ function MatchSelect({
                   width: '100%', display: 'flex', alignItems: 'center', gap: 10,
                   padding: '7px 10px', borderRadius: 'var(--radius-sm)',
                   fontFamily: 'inherit', fontSize: 14, textAlign: 'left', cursor: 'pointer',
-                  background: active ? 'var(--accent-subtle)' : 'transparent',
-                  border: '1px solid ' + (active ? 'var(--accent-border)' : 'transparent'),
+                  background: active ? 'var(--surface-active)' : 'transparent',
+                  border: '1px solid ' + (active ? 'var(--border-strong)' : 'transparent'),
                   color: 'var(--text-primary)',
                   transition: 'background 0.1s',
                 }}

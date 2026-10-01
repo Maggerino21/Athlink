@@ -124,7 +124,6 @@ export default function SignupPage() {
     return (
       <Shell subtitle="Almost there">
         <div className="glass" style={{ borderRadius: 'var(--radius-xl)', padding: '48px 32px', textAlign: 'center' }}>
-          <div style={{ fontSize: 52, marginBottom: 20 }}>✉️</div>
           <h2 className="t-heading" style={{ color: 'var(--text-primary)', marginBottom: 12 }}>Check your email</h2>
           <p className="t-body" style={{ color: 'var(--text-secondary)', maxWidth: 320, margin: '0 auto 32px' }}>
             We sent a confirmation link to <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>.
@@ -761,8 +760,6 @@ function Shell({ children, subtitle }: { children: React.ReactNode; subtitle: st
       overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center',
       paddingBottom: 48,
     }}>
-      <div className="orb-top-neutral" />
-      <div className="orb-bottom-neutral" />
       <div style={{ width: '100%', maxWidth: 520, padding: '0 20px', position: 'relative', zIndex: 1 }}>
         <div style={{ textAlign: 'center', padding: '48px 0 32px' }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>

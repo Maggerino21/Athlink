@@ -34,19 +34,28 @@ type CalEvent = {
 
 type Athlete = { id: string; full_name: string };
 
-/* ── Color map ──────────────────────────────────────────────────────── */
-const COLOR: Record<string, string> = {
-  match:    '#FB923C',
-  training: '#60A5FA',
-  home:     '#A78BFA',
-  rehab:    '#34D399',
-  recovery: '#4ADE80',
-  meeting:  '#F472B6',
-  travel:   '#FBBF24',
-  vacation: '#94A3B8',
-  exercise: '#C084FC',
-  other:    '#9CA3AF',
-};
+/* ── Event colour ───────────────────────────────────────────────────────
+   From the tokens, never a raw hex. This map used to be ten literals here,
+   at full web saturation — and two of them disagreed with the phone about
+   what they meant (`home` was purple here and green there, `rehab` the
+   other way round). One source now, derived from the mobile palette.
+
+   `ink` is the label and the mark; `fill` is an opaque card ground and
+   `border` its edge. Translucent fills are gone: a card that lets the page
+   through has no settled colour. */
+const TYPES = new Set([
+  'match', 'training', 'home', 'rehab', 'recovery',
+  'meeting', 'travel', 'vacation', 'exercise', 'other',
+]);
+
+function eventVars(type: string) {
+  const t = TYPES.has(type) ? type : 'other';
+  return {
+    ink:    `var(--event-${t})`,
+    fill:   `var(--event-${t}-fill)`,
+    border: `var(--event-${t}-border)`,
+  };
+}
 
 const TYPE_LABEL: Record<string, string> = {
   match: 'Match', training: 'Training', home: 'Home training',
@@ -91,10 +100,6 @@ function isoToDateStr(iso: string): string {
   return toDateStr(d);
 }
 
-function hexToRgb(hex: string): string {
-  const c = hex.replace('#', '');
-  return `${parseInt(c.slice(0,2),16)}, ${parseInt(c.slice(2,4),16)}, ${parseInt(c.slice(4,6),16)}`;
-}
 
 function getCalendarGrid(year: number, month: number): { date: Date; current: boolean }[] {
   const first       = new Date(year, month, 1);
@@ -267,12 +272,12 @@ export default function CalendarTab({
             className="btn-ghost"
             style={{
               gap: 8, paddingRight: 10,
-              borderColor: selectedId ? 'var(--accent-border)' : undefined,
-              background:  selectedId ? 'var(--accent-subtle)' : undefined,
-              color:       selectedId ? 'var(--accent)' : undefined,
+              borderColor: selectedId ? 'var(--border-strong)' : undefined,
+              background:  selectedId ? 'var(--surface-active)' : undefined,
+              color:       selectedId ? 'var(--text-primary)' : undefined,
             }}
           >
-            <span style={{ fontSize: 13 }}>{selectedAthlete ? selectedAthlete.full_name : '👥  All athletes'}</span>
+            <span style={{ fontSize: 13 }}>{selectedAthlete ? selectedAthlete.full_name : 'All athletes'}</span>
             <ChevronIcon />
           </button>
           {dropdownOpen && (
@@ -282,7 +287,7 @@ export default function CalendarTab({
               borderRadius: 'var(--radius-md)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
               minWidth: 200, overflow: 'hidden',
             }}>
-              <DropItem label="👥  All athletes" active={!selectedId}
+              <DropItem label="All athletes" active={!selectedId}
                 onClick={() => { setSelectedId(null); setDropdownOpen(false); }} />
               <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />
               {athletes.map(a => (
@@ -327,7 +332,7 @@ export default function CalendarTab({
                   minHeight: 96, borderRadius: 'var(--radius-sm)',
                   padding: '6px 6px 4px', cursor: 'pointer',
                   background: isActive
-                    ? 'var(--accent-subtle)'
+                    ? 'var(--surface-active)'
                     : isToday
                     ? 'rgba(255,255,255,0.04)'
                     : isWeekend && current
@@ -336,9 +341,9 @@ export default function CalendarTab({
                     ? 'rgba(255,255,255,0.015)'
                     : 'transparent',
                   border: isActive
-                    ? '1px solid var(--accent-border)'
+                    ? '1px solid var(--border-strong)'
                     : isToday
-                    ? '1px solid var(--accent-border)'
+                    ? '1px solid var(--border-strong)'
                     : '1px solid var(--border-subtle)',
                   opacity: current ? 1 : 0.38,
                   transition: 'background 0.12s, border-color 0.12s',
@@ -347,7 +352,7 @@ export default function CalendarTab({
                 {/* Date number */}
                 <div style={{
                   fontSize: 12, fontWeight: isToday || isActive ? 700 : 500,
-                  color: isToday || isActive ? 'var(--accent)' : 'var(--text-secondary)',
+                  color: isToday || isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
                   marginBottom: 4, textAlign: 'right', lineHeight: 1,
                 }}>
                   {date.getDate()}
@@ -372,7 +377,7 @@ export default function CalendarTab({
         }}>
           {LEGEND.map(({ key, label }) => (
             <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: COLOR[key], flexShrink: 0 }} />
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: eventVars(key).ink, flexShrink: 0 }} />
               <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{label}</span>
             </div>
           ))}
@@ -477,9 +482,9 @@ export default function CalendarTab({
                   fontFamily: 'inherit', cursor: 'pointer',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
                   borderRadius: 'var(--radius-md)',
-                  background: 'var(--accent-subtle)',
-                  border: '1px solid var(--accent-border)',
-                  color: 'var(--accent)',
+                  background: 'var(--surface-active)',
+                  border: '1px solid var(--border-strong)',
+                  color: 'var(--text-primary)',
                   transition: 'opacity 0.15s',
                 }}
                 onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
@@ -547,32 +552,31 @@ export default function CalendarTab({
 
 /* ── Detail card — full event info ──────────────────────────────────── */
 function DetailCard({ event, onEdit, onDelete }: { event: any; onEdit?: () => void; onDelete?: () => void }) {
-  const color = COLOR[event.type] ?? COLOR.other;
-  const rgb   = hexToRgb(color);
+  const { ink, fill, border } = eventVars(event.type);
   const meetTime = event.meetTime
     ? new Date(event.meetTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
     : null;
   return (
     <div style={{
       borderRadius: 'var(--radius-md)',
-      background:   `rgba(${rgb}, 0.07)`,
-      border:       `1px solid rgba(${rgb}, 0.22)`,
+      background:   fill,
+      border:       `1px solid ${border}`,
       overflow:     'hidden',
     }}>
       {/* Colour bar */}
-      <div style={{ height: 3, background: color }} />
+      <div style={{ height: 3, background: ink }} />
       <div style={{ padding: '14px 16px' }}>
         {/* Type + time */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
           <span style={{
-            fontSize: 10, fontWeight: 700, letterSpacing: '0.07em',
-            textTransform: 'uppercase', color,
+            fontSize: 10, fontWeight: 500, letterSpacing: '0.07em',
+            textTransform: 'uppercase', color: ink,
           }}>
             {TYPE_LABEL[event.type] ?? event.type}
           </span>
           {event.time && event.time !== '00:00' && (
             <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>
-              🕐 {event.time}
+              {event.time}
             </span>
           )}
           {event.spanTotal && (
@@ -596,7 +600,7 @@ function DetailCard({ event, onEdit, onDelete }: { event: any; onEdit?: () => vo
         {/* Location */}
         {event.location && (
           <div className="t-small" style={{ color: 'var(--text-secondary)', marginBottom: event.description ? 6 : 0 }}>
-            📍 {event.location}
+            {event.location}
           </div>
         )}
         {/* Description */}
@@ -610,7 +614,7 @@ function DetailCard({ event, onEdit, onDelete }: { event: any; onEdit?: () => vo
         {(meetTime || event.meetLocation || event.notes) && (
           <div style={{
             marginTop: 10, paddingTop: 10,
-            borderTop: `1px solid rgba(${rgb}, 0.20)`,
+            borderTop: `1px solid ${border}`,
             display: 'flex', flexDirection: 'column', gap: 4,
           }}>
             {(meetTime || event.meetLocation) && (
@@ -758,13 +762,12 @@ function MatchDayEditor({ match, onClose, onSaved }: {
 
 /* ── Small components ───────────────────────────────────────────────── */
 function EventPill({ event }: { event: CalEvent }) {
-  const color = COLOR[event.type] ?? COLOR.other;
-  const rgb   = hexToRgb(color);
+  const { ink, fill } = eventVars(event.type);
   return (
     <div style={{
-      background: `rgba(${rgb}, 0.15)`, borderLeft: `2px solid ${color}`,
+      background: fill, borderLeft: `2px solid ${ink}`,
       borderRadius: '0 3px 3px 0', padding: '2px 5px',
-      fontSize: 10, fontWeight: 600, color,
+      fontSize: 10, fontWeight: 500, color: 'var(--text-primary)',
       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4,
     }}>
       {event.time && event.time !== '00:00' ? `${event.time} ` : ''}{event.title}

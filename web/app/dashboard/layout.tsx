@@ -17,8 +17,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // id lets the client rewrite these accent vars in place when the club colour
     // changes, instead of reloading (a reload would reset the active dashboard tab).
     <div id="dashboard-root" className="flex h-full" style={accentVars}>
-      <div className="orb-top" />
-      <div className="orb-bottom" />
       {profile.role === 'staff'
         ? children
         : <NotStaffNotice fullName={profile.full_name} />}

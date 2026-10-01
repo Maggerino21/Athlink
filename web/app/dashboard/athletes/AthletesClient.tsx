@@ -81,7 +81,7 @@ export default function AthletesClient({
                 <tr
                   key={a.id}
                   onClick={() => setSelected(selected?.id === a.id ? null : a)}
-                  style={{ background: selected?.id === a.id ? 'var(--accent-subtle)' : undefined }}
+                  style={{ background: selected?.id === a.id ? 'var(--surface-active)' : undefined }}
                 >
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -224,7 +224,7 @@ function AthleteDetailPanel({
                   borderRadius: 'var(--radius-sm)',
                   fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
                   cursor: 'pointer', border: 'none',
-                  background: tab === t ? 'var(--accent-subtle)' : 'var(--surface-1)',
+                  background: tab === t ? 'var(--surface-active)' : 'var(--surface-1)',
                   color: tab === t ? 'var(--text-primary)' : 'var(--text-secondary)',
                   transition: 'background 0.15s, color 0.15s',
                 }}
@@ -394,7 +394,7 @@ function SendFeedbackModal({
             </div>
             {/* AI toggle */}
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border-default)' }}>
-              <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ accentColor: 'var(--accent)', width: 16, height: 16 }} />
+              <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ accentColor: 'var(--text-primary)', width: 16, height: 16 }} />
               <div>
                 <div className="t-small" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Translate & structure with AI</div>
                 <div className="t-label" style={{ marginTop: 2 }}>Rewrites in athlete's language ({athlete.language.toUpperCase()}) with clear structure</div>
@@ -702,11 +702,11 @@ export function AvatarCircle({ name, size = 32 }: { name: string; size?: number 
       style={{
         width: size, height: size,
         borderRadius: 'var(--radius-full)', flexShrink: 0,
-        background: 'var(--accent-subtle)',
-        border: '1px solid var(--accent-border)',
+        background: 'var(--surface-active)',
+        border: '1px solid var(--border-strong)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: size * 0.38, fontWeight: 700,
-        color: 'var(--accent)',
+        color: 'var(--text-primary)',
       }}
     >
       {initials}

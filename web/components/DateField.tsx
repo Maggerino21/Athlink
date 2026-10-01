@@ -124,7 +124,7 @@ export default function DateField({
           padding: compact ? '5px 8px' : undefined,
           fontSize: compact ? 12 : undefined,
           color: selected ? 'var(--text-primary)' : 'var(--text-tertiary)',
-          borderColor: open ? 'var(--accent-border)' : undefined,
+          borderColor: open ? 'var(--border-strong)' : undefined,
         }}
       >
         <CalendarGlyph />
@@ -179,11 +179,11 @@ export default function DateField({
                     fontFamily: 'inherit', fontSize: 12,
                     fontWeight: isSel ? 700 : 500,
                     cursor: off ? 'not-allowed' : 'pointer',
-                    background: isSel ? 'var(--accent-solid)' : 'transparent',
-                    color: isSel ? 'var(--accent-on)'
+                    background: isSel ? 'var(--fill-strong)' : 'transparent',
+                    color: isSel ? 'var(--bg-base)'
                          : off ? 'var(--text-disabled)'
                          : current ? 'var(--text-primary)' : 'var(--text-tertiary)',
-                    outline: !isSel && isToday ? '1px solid var(--accent-border)' : 'none',
+                    outline: !isSel && isToday ? '1px solid var(--border-strong)' : 'none',
                     outlineOffset: -1,
                     opacity: off ? 0.4 : 1,
                   }}

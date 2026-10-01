@@ -88,7 +88,7 @@ export default function GroupsTab({ clubId }: { clubId: string }) {
         </div>
         <button
           className="btn-ghost"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--accent-subtle)', borderColor: 'var(--accent-border)', color: 'var(--accent)' }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--surface-active)', borderColor: 'var(--border-strong)', color: 'var(--text-primary)' }}
           onClick={() => { setActiveGroup(null); setShowCreate(true); }}
         >
           <Plus size={13} strokeWidth={2.5} />
@@ -245,7 +245,7 @@ function EmptyState({ onNew }: { onNew: () => void }) {
       <div className="t-body" style={{ color: 'var(--text-secondary)', maxWidth: 320 }}>
         Groups let you organise athletes — defenders, attackers, rehab list — and assign tasks to the whole group at once.
       </div>
-      <button onClick={onNew} className="btn-ghost" style={{ marginTop: 8, background: 'var(--accent-subtle)', borderColor: 'var(--accent-border)', color: 'var(--accent)' }}>
+      <button onClick={onNew} className="btn-ghost" style={{ marginTop: 8, background: 'var(--surface-active)', borderColor: 'var(--border-strong)', color: 'var(--text-primary)' }}>
         Create first group
       </button>
     </div>
@@ -652,12 +652,12 @@ function AthleteRow({ athlete, checked, onToggle }: { athlete: Athlete; checked:
     >
       <div style={{
         width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-        border: checked ? '2px solid var(--accent)' : '2px solid var(--border-strong)',
-        background: checked ? 'var(--accent-subtle)' : 'transparent',
+        border: checked ? '2px solid var(--text-primary)' : '2px solid var(--border-strong)',
+        background: checked ? 'var(--surface-active)' : 'transparent',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {checked && (
-          <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="var(--accent)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+          <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="var(--text-primary)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
             <polyline points="2 6 5 9 10 3"/>
           </svg>
         )}
