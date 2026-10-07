@@ -139,7 +139,7 @@ export default function DateField({
           ref={popRef}
           style={{
             position: 'fixed', top: pos.top, left: pos.left, width: 268, zIndex: 400,
-            background: 'var(--bg-base)',
+            background: 'var(--surface-raised)',
             border: '1px solid var(--border-default)',
             borderRadius: 'var(--radius-lg)',
             boxShadow: '0 18px 50px rgba(0,0,0,0.55)',
@@ -187,7 +187,7 @@ export default function DateField({
                     outlineOffset: -1,
                     opacity: off ? 0.4 : 1,
                   }}
-                  onMouseEnter={e => { if (!isSel && !off) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                  onMouseEnter={e => { if (!isSel && !off) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                   onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent'; }}
                 >
                   {date.getDate()}

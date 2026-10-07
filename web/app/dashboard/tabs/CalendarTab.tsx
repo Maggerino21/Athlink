@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { CalendarDays } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { matteAccent } from '@/lib/clubTheme';
 import OpponentCrest from '@/components/OpponentCrest';
 import DateField from '@/components/DateField';
 
@@ -21,6 +22,8 @@ type CalEvent = {
   notes?: string | null;
   opponentLogo?: string | null;
   opponentName?: string | null;
+  /** The opposing club's colour, when the club has recorded one. */
+  opponentColor?: string | null;
   /** Set on multi-day events so a pill can read "Day 3 of 10". */
   spanDay?: number;
   spanTotal?: number;
@@ -55,6 +58,23 @@ function eventVars(type: string) {
     fill:   `var(--event-${t}-fill)`,
     border: `var(--event-${t}-border)`,
   };
+}
+
+/**
+ * What colour a calendar item is drawn in.
+ *
+ * A match takes **the opposing side's colour** where the club has one — a
+ * fixture against Lillestrøm is yellow, against Tromsø red — because that is
+ * how a squad actually thinks about its season. Everything else takes its
+ * event type, and a match with no stored colour falls back to the match clay,
+ * so nothing is lost when the field is empty.
+ */
+function itemVars(ev: { type: string; opponentColor?: string | null }) {
+  if (ev.type === 'match' && ev.opponentColor) {
+    const m = matteAccent(ev.opponentColor);
+    return { ink: m.ink, fill: m.fill, border: m.ink };
+  }
+  return eventVars(ev.type);
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -98,6 +118,18 @@ function toDateStr(d: Date): string {
 function isoToDateStr(iso: string): string {
   const d = new Date(iso);
   return toDateStr(d);
+}
+
+/**
+ * The wall clock in the viewer's zone.
+ *
+ * **Never slice a timestamptz.** `iso.slice(11, 16)` reads the UTC portion
+ * straight off the wire, so a 09:30 session at Aspmyra was drawn as 07:30 and
+ * the web calendar disagreed with the phone by two hours about the same event.
+ * The mobile app hit this exact bug and it is written up in CLAUDE.md.
+ */
+function localTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 
@@ -147,7 +179,7 @@ export default function CalendarTab({
 
   useEffect(() => {
     supabase.from('profiles').select('id, full_name')
-      .eq('club_id', clubId).eq('role', 'athlete').order('full_name')
+      .eq('club_id', clubId).eq('role', 'athlete').is('removed_at', null).order('full_name')
       .then(({ data }) => setAthletes((data ?? []) as Athlete[]));
   }, [clubId]);
 
@@ -160,7 +192,7 @@ export default function CalendarTab({
       const [evRes, matchRes, hiddenRes] = await Promise.all([
         supabase.from('events').select('id, type, title, event_date, end_date, location, description')
           .eq('club_id', clubId).gte('event_date', rangeStart).lte('event_date', rangeEnd),
-        supabase.from('matches').select('id, opponent, match_date, is_home, location, meet_time, meet_location, notes, opponent_logo_url, source')
+        supabase.from('matches').select('id, opponent, match_date, is_home, location, meet_time, meet_location, notes, opponent_logo_url, opponent_color, source')
           .eq('club_id', clubId).is('suppressed_at', null)
           .gte('match_date', rangeStart).lte('match_date', rangeEnd),
         // Removed fixtures are kept so the sync cannot resurrect them; surface them so
@@ -171,10 +203,26 @@ export default function CalendarTab({
       ]);
       if (cancelled) return;
 
+      // The athlete filter. An event with no assignment rows is for the whole
+      // squad, so it shows for everyone; one with rows shows only for those
+      // athletes. (This filter used to reload and change nothing.)
+      let evRows = evRes.data ?? [];
+      if (selectedId && evRows.length) {
+        const { data: asg } = await supabase.from('event_assignments')
+          .select('event_id, athlete_id').in('event_id', evRows.map((e: any) => e.id));
+        if (cancelled) return;
+        const assigned = new Map<string, Set<string>>();
+        for (const a of asg ?? []) {
+          if (!assigned.has(a.event_id)) assigned.set(a.event_id, new Set());
+          assigned.get(a.event_id)!.add(a.athlete_id);
+        }
+        evRows = evRows.filter((e: any) => !assigned.has(e.id) || assigned.get(e.id)!.has(selectedId));
+      }
+
       // Multi-day events (vacations, rehab blocks, home programmes with an end date) must
       // appear on every day they cover, not just the first. Previously end_date was not
       // even fetched, so a two-week break showed as a single pill.
-      const evs: CalEvent[] = (evRes.data ?? []).flatMap((e: any) => {
+      const evs: CalEvent[] = evRows.flatMap((e: any) => {
         const start = isoToDateStr(e.event_date);
         const end   = e.end_date ? isoToDateStr(e.end_date) : start;
 
@@ -193,12 +241,12 @@ export default function CalendarTab({
           rowId: e.id,
           startDate: start,
           endDate: end,
-          startTime: e.event_date.slice(11, 16),
+          startTime: localTime(e.event_date),
           type: e.type,
           title: e.title,
           date: d,
           // Only the opening day carries a time; later days would imply it restarts.
-          time: i === 0 ? e.event_date.slice(11, 16) : undefined,
+          time: i === 0 ? localTime(e.event_date) : undefined,
           location: e.location,
           description: e.description,
           spanDay: days.length > 1 ? i + 1 : undefined,
@@ -209,13 +257,14 @@ export default function CalendarTab({
         id: m.id, type: 'match',
         title: (m.is_home ? 'vs ' : '@ ') + m.opponent,
         date: isoToDateStr(m.match_date),
-        time: m.match_date.slice(11, 16),
+        time: localTime(m.match_date),
         location: m.location,
         meetTime: m.meet_time,
         meetLocation: m.meet_location,
         notes: m.notes,
         opponentLogo: m.opponent_logo_url,
         opponentName: m.opponent,
+        opponentColor: m.opponent_color,
         rowId: m.id,
         source: m.source,
       }));
@@ -241,80 +290,82 @@ export default function CalendarTab({
   const activeDateEvents = activeDate ? events.filter(e => e.date === activeDate) : [];
   const activeD          = activeDate ? new Date(activeDate + 'T12:00:00') : null;
 
+  const plannedOnActive = activeDateEvents.length;
+
   // overflow:clip — same reason as GroupsTab: the off-screen day panel must not create a
   // scrollable overflow area that focus can drag into view.
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'clip', position: 'relative' }}>
+    <div style={{ height: '100%', overflow: 'clip', position: 'relative' }}>
+    <div className="page" style={{ height: '100%', overflowY: 'auto' }} onClick={() => setDropdownOpen(false)}>
 
-      {/* ── Header ─────────────────────────────────────────────────── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '20px 28px 16px',
-        borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+      {/* ── Header — Home's: a title set light, the context beside it, actions right ── */}
+      <header style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+        {/* Fixed width so the arrows do not jump as the month name changes length. */}
+        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 400, letterSpacing: '-0.02em', color: 'var(--text-primary)', width: 210, whiteSpace: 'nowrap' }}>
+          {MONTH_NAMES[month]}
+          <span className="t-small" style={{ color: 'var(--text-tertiary)', marginLeft: 12, letterSpacing: 0 }}>{year}</span>
+        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <NavBtn onClick={prevMonth} dir="left" />
-          <div style={{ minWidth: 180, textAlign: 'center' }}>
-            <span className="t-subheading" style={{ color: 'var(--text-primary)' }}>
-              {MONTH_NAMES[month]} {year}
-            </span>
-          </div>
           <NavBtn onClick={nextMonth} dir="right" />
-          <button onClick={goToday} className="btn-ghost" style={{ padding: '5px 12px', fontSize: 12, marginLeft: 4 }}>
+          <button onClick={goToday} className="btn-outline" style={{ height: 40, padding: '0 16px', fontSize: 13 }}>
             Today
           </button>
         </div>
 
-        {/* Athlete selector */}
-        <div style={{ position: 'relative' }}>
-          <button
-            onClick={() => setDropdownOpen(o => !o)}
-            className="btn-ghost"
-            style={{
-              gap: 8, paddingRight: 10,
-              borderColor: selectedId ? 'var(--border-strong)' : undefined,
-              background:  selectedId ? 'var(--surface-active)' : undefined,
-              color:       selectedId ? 'var(--text-primary)' : undefined,
-            }}
-          >
-            <span style={{ fontSize: 13 }}>{selectedAthlete ? selectedAthlete.full_name : 'All athletes'}</span>
-            <ChevronIcon />
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Athlete filter */}
+          <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setDropdownOpen(o => !o)}
+              className="btn-outline"
+              style={{
+                height: 44, gap: 10, paddingRight: 14, fontSize: 13.5,
+                background:  selectedId ? 'var(--surface-active)' : undefined,
+                borderColor: selectedId ? 'transparent' : undefined,
+              }}
+            >
+              {selectedAthlete ? selectedAthlete.full_name : 'Whole squad'}
+              <ChevronIcon />
+            </button>
+            {dropdownOpen && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 8px)', right: 0, zIndex: 50,
+                background: 'var(--surface-active)', borderRadius: 'var(--radius-md)',
+                boxShadow: '0 12px 40px rgba(0,0,0,0.45)',
+                minWidth: 220, maxHeight: 380, overflowY: 'auto', padding: 6,
+              }}>
+                <DropItem label="Whole squad" active={!selectedId}
+                  onClick={() => { setSelectedId(null); setDropdownOpen(false); }} />
+                <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 6px' }} />
+                {athletes.map(a => (
+                  <DropItem key={a.id} label={a.full_name} active={selectedId === a.id}
+                    onClick={() => { setSelectedId(a.id); setDropdownOpen(false); }} />
+                ))}
+              </div>
+            )}
+          </div>
+          <button className="btn-accent" onClick={() => onAddEvent?.(activeDate ?? todayStr)}>
+            <PlusIcon /> New event
           </button>
-          {dropdownOpen && (
-            <div style={{
-              position: 'absolute', top: '110%', right: 0, zIndex: 50,
-              background: 'var(--surface-3)', border: '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-md)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-              minWidth: 200, overflow: 'hidden',
-            }}>
-              <DropItem label="All athletes" active={!selectedId}
-                onClick={() => { setSelectedId(null); setDropdownOpen(false); }} />
-              <div style={{ height: 1, background: 'var(--border-subtle)', margin: '4px 0' }} />
-              {athletes.map(a => (
-                <DropItem key={a.id} label={a.full_name} active={selectedId === a.id}
-                  onClick={() => { setSelectedId(a.id); setDropdownOpen(false); }} />
-              ))}
-            </div>
-          )}
         </div>
-      </div>
+      </header>
 
-      {/* ── Calendar grid ───────────────────────────────────────────── */}
-      <div
-        style={{ flex: 1, overflow: 'auto', padding: '0 12px 12px' }}
-        onClick={() => setDropdownOpen(false)}
-      >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, marginBottom: 2, paddingTop: 12 }}>
+      {/* ── The month — one card, ruled into days ──────────────────────
+          A single surface with structural lines rather than 42 outlined boxes:
+          the grid is one object, and the days are divisions of it. */}
+      <section className="card" style={{ flex: 1, padding: 0, minHeight: 640 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', padding: '18px 0 10px' }}>
           {DAY_LABELS.map(d => (
-            <div key={d} style={{
-              textAlign: 'center', padding: '4px 0',
-              fontSize: 11, fontWeight: 600, letterSpacing: '0.07em',
-              color: 'var(--text-tertiary)', textTransform: 'uppercase',
-            }}>{d}</div>
+            <div key={d} style={{ padding: '0 16px', fontSize: 12, color: 'var(--text-tertiary)' }}>{d}</div>
           ))}
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3 }}>
+        <div style={{
+          flex: 1, display: 'grid',
+          gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+          gridTemplateRows: 'repeat(6, minmax(96px, 1fr))',
+        }}>
           {grid.map(({ date, current }, i) => {
             const ds        = toDateStr(date);
             const isToday   = ds === todayStr;
@@ -322,149 +373,125 @@ export default function CalendarTab({
             const dayEvents = events.filter(e => e.date === ds);
             const shown     = dayEvents.slice(0, 3);
             const overflow  = dayEvents.length - shown.length;
-            const isWeekend = date.getDay() === 0 || date.getDay() === 6;
 
             return (
-              <div
+              <button
                 key={i}
+                className="cal-cell"
                 onClick={() => setActiveDate(ds === activeDate ? null : ds)}
                 style={{
-                  minHeight: 96, borderRadius: 'var(--radius-sm)',
-                  padding: '6px 6px 4px', cursor: 'pointer',
-                  background: isActive
-                    ? 'var(--surface-active)'
-                    : isToday
-                    ? 'rgba(255,255,255,0.04)'
-                    : isWeekend && current
-                    ? 'rgba(255,255,255,0.02)'
-                    : current
-                    ? 'rgba(255,255,255,0.015)'
-                    : 'transparent',
-                  border: isActive
-                    ? '1px solid var(--border-strong)'
-                    : isToday
-                    ? '1px solid var(--border-strong)'
-                    : '1px solid var(--border-subtle)',
-                  opacity: current ? 1 : 0.38,
-                  transition: 'background 0.12s, border-color 0.12s',
+                  borderTop:  '1px solid var(--border-subtle)',
+                  borderLeft: i % 7 ? '1px solid var(--border-subtle)' : 'none',
+                  background: isActive ? 'var(--surface-active)' : undefined,
                 }}
               >
-                {/* Date number */}
-                <div style={{
-                  fontSize: 12, fontWeight: isToday || isActive ? 700 : 500,
-                  color: isToday || isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  marginBottom: 4, textAlign: 'right', lineHeight: 1,
+                {/* Today is the one club-coloured mark on the page — the same
+                    "today" Home's week chart draws. */}
+                <span style={{
+                  width: 28, height: 28, marginLeft: -6, marginTop: -4,
+                  borderRadius: 'var(--radius-full)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13, fontWeight: isToday ? 600 : 500, fontVariantNumeric: 'tabular-nums',
+                  background: isToday ? 'var(--accent-solid)' : 'transparent',
+                  color: isToday ? 'var(--accent-on)'
+                    : current ? (isActive ? 'var(--text-primary)' : 'var(--text-secondary)')
+                    : 'var(--text-disabled)',
                 }}>
                   {date.getDate()}
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  {shown.map(ev => <EventPill key={ev.id} event={ev} />)}
+                </span>
+                <span style={{
+                  display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6, minWidth: 0,
+                  opacity: current ? 1 : 0.4,
+                }}>
+                  {shown.map(ev => <EventLine key={ev.id} event={ev} />)}
                   {overflow > 0 && (
-                    <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', paddingLeft: 4, marginTop: 1 }}>
-                      +{overflow} more
-                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-tertiary)', paddingLeft: 14 }}>
+                      {overflow} more
+                    </span>
                   )}
-                </div>
-              </div>
+                </span>
+              </button>
             );
           })}
         </div>
+      </section>
 
-        {/* Legend */}
-        <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: '8px 20px',
-          padding: '14px 4px 4px', borderTop: '1px solid var(--border-subtle)', marginTop: 12,
-        }}>
-          {LEGEND.map(({ key, label }) => (
-            <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <div style={{ width: 8, height: 8, borderRadius: 2, background: eventVars(key).ink, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{label}</span>
-            </div>
-          ))}
-        </div>
+      {/* Legend — on the canvas, under the card, at a whisper */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 20px', marginTop: -12, padding: '0 4px' }}>
+        {LEGEND.map(({ key, label }) => (
+          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <i style={{ width: 8, height: 8, borderRadius: 2, background: eventVars(key).ink, flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>{label}</span>
+          </div>
+        ))}
       </div>
+    </div>
 
-      {/* ── Date card panel ─────────────────────────────────────────── */}
-      {/* Backdrop */}
+      {/* ── The day — Home's light card, slid in ─────────────────────── */}
       {activeDate && (
         <div
           onClick={() => setActiveDate(null)}
-          style={{
-            position: 'absolute', inset: 0, zIndex: 20,
-            background: 'rgba(0,0,0,0.75)',
-            backdropFilter: 'blur(2px)',
-          }}
+          style={{ position: 'absolute', inset: 0, zIndex: 20, background: 'rgba(0,0,0,0.45)' }}
         />
       )}
 
-      {/* Panel */}
-      <div style={{
-        position:   'absolute', top: 0, right: 0, bottom: 0,
-        width:      400,
+      <aside style={{
+        position:   'absolute', top: 16, right: 16, bottom: 16,
+        width:      'min(420px, calc(100% - 32px))',
         zIndex:     30,
         display:    'flex', flexDirection: 'column',
-        background: 'var(--surface-3)',
-        borderLeft: '1px solid var(--border-default)',
-        boxShadow:  '-12px 0 48px rgba(0,0,0,0.35)',
-        transform:  activeDate ? 'translateX(0)' : 'translateX(100%)',
-        transition: 'transform 0.26s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+        background: 'var(--surface-light)',
+        color:      'var(--ink)',
+        borderRadius: 'var(--radius-card)',
+        boxShadow:  '0 24px 80px rgba(0,0,0,0.5)',
+        transform:  activeDate ? 'translateX(0)' : 'translateX(calc(100% + 24px))',
+        transition: 'transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)',
+        overflow:   'hidden',
       }}>
         {activeD && (
           <>
-            {/* Panel header */}
-            <div style={{
-              padding: '24px 24px 20px',
-              borderBottom: '1px solid var(--border-subtle)',
-              flexShrink: 0,
-            }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                <div>
-                  <div className="t-label" style={{ marginBottom: 6 }}>
-                    {DAY_FULL[(activeD.getDay() + 6) % 7]}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                    <span style={{ fontSize: 48, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1, letterSpacing: '-0.03em' }}>
-                      {activeD.getDate()}
-                    </span>
-                    <span className="t-subheading" style={{ color: 'var(--text-secondary)' }}>
-                      {MONTH_NAMES[activeD.getMonth()]} {activeD.getFullYear()}
-                    </span>
-                  </div>
-                </div>
+            <div style={{ padding: '26px 28px 18px', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 16, fontWeight: 600, letterSpacing: '-0.01em' }}>
+                  {DAY_FULL[(activeD.getDay() + 6) % 7]}
+                </span>
                 <button
                   onClick={() => setActiveDate(null)}
-                  className="btn-ghost"
-                  style={{ width: 32, height: 32, padding: 0, flexShrink: 0 }}
+                  title="Close"
+                  style={{
+                    width: 38, height: 38, borderRadius: 'var(--radius-full)', border: 'none', cursor: 'pointer',
+                    background: 'var(--ink)', color: 'var(--surface-light)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
                 >
                   <CloseIcon />
                 </button>
               </div>
-
-              {/* Event count badge */}
-              <div style={{ marginTop: 12 }}>
-                {activeDateEvents.length === 0 ? (
-                  <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>No events scheduled</span>
-                ) : (
-                  <span className="badge">{activeDateEvents.length} {activeDateEvents.length === 1 ? 'event' : 'events'}</span>
-                )}
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginTop: 18 }}>
+                <span style={{ fontSize: 72, fontWeight: 200, letterSpacing: '-0.045em', lineHeight: 0.85, fontVariantNumeric: 'tabular-nums' }}>
+                  {activeD.getDate()}
+                </span>
+                <span style={{ fontSize: 15, color: 'var(--ink-secondary)' }}>
+                  {MONTH_NAMES[activeD.getMonth()]} {activeD.getFullYear()}
+                </span>
+              </div>
+              <div style={{ fontSize: 13, color: 'var(--ink-secondary)', marginTop: 14 }}>
+                {plannedOnActive === 0 ? 'Nothing planned' : `${plannedOnActive} planned`}
               </div>
             </div>
 
-            {/* Event list */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {activeDateEvents.length === 0 ? (
+            <div style={{ flex: 1, overflowY: 'auto', padding: '0 28px' }}>
+              {plannedOnActive === 0 ? (
                 <div style={{
-                  flex: 1, display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', justifyContent: 'center', gap: 8,
-                  color: 'var(--text-tertiary)', textAlign: 'center', paddingBottom: 48,
+                  borderTop: '1px solid var(--ink-line)', padding: '28px 0',
+                  display: 'flex', alignItems: 'center', gap: 12, color: 'var(--ink-secondary)', fontSize: 13.5,
                 }}>
-                  <CalendarDays size={36} strokeWidth={1.25} style={{ opacity: 0.4 }} />
-                  <div className="t-small">Nothing planned for this day.</div>
-                  <div className="t-small" style={{ opacity: 0.6 }}>Use the button below to add something.</div>
+                  <CalendarDays size={20} strokeWidth={1.5} />
+                  A free day, so far.
                 </div>
               ) : (
                 activeDateEvents.map(ev => (
-                  <DetailCard
+                  <DayRow
                     key={ev.id}
                     event={ev}
                     onEdit={ev.type === 'match' ? () => setEditMatch(ev) : () => setEditEvent(ev)}
@@ -474,31 +501,15 @@ export default function CalendarTab({
               )}
             </div>
 
-            {/* Add event button */}
-            <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+            <div style={{ padding: '16px 28px 24px', flexShrink: 0 }}>
               <button
-                style={{
-                  width: '100%', padding: '11px 18px', fontSize: 14, fontWeight: 600,
-                  fontFamily: 'inherit', cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-                  borderRadius: 'var(--radius-md)',
-                  background: 'var(--surface-active)',
-                  border: '1px solid var(--border-strong)',
-                  color: 'var(--text-primary)',
-                  transition: 'opacity 0.15s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.opacity = '0.75')}
-                onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+                className="btn-ink"
                 onClick={() => {
                   onAddEvent?.(activeDate!);
                   setActiveDate(null);
                 }}
               >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                Add event on this day
+                <PlusIcon /> Add on this day
               </button>
 
               <HiddenOnDay
@@ -506,14 +517,10 @@ export default function CalendarTab({
                 onRestored={() => setRefreshKey(k => k + 1)}
               />
 
-              {activeDateEvents.length > 0 && (
+              {plannedOnActive > 1 && (
                 <button
                   onClick={() => setPendingDelete(activeDateEvents)}
-                  className="btn-ghost"
-                  style={{
-                    width: '100%', marginTop: 8, justifyContent: 'center',
-                    color: 'var(--color-danger)', borderColor: 'var(--color-danger-border)',
-                  }}
+                  style={{ ...INK_BTN, display: 'block', margin: '14px auto 0', color: 'var(--ink-danger)' }}
                 >
                   Clear this day
                 </button>
@@ -521,7 +528,7 @@ export default function CalendarTab({
             </div>
           </>
         )}
-      </div>
+      </aside>
 
       {editEvent && (
         <EventEditor
@@ -550,105 +557,78 @@ export default function CalendarTab({
   );
 }
 
-/* ── Detail card — full event info ──────────────────────────────────── */
-function DetailCard({ event, onEdit, onDelete }: { event: any; onEdit?: () => void; onDelete?: () => void }) {
-  const { ink, fill, border } = eventVars(event.type);
-  const meetTime = event.meetTime
-    ? new Date(event.meetTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-    : null;
+/** A text button on the light day panel. */
+const INK_BTN: React.CSSProperties = {
+  background: 'none', border: 'none', padding: '4px 0',
+  fontFamily: 'inherit', fontSize: 12.5, fontWeight: 500,
+  color: 'var(--ink)', cursor: 'pointer',
+};
+
+/* ── One thing on the opened day ────────────────────────────────────────
+ * A row, not a card: time in its own column, the type as a small square and
+ * a label — the way Home's day card lists a day. Event cards used to be
+ * filled with the type colour, a stack of blue, olive and maroon slabs; the
+ * type is information, so it gets a mark, never a ground. */
+function DayRow({ event, onEdit, onDelete }: { event: CalEvent; onEdit?: () => void; onDelete?: () => void }) {
+  const { ink } = itemVars(event);
+  const meetTime = event.meetTime ? localTime(event.meetTime) : null;
+  const hasTime = event.time && event.time !== '00:00';
+
   return (
     <div style={{
-      borderRadius: 'var(--radius-md)',
-      background:   fill,
-      border:       `1px solid ${border}`,
-      overflow:     'hidden',
+      display: 'grid', gridTemplateColumns: '52px 1fr', gap: 10,
+      padding: '16px 0', borderTop: '1px solid var(--ink-line)',
     }}>
-      {/* Colour bar */}
-      <div style={{ height: 3, background: ink }} />
-      <div style={{ padding: '14px 16px' }}>
-        {/* Type + time */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{
-            fontSize: 10, fontWeight: 500, letterSpacing: '0.07em',
-            textTransform: 'uppercase', color: ink,
-          }}>
-            {TYPE_LABEL[event.type] ?? event.type}
-          </span>
-          {event.time && event.time !== '00:00' && (
-            <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>
-              {event.time}
-            </span>
-          )}
-          {event.spanTotal && (
-            <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>
-              Day {event.spanDay} of {event.spanTotal}
-            </span>
-          )}
+      <span style={{ fontSize: 13.5, color: 'var(--ink-secondary)', fontVariantNumeric: 'tabular-nums', paddingTop: 1 }}>
+        {hasTime ? event.time : event.spanTotal ? 'All day' : ''}
+      </span>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5, color: 'var(--ink-secondary)' }}>
+          <i style={{ width: 8, height: 8, borderRadius: 2, background: ink, flexShrink: 0 }} />
+          {TYPE_LABEL[event.type] ?? event.type}
+          {event.spanTotal && <span>· Day {event.spanDay} of {event.spanTotal}</span>}
         </div>
-        {/* Title */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 10,
-          marginBottom: event.location || event.description ? 8 : 0,
-        }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
           {event.type === 'match' && (
-            <OpponentCrest url={event.opponentLogo} name={event.opponentName ?? event.title} size={26} />
+            <OpponentCrest url={event.opponentLogo} name={event.opponentName ?? event.title} color={event.opponentColor} size={26} />
           )}
-          <span className="t-body-medium" style={{ color: 'var(--text-primary)' }}>
-            {event.title}
-          </span>
+          <span style={{ fontSize: 15, fontWeight: 500, letterSpacing: '-0.01em' }}>{event.title}</span>
         </div>
-        {/* Location */}
+
         {event.location && (
-          <div className="t-small" style={{ color: 'var(--text-secondary)', marginBottom: event.description ? 6 : 0 }}>
-            {event.location}
-          </div>
+          <div style={{ fontSize: 13, color: 'var(--ink-secondary)', marginTop: 4 }}>{event.location}</div>
         )}
-        {/* Description */}
         {event.description && (
-          <div className="t-small" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-            {event.description}
-          </div>
+          <div style={{ fontSize: 13, color: 'var(--ink-secondary)', marginTop: 6, lineHeight: 1.55 }}>{event.description}</div>
         )}
 
         {/* Matchday detail — what an athlete actually opens the app to check. */}
         {(meetTime || event.meetLocation || event.notes) && (
-          <div style={{
-            marginTop: 10, paddingTop: 10,
-            borderTop: `1px solid ${border}`,
-            display: 'flex', flexDirection: 'column', gap: 4,
-          }}>
+          <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {(meetTime || event.meetLocation) && (
-              <div className="t-small" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
-                Meet {meetTime ?? ''}{meetTime && event.meetLocation ? ' · ' : ''}{event.meetLocation ?? ''}
+              <div style={{ fontSize: 13, fontWeight: 600 }}>
+                Meet {[meetTime, event.meetLocation].filter(Boolean).join(' · ')}
               </div>
             )}
             {event.notes && (
-              <div className="t-small" style={{ color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-                {event.notes}
-              </div>
+              <div style={{ fontSize: 13, color: 'var(--ink-secondary)', lineHeight: 1.55 }}>{event.notes}</div>
             )}
           </div>
         )}
 
         {(onEdit || onDelete) && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+          <div style={{ display: 'flex', gap: 18, marginTop: 10 }}>
             {onEdit && (
-              <button onClick={onEdit} className="btn-ghost" style={{ padding: '5px 12px', fontSize: 12 }}>
+              <button onClick={onEdit} style={INK_BTN}>
                 {event.type !== 'match'
                   ? 'Edit'
                   : (meetTime || event.meetLocation || event.notes) ? 'Edit matchday info' : 'Add meeting time'}
               </button>
             )}
             {onDelete && (
-              <button
-                onClick={onDelete}
-                className="btn-ghost"
-                title="Remove from calendar"
-                style={{
-                  padding: '5px 10px', fontSize: 12, marginLeft: 'auto',
-                  color: 'var(--color-danger)', borderColor: 'var(--color-danger-border)',
-                }}
-              >
+              <button onClick={onDelete} title="Remove from calendar" style={{ ...INK_BTN, color: 'var(--ink-danger)' }}>
                 Remove
               </button>
             )}
@@ -714,7 +694,7 @@ function MatchDayEditor({ match, onClose, onSaved }: {
     >
       <div style={{
         width: 460, borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
       }}>
         <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>{match.title}</div>
@@ -761,28 +741,49 @@ function MatchDayEditor({ match, onClose, onSaved }: {
 }
 
 /* ── Small components ───────────────────────────────────────────────── */
-function EventPill({ event }: { event: CalEvent }) {
-  const { ink, fill } = eventVars(event.type);
+/** One line in a day cell: the type's mark, the time, the title. No fill —
+ *  a month of filled pills in ten colours is the "too much" this replaced. */
+function EventLine({ event }: { event: CalEvent }) {
+  const { ink } = itemVars(event);
+  const isMatch = event.type === 'match';
+  const continued = (event.spanDay ?? 1) > 1;
   return (
-    <div style={{
-      background: fill, borderLeft: `2px solid ${ink}`,
-      borderRadius: '0 3px 3px 0', padding: '2px 5px',
-      fontSize: 10, fontWeight: 500, color: 'var(--text-primary)',
-      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.4,
-    }}>
-      {event.time && event.time !== '00:00' ? `${event.time} ` : ''}{event.title}
-      {event.spanTotal ? ` · ${event.spanDay}/${event.spanTotal}` : ''}
-    </div>
+    <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, fontSize: 12, lineHeight: 1.35 }}>
+      <i style={{ width: 8, height: 8, borderRadius: 2, background: ink, flexShrink: 0 }} />
+      {event.time && event.time !== '00:00' && (
+        <span style={{ color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{event.time}</span>
+      )}
+      <span style={{
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        color: continued ? 'var(--text-tertiary)' : isMatch ? 'var(--text-primary)' : 'var(--text-secondary)',
+        fontWeight: isMatch ? 600 : 400,
+      }}>
+        {event.title}
+      </span>
+    </span>
   );
 }
 
 function NavBtn({ onClick, dir }: { onClick: () => void; dir: 'left' | 'right' }) {
   return (
-    <button onClick={onClick} className="btn-ghost" style={{ width: 30, height: 30, padding: 0 }}>
+    <button
+      onClick={onClick}
+      className="btn-outline"
+      title={dir === 'left' ? 'Previous month' : 'Next month'}
+      style={{ width: 40, height: 40, padding: 0 }}
+    >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
         {dir === 'left' ? <polyline points="15 18 9 12 15 6" /> : <polyline points="9 18 15 12 9 6" />}
       </svg>
     </button>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} strokeLinecap="round">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }
 
@@ -807,13 +808,13 @@ function DropItem({ label, active, onClick }: { label: string; active: boolean; 
     <button
       onClick={onClick}
       style={{
-        display: 'block', width: '100%', textAlign: 'left',
-        padding: '8px 12px', fontSize: 13, fontWeight: active ? 600 : 400,
+        display: 'block', width: '100%', textAlign: 'left', borderRadius: 10,
+        padding: '9px 12px', fontSize: 13, fontWeight: active ? 600 : 400,
         color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
-        background: active ? 'var(--surface-2)' : 'transparent',
+        background: active ? 'var(--surface-hover)' : 'transparent',
         border: 'none', cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.1s',
       }}
-      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-1)'; }}
+      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-raised)'; }}
       onMouseLeave={e => { if (!active) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'; }}
     >
       {label}
@@ -868,7 +869,7 @@ function DeleteConfirm({ items, onClose, onDone }: {
     >
       <div style={{
         width: 460, borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
       }}>
         <div className="t-subheading" style={{ color: 'var(--text-primary)', marginBottom: 14 }}>
@@ -1003,7 +1004,7 @@ function EventEditor({ event, onClose, onSaved }: {
       <div style={{
         width: 480, maxHeight: '88vh', overflowY: 'auto',
         borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
       }}>
         <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>Edit</div>
@@ -1095,21 +1096,20 @@ function HiddenOnDay({ items, onRestored }: {
   }
 
   return (
-    <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
-      <div className="t-label" style={{ marginBottom: 8 }}>
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 12, color: 'var(--ink-secondary)', marginBottom: 6 }}>
         Removed from this day · {items.length}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {items.map(h => (
           <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span className="t-small" style={{ color: 'var(--text-tertiary)', flex: 1, minWidth: 0 }}>
+            <span style={{ fontSize: 13, color: 'var(--ink-secondary)', flex: 1, minWidth: 0, textDecoration: 'line-through' }}>
               {h.title}
             </span>
             <button
               onClick={() => restore(h.id)}
               disabled={busy === h.id}
-              className="btn-ghost"
-              style={{ padding: '4px 10px', fontSize: 11, flexShrink: 0 }}
+              style={{ ...INK_BTN, flexShrink: 0 }}
             >
               {busy === h.id ? 'Adding…' : 'Add back'}
             </button>

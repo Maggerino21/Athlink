@@ -118,10 +118,10 @@ export default function DashboardShell({
         {tab === 'overview'  && (
           <OverviewTab
             clubId={clubId}
-            staffName={name}
-            clubName={clubName}
+            clubName={club.name}
             inviteCode={inviteCode}
             staffInviteCode={staffInviteCode}
+            onTabChange={handleTabChange}
           />
         )}
         {tab === 'athletes'  && (

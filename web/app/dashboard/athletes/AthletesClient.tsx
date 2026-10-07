@@ -33,7 +33,10 @@ export default function AthletesClient({
   );
 
   return (
-    <div style={{ display: 'flex', height: '100%' }}>
+    // `minHeight`, not `height`: a fixed-height row is only as tall as the
+    // window, and a sticky child cannot travel outside its parent's box — the
+    // panel came unstuck the moment you scrolled past one screen.
+    <div style={{ display: 'flex', minHeight: '100%' }}>
       {/* Main table area */}
       <div style={{ flex: 1, minWidth: 0, padding: '36px 40px', paddingRight: selected ? 24 : 40, transition: 'padding-right 0.25s' }}>
         {/* Header */}
@@ -57,7 +60,7 @@ export default function AthletesClient({
         </div>
 
         {/* Table */}
-        <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <div className="panel" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           <table className="data-table">
             <thead>
               <tr>
@@ -167,17 +170,31 @@ function AthleteDetailPanel({
   return (
     <>
       <div
-        className="glass-strong"
+        className="panel-strong"
         style={{
           width: 360, flexShrink: 0,
           borderLeft: '1px solid var(--border-default)',
           borderTop: 'none', borderRight: 'none', borderBottom: 'none', borderRadius: 0,
           display: 'flex', flexDirection: 'column',
-          height: '100%', overflow: 'hidden',
+          overflow: 'hidden',
+          /**
+           * Sticky, not `height: 100%`.
+           *
+           * The squad list is the thing that scrolls, and the panel used to
+           * scroll away with it: picking the 24th player opened a panel at the
+           * top of the page, so you had to scroll back up to read it. It now
+           * holds at the top of the scroll container and stays beside whoever
+           * you clicked. `alignSelf: flex-start` stops the flex row stretching
+           * it, which is what makes sticky take effect at all.
+           */
+          position: 'sticky',
+          top: 0,
+          alignSelf: 'flex-start',
+          height: '100vh',
         }}
       >
         {/* Panel header */}
-        <div style={{ padding: '20px 20px 0', borderBottom: '1px solid var(--border-default)', paddingBottom: 16 }}>
+        <div style={{ padding: '20px 20px 0', paddingBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
             <AvatarCircle name={athlete.full_name} size={40} />
             <div style={{ flex: 1 }}>
@@ -224,7 +241,7 @@ function AthleteDetailPanel({
                   borderRadius: 'var(--radius-sm)',
                   fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
                   cursor: 'pointer', border: 'none',
-                  background: tab === t ? 'var(--surface-active)' : 'var(--surface-1)',
+                  background: tab === t ? 'var(--surface-active)' : 'var(--surface-raised)',
                   color: tab === t ? 'var(--text-primary)' : 'var(--text-secondary)',
                   transition: 'background 0.15s, color 0.15s',
                 }}
@@ -351,7 +368,7 @@ function SendFeedbackModal({
   return (
     <ModalOverlay onClose={onClose}>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border-default)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px' }}>
         <div>
           <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>Send feedback</div>
           <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>to {athlete.full_name}</div>
@@ -393,7 +410,7 @@ function SendFeedbackModal({
               />
             </div>
             {/* AI toggle */}
-            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border-default)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-raised)', border: '1px solid var(--border-default)' }}>
               <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ accentColor: 'var(--text-primary)', width: 16, height: 16 }} />
               <div>
                 <div className="t-small" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Translate & structure with AI</div>
@@ -409,7 +426,7 @@ function SendFeedbackModal({
             <div className="t-small" style={{ color: 'var(--text-tertiary)' }}>
               AI has translated and structured your feedback. Review before sending.
             </div>
-            <div style={{ padding: '14px 16px', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-info-border)' }}>
+            <div style={{ padding: '14px 16px', background: 'var(--surface-hover)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-info-border)' }}>
               <div className="t-label" style={{ marginBottom: 8, color: 'var(--color-info)' }}>Processed feedback</div>
               <textarea
                 className="t-small"
@@ -436,7 +453,7 @@ function SendFeedbackModal({
       </div>
 
       {/* Footer */}
-      <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-default)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <div style={{ padding: '16px 24px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         {step === 'compose' ? (
           <>
             <button onClick={onClose} className="btn-ghost">Cancel</button>
@@ -512,7 +529,7 @@ function AssignTaskModal({
 
   return (
     <ModalOverlay onClose={onClose}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border-default)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px' }}>
         <div>
           <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>Assign task</div>
           <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>to {athlete.full_name}</div>
@@ -550,7 +567,7 @@ function AssignTaskModal({
         {error && <div className="t-small" style={{ color: 'var(--color-danger)' }}>{error}</div>}
       </div>
 
-      <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-default)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <div style={{ padding: '16px 24px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button onClick={onClose} className="btn-ghost">Cancel</button>
         <button
           onClick={save}
@@ -580,7 +597,7 @@ function ModalOverlay({ children, onClose }: { children: React.ReactNode; onClos
         style={{
           width: 520, maxHeight: '88vh',
           borderRadius: 'var(--radius-xl)',
-          background: 'var(--bg-base)',
+          background: 'var(--surface-raised)',
           border: '1px solid var(--border-default)',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
@@ -598,7 +615,7 @@ function FeedbackCard({ fb }: { fb: MatchFeedback }) {
   const text = fb.processed_text ?? fb.feedback_text;
   return (
     <div
-      className="glass"
+      className="panel"
       style={{
         borderRadius: 'var(--radius-md)', padding: '12px 14px',
         borderColor: !fb.acknowledged ? 'var(--color-info-border)' : undefined,
@@ -642,7 +659,7 @@ function TaskCard({ task }: { task: Task }) {
   const overdue = !done && task.due_date && new Date(task.due_date) < new Date();
   return (
     <div
-      className="glass"
+      className="panel"
       style={{
         borderRadius: 'var(--radius-md)', padding: '11px 14px',
         display: 'flex', gap: 10, alignItems: 'flex-start',

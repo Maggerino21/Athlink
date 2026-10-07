@@ -18,12 +18,14 @@ import { createClient } from '@/lib/supabase/client';
 type Kind = 'athlete' | 'staff';
 
 export default function InvitePeople({
-  athleteCode, staffCode, clubName, noAthletesYet,
+  athleteCode, staffCode, clubName, noAthletesYet, inline = false,
 }: {
   athleteCode:   string;
   staffCode:     string | null;
   clubName:      string;
   noAthletesYet: boolean;
+  /** Sitting in a header row rather than above a page's content. */
+  inline?:       boolean;
 }) {
   const [open,   setOpen]   = useState<Kind | null>(null);
   // Seeded from the server, then kept locally so a regenerated code shows immediately
@@ -36,7 +38,7 @@ export default function InvitePeople({
 
   return (
     <>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 28, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: inline ? 0 : 28, flexWrap: 'wrap' }}>
         <button
           onClick={() => setOpen('athlete')}
           className="btn-ghost"
@@ -145,14 +147,14 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
       <div style={{
         width: 520, maxHeight: '88vh', overflowY: 'auto',
         borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)',
+        background: 'var(--surface-raised)',
         border: '1px solid var(--border-default)',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
       }}>
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-          padding: '22px 24px 18px', borderBottom: '1px solid var(--border-default)',
+          padding: '22px 24px 18px',
         }}>
           <div>
             <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>
@@ -210,7 +212,7 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
                 <li key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                   <span style={{
                     flexShrink: 0, width: 22, height: 22, borderRadius: 'var(--radius-full)',
-                    background: 'var(--surface-2)', border: '1px solid var(--border-default)',
+                    background: 'var(--surface-hover)', border: '1px solid var(--border-default)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)',
                   }}>{i + 1}</span>
@@ -224,7 +226,7 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
             {/* The code */}
             <div style={{
               borderRadius: 'var(--radius-lg)',
-              background: 'var(--surface-1)',
+              background: 'var(--surface-raised)',
               border: `1px solid ${justReset ? 'var(--color-success-border)' : 'var(--border-default)'}`,
               padding: '18px 20px',
               display: 'flex', alignItems: 'center', gap: 16,
@@ -266,7 +268,7 @@ function InviteDialog({ kind, code, clubName, onClose, onNewCode }: {
             )}
 
             {/* The escape hatch, phrased as the situation rather than the mechanism */}
-            <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ marginTop: 22, paddingTop: 18, }}>
               <div className="t-small" style={{ color: 'var(--text-tertiary)', marginBottom: 10, lineHeight: 1.6 }}>
                 Did this code end up with someone who shouldn&rsquo;t have it?
               </div>
@@ -316,7 +318,7 @@ function ConfirmNewCode({ kind, code, error, onCancel, onConfirm }: {
       <div style={{
         padding: '12px 14px', marginBottom: 20,
         borderRadius: 'var(--radius-md)',
-        background: 'var(--surface-1)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
       }}>
         <div className="t-small" style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>
           <strong style={{ color: 'var(--text-primary)' }}>Trying to remove someone?</strong>{' '}

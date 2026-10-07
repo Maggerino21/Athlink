@@ -109,7 +109,7 @@ export default function FeedbackTab({ staffId, clubId }: { staffId: string; club
         display: 'flex', flexDirection: 'column',
         height: '100%', overflow: 'hidden',
       }}>
-        <div style={{ padding: '24px 16px 12px', borderBottom: '1px solid var(--border-default)' }}>
+        <div style={{ padding: '24px 16px 12px' }}>
           <div className="t-label" style={{ marginBottom: 5 }}>
             Feedback
             {totalUnread > 0 && <span className="badge badge-info" style={{ marginLeft: 8 }}>{totalUnread} unread</span>}
@@ -150,7 +150,7 @@ export default function FeedbackTab({ staffId, clubId }: { staffId: string; club
                     <div style={{
                       position: 'absolute', top: -2, right: -2,
                       width: 14, height: 14, borderRadius: '50%',
-                      background: 'var(--color-info)', border: '2px solid var(--bg-base)',
+                      background: 'var(--color-info)', border: '2px solid var(--surface-raised)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       fontSize: 8, fontWeight: 700, color: '#fff',
                     }}>
@@ -179,7 +179,7 @@ export default function FeedbackTab({ staffId, clubId }: { staffId: string; club
         ) : (
           <>
             {/* Panel header */}
-            <div style={{ padding: '24px 32px 20px', borderBottom: '1px solid var(--border-default)', display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ padding: '24px 32px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
               <AvatarCircle name={selected.full_name} size={40} />
               <div style={{ flex: 1 }}>
                 <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>{selected.full_name}</div>
@@ -240,7 +240,7 @@ function FeedbackCard({ fb }: { fb: FeedbackDetail }) {
 
   return (
     <div
-      className="glass"
+      className="panel"
       style={{
         borderRadius: 'var(--radius-md)', padding: '14px 16px',
         borderColor: !fb.acknowledged ? 'var(--color-info-border)' : undefined,
@@ -401,14 +401,14 @@ function SendFeedbackModal({
       <div style={{
         width: 540, maxHeight: '88vh',
         borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)',
+        background: 'var(--surface-raised)',
         border: '1px solid var(--border-default)',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
       }}>
         {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border-default)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px' }}>
           <div>
             <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>Send feedback</div>
             <div className="t-small" style={{ color: 'var(--text-tertiary)', marginTop: 3 }}>
@@ -454,7 +454,7 @@ function SendFeedbackModal({
                 <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Action point (optional)</label>
                 <input className="input" placeholder="One concrete thing to work on" value={actionPoint} onChange={(e) => setActionPoint(e.target.value)} />
               </div>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border-default)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-raised)', border: '1px solid var(--border-default)' }}>
                 <input type="checkbox" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} style={{ accentColor: 'var(--text-primary)', width: 16, height: 16 }} />
                 <div>
                   <div className="t-small" style={{ color: 'var(--text-primary)', fontWeight: 600 }}>Translate & structure with AI</div>
@@ -469,7 +469,7 @@ function SendFeedbackModal({
               <div className="t-small" style={{ color: 'var(--text-tertiary)' }}>
                 AI has translated and structured your feedback. Review before sending.
               </div>
-              <div style={{ padding: '14px 16px', background: 'var(--surface-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-info-border)' }}>
+              <div style={{ padding: '14px 16px', background: 'var(--surface-hover)', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-info-border)' }}>
                 <div className="t-label" style={{ marginBottom: 8, color: 'var(--color-info)' }}>Processed feedback</div>
                 <textarea
                   className="t-small"
@@ -496,7 +496,7 @@ function SendFeedbackModal({
         </div>
 
         {/* Footer */}
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-default)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div style={{ padding: '16px 24px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           {step === 'compose' ? (
             <>
               <button onClick={onClose} className="btn-ghost">Cancel</button>
@@ -579,7 +579,7 @@ function MatchSelect({
           role="listbox"
           style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10,
-            background: 'var(--bg-base)',
+            background: 'var(--surface-raised)',
             border: '1px solid var(--border-default)',
             borderRadius: 'var(--radius-md)',
             maxHeight: 240, overflowY: 'auto',
@@ -605,7 +605,7 @@ function MatchSelect({
                   color: 'var(--text-primary)',
                   transition: 'background 0.1s',
                 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
               >
                 <MatchRow m={m} />
@@ -654,10 +654,10 @@ function LoadingSkeleton() {
     <div style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', gap: 4 }}>
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px' }}>
-          <div className="skeleton" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-2)' }} />
+          <div className="skeleton" style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--surface-hover)' }} />
           <div style={{ flex: 1 }}>
-            <div className="skeleton" style={{ height: 12, width: '60%', borderRadius: 4, background: 'var(--surface-2)', marginBottom: 5 }} />
-            <div className="skeleton" style={{ height: 10, width: '30%', borderRadius: 4, background: 'var(--surface-2)' }} />
+            <div className="skeleton" style={{ height: 12, width: '60%', borderRadius: 4, background: 'var(--surface-hover)', marginBottom: 5 }} />
+            <div className="skeleton" style={{ height: 10, width: '30%', borderRadius: 4, background: 'var(--surface-hover)' }} />
           </div>
         </div>
       ))}

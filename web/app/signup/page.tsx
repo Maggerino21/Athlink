@@ -123,7 +123,7 @@ export default function SignupPage() {
   if (done) {
     return (
       <Shell subtitle="Almost there">
-        <div className="glass" style={{ borderRadius: 'var(--radius-xl)', padding: '48px 32px', textAlign: 'center' }}>
+        <div className="panel" style={{ borderRadius: 'var(--radius-xl)', padding: '48px 32px', textAlign: 'center' }}>
           <h2 className="t-heading" style={{ color: 'var(--text-primary)', marginBottom: 12 }}>Check your email</h2>
           <p className="t-body" style={{ color: 'var(--text-secondary)', maxWidth: 320, margin: '0 auto 32px' }}>
             We sent a confirmation link to <strong style={{ color: 'var(--text-primary)' }}>{email}</strong>.
@@ -279,7 +279,7 @@ function SportStep({ selected, onSelect }: { selected: Sport; onSelect: (s: Spor
               style={{
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
                 padding: '26px 14px 18px', borderRadius: 'var(--radius-xl)',
-                background: active ? 'rgba(244,241,237,0.09)' : 'var(--surface-1)',
+                background: active ? 'rgba(244,241,237,0.09)' : 'var(--surface-raised)',
                 border: `1px solid ${active ? 'rgba(244,241,237,0.28)' : 'var(--border-default)'}`,
                 color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
                 transition: 'background 0.16s, border-color 0.16s, transform 0.16s',
@@ -289,7 +289,7 @@ function SportStep({ selected, onSelect }: { selected: Sport; onSelect: (s: Spor
                 e.currentTarget.style.transform = 'translateY(-3px)';
               }}
               onMouseLeave={e => {
-                e.currentTarget.style.background = active ? 'rgba(244,241,237,0.09)' : 'var(--surface-1)';
+                e.currentTarget.style.background = active ? 'rgba(244,241,237,0.09)' : 'var(--surface-raised)';
                 e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
@@ -374,7 +374,7 @@ function TeamStep({
                     background: 'transparent', border: '1px solid transparent',
                     color: 'var(--text-primary)', cursor: 'pointer', fontFamily: 'inherit',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-2)'; }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--surface-hover)'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                 >
                   <Badge url={t.logo} name={t.name} size={30} />
@@ -402,7 +402,7 @@ function TeamStep({
 
       <div style={{
         padding: '16px 18px', borderRadius: 'var(--radius-lg)',
-        background: 'var(--surface-1)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
         marginBottom: 14,
       }}>
         <div className="t-body-medium" style={{ marginBottom: 6 }}>Can&rsquo;t see your club?</div>
@@ -459,7 +459,7 @@ function ReviewStep({
       <StepHeading title="Does this look right?" sub="Change anything that isn't." />
 
       {/* The reveal */}
-      <div className="glass" style={{
+      <div className="panel" style={{
         borderRadius: 'var(--radius-xl)', padding: '26px 24px', marginBottom: 14,
         display: 'flex', alignItems: 'center', gap: 18,
       }}>
@@ -496,7 +496,7 @@ function ReviewStep({
               <div key={f.id} style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 padding: '10px 12px', borderRadius: 'var(--radius-md)',
-                background: 'var(--surface-1)', border: '1px solid var(--border-subtle)',
+                background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)',
               }}>
                 <span className="t-small" style={{ color: 'var(--text-tertiary)', width: 62, flexShrink: 0 }}>
                   {new Date(f.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
@@ -586,7 +586,7 @@ function Badge({ url, name, size, color }: { url: string | null; name: string; s
     return (
       <div style={{
         width: size, height: size, borderRadius: '50%', flexShrink: 0,
-        background: color ? `${color}22` : 'var(--surface-2)',
+        background: color ? `${color}22` : 'var(--surface-hover)',
         border: `1px solid ${color ?? 'var(--border-default)'}`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: size * 0.36, fontWeight: 800, color: color ?? 'var(--text-secondary)',
@@ -664,7 +664,7 @@ function Progress({ current }: { current: Step }) {
       {order.map((_, i) => (
         <div key={i} style={{
           height: 3, flex: 1, borderRadius: 2,
-          background: i <= idx ? 'rgba(244,241,237,0.55)' : 'var(--surface-2)',
+          background: i <= idx ? 'rgba(244,241,237,0.55)' : 'var(--surface-hover)',
           transition: 'background 0.25s',
         }} />
       ))}
@@ -683,7 +683,7 @@ function StepHeading({ title, sub }: { title: string; sub?: string }) {
 
 function Card({ label, children }: { label?: string; children: React.ReactNode }) {
   return (
-    <div className="glass" style={{ borderRadius: 'var(--radius-xl)', padding: '22px 22px 20px', marginBottom: 14 }}>
+    <div className="panel" style={{ borderRadius: 'var(--radius-xl)', padding: '22px 22px 20px', marginBottom: 14 }}>
       {label && <div className="t-label" style={{ marginBottom: 14 }}>{label}</div>}
       {children}
     </div>
@@ -722,7 +722,7 @@ function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
   return (
     <div style={{
       display: 'flex', gap: 4, padding: 4, marginBottom: 18,
-      background: 'var(--surface-1)', border: '1px solid var(--border-default)',
+      background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
       borderRadius: 'var(--radius-md)',
     }}>
       {([['create', 'Create a club'], ['join', 'Join a club']] as [Mode, string][]).map(([key, label]) => (
@@ -731,7 +731,7 @@ function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
             flex: 1, padding: '9px 12px', borderRadius: 'var(--radius-sm)',
             fontSize: 13, fontWeight: mode === key ? 700 : 500, fontFamily: 'inherit',
             cursor: 'pointer', border: 'none',
-            background: mode === key ? 'var(--surface-3)' : 'transparent',
+            background: mode === key ? 'var(--surface-active)' : 'transparent',
             color: mode === key ? 'var(--text-primary)' : 'var(--text-secondary)',
             transition: 'background 0.12s, color 0.12s',
           }}>
@@ -756,7 +756,7 @@ function SignInLink() {
 function Shell({ children, subtitle }: { children: React.ReactNode; subtitle: string }) {
   return (
     <div style={{
-      minHeight: '100vh', background: 'var(--bg-base)', position: 'relative',
+      minHeight: '100vh', position: 'relative',
       overflow: 'hidden', display: 'flex', flexDirection: 'column', alignItems: 'center',
       paddingBottom: 48,
     }}>

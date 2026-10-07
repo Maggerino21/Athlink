@@ -27,7 +27,7 @@ export default function Loading() {
         <Bone width={100} height={13} style={{ marginBottom: 32 }} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 32 }}>
           {[0,1,2].map((i) => (
-            <div key={i} className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '16px 18px' }}>
+            <div key={i} className="panel" style={{ borderRadius: 'var(--radius-lg)', padding: '16px 18px' }}>
               <Bone width={40} height={24} style={{ marginBottom: 8 }} />
               <Bone width="70%" height={11} />
             </div>
@@ -35,7 +35,7 @@ export default function Loading() {
         </div>
         <Bone width={80} height={11} style={{ marginBottom: 12 }} />
         {[0,1,2].map((i) => (
-          <div key={i} className="glass" style={{ borderRadius: 'var(--radius-md)', padding: '14px 16px', marginBottom: 8 }}>
+          <div key={i} className="panel" style={{ borderRadius: 'var(--radius-md)', padding: '14px 16px', marginBottom: 8 }}>
             <Bone width="80%" height={13} style={{ marginBottom: 6 }} />
             <Bone width="50%" height={11} />
           </div>
@@ -53,7 +53,7 @@ function Bone({ width, height, style }: { width: number | string; height: number
         width,
         height,
         borderRadius: 'var(--radius-sm)',
-        background: 'var(--surface-2)',
+        background: 'var(--surface-hover)',
         ...style,
       }}
     />

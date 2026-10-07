@@ -62,7 +62,6 @@ export default function LoginPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: 'var(--bg-base)',
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -84,7 +83,7 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="glass" style={{ borderRadius: 'var(--radius-xl)', padding: '28px 24px' }}>
+        <div className="panel" style={{ borderRadius: 'var(--radius-xl)', padding: '28px 24px' }}>
           <form onSubmit={signIn} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label className="t-label" style={{ display: 'block', marginBottom: 6 }}>Email</label>

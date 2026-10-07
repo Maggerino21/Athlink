@@ -116,5 +116,5 @@ function AthletesLoadingSkeleton() {
 }
 
 function Bone({ width, height, style }: { width: number | string; height: number; style?: React.CSSProperties }) {
-  return <div className="skeleton" style={{ width, height, borderRadius: 'var(--radius-sm)', background: 'var(--surface-2)', ...style }} />;
+  return <div className="skeleton" style={{ width, height, borderRadius: 'var(--radius-sm)', background: 'var(--surface-hover)', ...style }} />;
 }

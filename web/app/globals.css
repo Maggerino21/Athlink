@@ -14,10 +14,8 @@
       A translucent card picks up whatever sits behind it and nothing in the
       app has a settled colour.
    2. **No gradients, and no club colour as atmosphere.** Club colour is
-      identity, not information; it survives here as a single line down the
-      edge of the sidebar and nowhere else. Spending it on background orbs
-      meant it competed with the event colours, which are the only colour
-      that tells a coach anything.
+      spent once, deliberately: Home's next-match card and its main button
+      (2026-10-03). Never as a background, a glow, a tint or a border.
    3. **"Current" is weight and brightness, not colour** — a brighter
       surface, a stronger edge. Never a tint.
 
@@ -25,16 +23,29 @@
 ───────────────────────────────────────────────────────────────────── */
 
 :root {
-  /* ── Ground and surfaces. Opaque, always — same values as mobile. ── */
-  --bg-base:          #0A0A0C;  /* the page */
-  --surface-raised:   #19191B;  /* a card: the default raised thing */
-  --surface-recessed: #101012;  /* a card that is deliberately quieter */
-  --surface-active:   #252527;  /* current or hovered, without colour */
+  /* ── Ground and surfaces.
+     Opaque, always. The ladder is the phone's, lifted a step: a phone screen
+     is full of content and a desktop page is mostly empty, so the same near
+     black that reads as a ground on a 6" screen reads as a void across 1440px.
+     The canvas carries a faint top-to-bottom gradient for the same reason —
+     neutral, no hue, nothing like the club-coloured orbs it replaced. ── */
+  --bg-base:          #18181C;  /* the shell: the sidebar, and the darkest thing */
+  /* The canvas falls gently from top to bottom, and its floor stays well clear
+     of black: the half of the window with nothing in it is what decides whether
+     a page reads as sparse or as a void. */
+  --bg-canvas-top:    #1D1D21;
+  --bg-canvas-bottom: #1B1B1F;
+  --surface-recessed: #19191D;  /* a well: inputs, and deliberately quiet cards */
+  --surface-raised:   #2A2A30;  /* a card: the default raised thing */
+  --surface-hover:    #313138;  /* hovered, or a row you have ticked */
+  --surface-active:   #36363E;  /* current, without colour */
 
-  /* Legacy names, kept so every component inherits the opaque values. */
-  --surface-1: var(--surface-raised);
-  --surface-2: #202023;
-  --surface-3: var(--surface-active);
+  /* The light card, and the ink drawn on it. Home's second step of emphasis. */
+  --surface-light:    #E2E0DB;
+  --ink:              #141416;
+  --ink-secondary:    rgba(20, 20, 22, 0.58);
+  --ink-line:         rgba(20, 20, 22, 0.14);
+  --ink-danger:       #9A3B3B;  /* danger, legible on the light card */
 
   /* ── Edges ── */
   --border-subtle:  rgba(255, 255, 255, 0.07);
@@ -51,11 +62,8 @@
      and the same fill as "Gi en bot" / "Betal alt" on the phone. */
   --fill-strong: #F4F1ED;
 
-  /* Kept for the logged-out pages, which have no club. */
-  --neutral-accent:        rgba(244, 241, 237, 0.72);
-  --neutral-accent-subtle: #19191B;
-  --neutral-accent-border: rgba(255, 255, 255, 0.13);
-  --neutral-accent-glow:   transparent;
+  /* The logged-out pages have no club, so links there take this instead. */
+  --neutral-accent: rgba(244, 241, 237, 0.72);
 
   /* ── Status. Muted to sit on a matte ground rather than glow on it. ── */
   --color-success:        #7DAB85;
@@ -95,17 +103,20 @@
   --radius-lg:   22px;
   --radius-xl:   22px;
   --radius-full: 9999px;
+  /* Home's cards. Larger than mobile's largest on purpose: a 400px card with
+     a 22px corner reads as a box; at 26 it reads as an object. */
+  --radius-card: 26px;
 
   /* ── Club colour.
-     Injected by the dashboard layout. It is drawn in exactly one place —
-     `.club-edge`, the line down the sidebar — plus the avatar circles that
-     stand in for a crest. Everything else is greyscale. ── */
-  --accent:        #6B7280;  /* readable on --bg-base: text, icon strokes */
-  --accent-solid:  #6B7280;  /* the true club colour */
-  --accent-on:     #FFFFFF;  /* a label sitting ON --accent-solid */
-  --accent-subtle: #19191B;  /* was a tint; "current" is brightness now */
-  --accent-border: rgba(255, 255, 255, 0.20);
-  --accent-glow:   transparent;
+     Injected by the dashboard layout. Drawn on Home's next-match card, Home's
+     main button, the crest circles and the "today" bar in the week chart —
+     nowhere else. Everything else is greyscale. ── */
+  --accent-solid: #6B7280;  /* the true club colour — fills */
+  --accent-on:    #FFFFFF;  /* a label sitting ON --accent-solid */
+  /* Readable on the canvas, for the rare case something sets the club colour
+     as *text*. Nothing uses it today; `accentTokens()` still derives it because
+     the contrast search is the part that would be easy to get wrong later. */
+  --accent:       #6B7280;
 }
 
 /* ── Base reset ──────────────────────────────────────────────────── */
@@ -113,7 +124,15 @@
 
 html, body {
   height: 100%;
-  background: var(--bg-base);
+  background-color: var(--bg-canvas-bottom);
+  /* Fixed, so the light stays with the window rather than scrolling with a
+     long table. */
+  background-image: linear-gradient(
+    180deg,
+    var(--bg-canvas-top) 0%,
+    var(--bg-canvas-bottom) 100%
+  );
+  background-attachment: fixed;
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -126,44 +145,160 @@ html, body {
 }
 .skeleton { animation: skeleton-pulse 1.6s ease-in-out infinite; }
 
-/* ── Typography ──────────────────────────────────────────────────── */
-.t-display    { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.1; }
-.t-heading    { font-size: 22px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
-.t-subheading { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }
+/* ── Typography.
+   Archivo across the board — see `app/layout.tsx` for why it is not Inter.
+   The scale leans on the extremes on purpose: hairline weights where the type
+   is large, medium where it is small. A dashboard set entirely at 600 is what
+   "every screen looks the same" looks like. ── */
+.t-display    { font-size: 34px; font-weight: 600; letter-spacing: -0.035em; line-height: 1.05; }
+.t-heading    { font-size: 22px; font-weight: 500; letter-spacing: -0.02em; line-height: 1.2; }
+.t-subheading { font-size: 17px; font-weight: 500; letter-spacing: -0.015em; line-height: 1.3; }
 .t-body       { font-size: 14px; font-weight: 400; line-height: 1.6; }
 .t-body-medium { font-size: 14px; font-weight: 500; line-height: 1.5; }
 .t-small      { font-size: 13px; font-weight: 400; line-height: 1.5; }
-.t-label      { font-size: 11px; font-weight: 500; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-tertiary); }
+.t-label      { font-size: 11px; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-tertiary); }
 
-/* ── Cards.
-   `.glass` is a historical name: there is no glass here any more, and the
-   class is kept only because every tab reaches for it. ── */
-.glass {
+/* ── The figure.
+   A number a coach came to the page to read, set at the size that says so.
+   Hairline weight, tight tracking, and `line-height: 0.85` so it sits on its
+   own baseline rather than floating in a box of leading. Scales with the
+   viewport because this grid is edge to edge — on a 2560px monitor a 44px
+   number is a label, not a headline. ── */
+.figure {
+  font-size: clamp(42px, 4.6vw, 86px);
+  font-weight: 200;
+  letter-spacing: -0.045em;
+  line-height: 0.85;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  display: block;
+}
+/* The unit or suffix that rides beside a figure — never the same size as it. */
+.figure-unit {
+  font-size: 13px; font-weight: 500; letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+
+/* ── The home grid (2026-10-03).
+   Six cards of one size, three by two, filling the window under a header.
+   Equal sizes, unequal *fills*: one card in the club colour, one light, the
+   rest raised grey. The fill is what carries the hierarchy, so a coach's eye
+   lands on the next match first without anything being bigger than anything
+   else. Built from a reference Magne liked; see web/DESIGN.md. ── */
+.home, .page {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  padding: 32px 36px 36px;
+  min-height: 100%;
+}
+.home-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: minmax(300px, 1fr);
+  gap: 24px;
+}
+@media (max-width: 1100px) {
+  .home-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .home, .page { padding: 20px 16px; }
+  .home-grid { grid-template-columns: 1fr; gap: 16px; }
+}
+
+.card {
+  position: relative;
   background: var(--surface-raised);
-  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 26px 28px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
 }
-.glass-strong {
-  background: var(--surface-active);
+/* The loud card. The club's colour, used once, on the thing the week is
+   organised around. Labels on it use --accent-on, never a guessed white. */
+.card-accent { background: var(--accent-solid); color: var(--accent-on); }
+/* The light card. Dark ink on a warm off-white — the second step of emphasis. */
+.card-light  { background: var(--surface-light); color: var(--ink); }
+
+.card-title { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+.card-link {
+  font-size: 12.5px; color: var(--text-tertiary);
+  background: none; border: none; padding: 0; cursor: pointer; font-family: inherit;
+  transition: color 0.15s;
+}
+.card-link:hover { color: var(--text-primary); }
+
+/* A pill drawn as an edge rather than a fill — for actions sitting *inside* a
+   card, where a filled button would compete with the card's own fill. */
+.btn-outline {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 20px;
+  border-radius: var(--radius-full);
+  font-size: 14px; font-weight: 500; font-family: inherit;
+  background: transparent; color: var(--text-primary);
   border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-outline:hover { background: var(--surface-hover); }
+
+/* The one club-coloured button: the page's main action, on Home only. */
+.btn-accent {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 44px; padding: 0 22px;
+  border-radius: var(--radius-full);
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  background: var(--accent-solid); color: var(--accent-on);
+  border: none; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-accent:hover { opacity: 0.88; }
+
+/* The dark pill on a light card — Home's arrow button, grown into an action. */
+.btn-ink {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; height: 48px;
+  border-radius: var(--radius-full);
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  background: var(--ink); color: var(--surface-light);
+  border: none; cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-ink:hover { opacity: 0.85; }
+
+/* ── A day in the month grid. A division of one card, not a box of its own. ── */
+.cal-cell {
+  display: flex; flex-direction: column; align-items: stretch;
+  min-width: 0; padding: 12px 14px 10px;
+  text-align: left; font-family: inherit; color: inherit;
+  background: transparent; border: none; cursor: pointer;
+  transition: background 0.12s;
+}
+.cal-cell:hover { background: var(--surface-hover); }
+
+/* Diagonal stripes — "this one", in a chart, without a second colour. */
+.hatch-accent {
+  background: repeating-linear-gradient(-45deg, var(--accent-solid) 0 4px, transparent 4px 8px);
+  box-shadow: inset 0 0 0 1.5px var(--accent-solid);
+}
+.hatch-danger {
+  background: repeating-linear-gradient(-45deg, var(--color-danger) 0 3px, transparent 3px 6px);
+  box-shadow: inset 0 0 0 1px var(--color-danger);
 }
 
-/* ── The club's one appearance.
-   A hairline down the outer edge of the sidebar, fading out at both ends so
-   it reads as a nod rather than a rule. The only club colour in the app. ── */
-.club-edge {
-  position: absolute;
-  top: 0; bottom: 0; right: -1px;
-  width: 2px;
-  background: linear-gradient(
-    to bottom,
-    transparent 0%,
-    var(--accent-solid) 22%,
-    var(--accent-solid) 78%,
-    transparent 100%
-  );
-  opacity: 0.8;
-  pointer-events: none;
-}
+/* ── Panels.
+   A fill and nothing else: no edge, no hairline, no stripe down the side.
+   An opaque surface on a lighter canvas separates itself, and the 1px white
+   outline that used to sit on every card is the single most recognisable
+   tell of generated UI.
+
+   (These were `.glass` / `.glass-strong` until the opaque pass left the names
+   describing something the app no longer does.) ── */
+.panel        { background: var(--surface-raised); }
+.panel-strong { background: var(--surface-active); }
 
 /* ── Scrollbar ───────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -177,7 +312,7 @@ html, body {
   padding: 3px 9px;
   border-radius: var(--radius-full);
   font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
-  border: 1px solid var(--border-subtle);
+  border: 1px solid transparent;
   background: var(--surface-active);
   color: var(--text-secondary);
   white-space: nowrap;
@@ -215,7 +350,7 @@ html, body {
   font-size: 13px; font-weight: 500; font-family: inherit;
   background: var(--surface-raised);
   color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid transparent;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
@@ -231,7 +366,9 @@ html, body {
   /* A well, not a card: an input the same colour as the panel it sits in is
      invisible until you click it. */
   background: var(--surface-recessed);
-  border: 1px solid var(--border-subtle);
+  /* Carried transparent so focus does not resize the box. The well is darker
+     than the card it sits in; that is what makes it findable, not an outline. */
+  border: 1px solid transparent;
   color: var(--text-primary);
   outline: none;
   transition: background 0.15s, border-color 0.15s;
@@ -239,7 +376,7 @@ html, body {
 .input::placeholder { color: var(--text-disabled); }
 /* Focus is a brighter field and a stronger edge — not a coloured ring. */
 .input:focus,
-.input-neutral:focus { background: var(--surface-2); border-color: var(--border-strong); }
+.input-neutral:focus { background: var(--surface-hover); border-color: var(--border-strong); }
 
 /* Date / time inputs — dark colour scheme so the picker popup matches. */
 .input[type="date"],
@@ -252,22 +389,24 @@ html, body {
 .input[type="date"][value=""],
 .input[type="time"][value=""] { color: var(--text-disabled); }
 
-/* ── Sidebar nav item ────────────────────────────────────────────── */
+/* ── Sidebar nav item.
+   Tall, soft pills. At rest the label is quiet (tertiary); the open tab is a
+   raised grey pill with full-strength text — brightness, never a tint. ── */
 .nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px;
-  border-radius: var(--radius-sm);
-  font-size: 13px; font-weight: 500;
-  color: var(--text-secondary);
+  display: flex; align-items: center; gap: 14px;
+  height: 46px; padding: 0 16px;
+  border-radius: 14px;
+  font-size: 14.5px; font-weight: 500;
+  color: var(--text-tertiary);
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   text-decoration: none;
-  border: 1px solid transparent;
+  border: none;
+  background: transparent;
 }
-.nav-item:hover { background: var(--surface-raised); color: var(--text-primary); }
-/* The open tab is brighter, not tinted. */
+.nav-item:hover { background: var(--surface-recessed); color: var(--text-secondary); }
 .nav-item.active {
-  background: var(--surface-active);
+  background: var(--surface-raised);
   color: var(--text-primary);
 }
 

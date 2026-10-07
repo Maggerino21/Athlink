@@ -366,7 +366,7 @@ function AthleteSelector({ clubId, wholeSquad, onWholeSquadChange, selectedAthle
           display: 'flex', alignItems: 'center', gap: 10,
           padding: '9px 14px', borderRadius: 'var(--radius-md)', textAlign: 'left',
           fontFamily: 'inherit', cursor: 'pointer',
-          background: wholeSquad ? 'var(--surface-3)' : 'var(--surface-1)',
+          background: wholeSquad ? 'var(--surface-active)' : 'var(--surface-raised)',
           border: wholeSquad ? '1px solid var(--border-strong)' : '1px solid var(--border-default)',
           transition: 'all 0.12s',
         }}
@@ -401,7 +401,7 @@ function AthleteSelector({ clubId, wholeSquad, onWholeSquadChange, selectedAthle
                         display: 'flex', alignItems: 'center', gap: 10,
                         padding: '9px 14px', borderRadius: 'var(--radius-md)', textAlign: 'left',
                         fontFamily: 'inherit', cursor: 'pointer',
-                        background: checked ? `rgba(${rgb}, 0.12)` : 'var(--surface-1)',
+                        background: checked ? `rgba(${rgb}, 0.12)` : 'var(--surface-raised)',
                         border: checked ? `1px solid rgba(${rgb}, 0.35)` : '1px solid var(--border-default)',
                         transition: 'all 0.12s',
                       }}
@@ -478,7 +478,7 @@ function AthleteSearch({ athletes, selected, onToggle }: {
       </div>
 
       {/* List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-1)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-raised)' }}>
         {displayed.length === 0 && (
           <div className="t-small" style={{ color: 'var(--text-tertiary)', padding: '12px 14px' }}>
             {athletes.length === 0 ? 'No athletes found' : 'No matches'}
@@ -494,7 +494,7 @@ function AthleteSearch({ athletes, selected, onToggle }: {
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '9px 14px', textAlign: 'left', fontFamily: 'inherit',
-                background: checked ? 'var(--surface-2)' : 'transparent',
+                background: checked ? 'var(--surface-hover)' : 'transparent',
                 border: 'none', borderBottom: '1px solid var(--border-subtle)',
                 cursor: 'pointer', transition: 'background 0.1s', flexShrink: 0,
               }}
@@ -600,7 +600,7 @@ function MatchForm({ clubId, clubName, date, onBack, onCreated }: FormProps & { 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{
         display: 'flex', gap: 4, padding: 4,
-        background: 'var(--surface-1)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
         borderRadius: 'var(--radius-md)',
       }}>
         {([['paste', 'Paste a list'], ['single', 'Add one match']] as const).map(([key, label]) => (
@@ -610,7 +610,7 @@ function MatchForm({ clubId, clubName, date, onBack, onCreated }: FormProps & { 
               flex: 1, padding: '9px 12px', borderRadius: 'var(--radius-sm)',
               fontSize: 13, fontWeight: mode === key ? 700 : 500, fontFamily: 'inherit',
               cursor: 'pointer', border: 'none',
-              background: mode === key ? 'var(--surface-3)' : 'transparent',
+              background: mode === key ? 'var(--surface-active)' : 'transparent',
               color: mode === key ? 'var(--text-primary)' : 'var(--text-secondary)',
               transition: 'background 0.12s, color 0.12s',
             }}
@@ -737,7 +737,7 @@ function PasteMatches({ clubId, clubName, onSaved }: {
                   style={{
                     width: 46, flexShrink: 0, padding: '5px 0', borderRadius: 'var(--radius-sm)',
                     fontSize: 11, fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer',
-                    background: 'var(--surface-2)', border: '1px solid var(--border-default)',
+                    background: 'var(--surface-hover)', border: '1px solid var(--border-default)',
                     color: 'var(--text-secondary)',
                   }}
                 >
@@ -828,7 +828,7 @@ function SingleMatch({ clubId, date, onSaved }: {
               style={{
                 padding: '7px 18px', borderRadius: 'var(--radius-full)',
                 fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer',
-                background: isHome === v ? 'var(--surface-3)' : 'var(--surface-1)',
+                background: isHome === v ? 'var(--surface-active)' : 'var(--surface-raised)',
                 border: `1px solid ${isHome === v ? 'var(--border-strong)' : 'var(--border-default)'}`,
                 color: isHome === v ? 'var(--text-primary)' : 'var(--text-secondary)',
               }}
@@ -1109,7 +1109,7 @@ function MeetingForm({ clubId, date, onBack, onCreated }: FormProps) {
         <div style={{ display: 'flex', gap: 8 }}>
           {[{ v: false, l: 'In person' }, { v: true, l: 'Online' }].map(({ v, l }) => (
             <button key={String(v)} type="button" onClick={() => setOnline(v)}
-              style={{ padding: '6px 14px', borderRadius: 'var(--radius-full)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', background: online === v ? 'var(--surface-3)' : 'var(--surface-1)', border: online === v ? '1px solid var(--border-strong)' : '1px solid var(--border-default)', color: online === v ? 'var(--text-primary)' : 'var(--text-secondary)', transition: 'all 0.12s' }}>
+              style={{ padding: '6px 14px', borderRadius: 'var(--radius-full)', fontSize: 13, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', background: online === v ? 'var(--surface-active)' : 'var(--surface-raised)', border: online === v ? '1px solid var(--border-strong)' : '1px solid var(--border-default)', color: online === v ? 'var(--text-primary)' : 'var(--text-secondary)', transition: 'all 0.12s' }}>
               {l}
             </button>
           ))}
@@ -1324,7 +1324,7 @@ function VacationForm({ clubId, date, onBack, onCreated }: FormProps) {
         />
       </Field>
 
-      <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border-subtle)' }}>
+      <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--surface-raised)', border: '1px solid var(--border-subtle)' }}>
         <span className="t-small" style={{ color: 'var(--text-tertiary)' }}>
           This will appear as a block on the calendar for the whole squad.
         </span>

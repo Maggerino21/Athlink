@@ -213,7 +213,7 @@ function ClubDetails({ clubId, clubName, clubColor, canEdit, onSaved }: {
   }
 
   return (
-    <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '22px 24px', marginBottom: 28 }}>
+    <div className="panel" style={{ borderRadius: 'var(--radius-lg)', padding: '22px 24px', marginBottom: 28 }}>
       <div className="t-label" style={{ marginBottom: 18 }}>Club details</div>
 
       {!canEdit ? (
@@ -303,7 +303,7 @@ function PeopleSection({
       <div className="t-label" style={{ marginBottom: 12 }}>{title} · {count}</div>
 
       {members.length === 0 ? (
-        <div className="glass t-small" style={{
+        <div className="panel t-small" style={{
           borderRadius: 'var(--radius-md)', padding: '18px 16px',
           color: 'var(--text-tertiary)', textAlign: 'center',
         }}>
@@ -348,7 +348,7 @@ function MemberRow({ member, isSelf, isClubManager, managerCount, onAction }: {
   const mayToggle  = !isRemoved && isStaff && isClubManager && !isLastManager;
 
   return (
-    <div className="glass" style={{
+    <div className="panel" style={{
       borderRadius: 'var(--radius-md)', padding: '11px 14px',
       display: 'flex', alignItems: 'center', gap: 12,
       opacity: isRemoved ? 0.55 : 1,
@@ -487,7 +487,7 @@ function ConfirmDialog({ confirm, busy, error, onCancel, onConfirm }: {
     >
       <div style={{
         width: 460, borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
       }}>
         <div className="t-subheading" style={{ color: 'var(--text-primary)', marginBottom: 12 }}>

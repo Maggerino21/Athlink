@@ -10,9 +10,9 @@ export type DashTab = 'overview' | 'athletes' | 'calendar' | 'feedback' | 'tasks
 /* ── Inline SVG icons — defined before NAV so Turbopack can resolve them ── */
 function GridIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-      <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/>
+      <rect x="3" y="15" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/>
     </svg>
   );
 }
@@ -93,15 +93,15 @@ function PlusIcon({ size = 16 }: { size?: number }) {
 }
 
 /* ── Nav items ────────────────────────────────────────────────────── */
-const NAV: { tab: DashTab; label: string; icon: React.FC<{ size?: number }>; highlight?: boolean }[] = [
-  { tab: 'overview',  label: 'Overview',   icon: GridIcon },
+const NAV: { tab: DashTab; label: string; icon: React.FC<{ size?: number }> }[] = [
+  { tab: 'overview',  label: 'Home',       icon: GridIcon },
   { tab: 'athletes',  label: 'Athletes',   icon: UsersIcon },
   { tab: 'calendar',  label: 'Calendar',   icon: CalendarIcon },
   { tab: 'feedback',  label: 'Feedback',   icon: ChatIcon },
   { tab: 'tasks',     label: 'Tasks',      icon: CheckIcon },
   { tab: 'groups',    label: 'Groups',     icon: LayersIcon },
   { tab: 'club',      label: 'Club',       icon: ShieldIcon },
-  { tab: 'new',       label: 'New event',  icon: PlusIcon, highlight: true },
+  { tab: 'new',       label: 'New event',  icon: PlusIcon },
 ];
 
 function getInitials(name: string) {
@@ -138,69 +138,57 @@ export default function Sidebar({
 
   return (
     <aside
-      className="flex flex-col w-[220px] shrink-0 h-full relative z-20"
+      className="flex flex-col w-[248px] shrink-0 h-full relative z-20"
+      // The rail sits on the canvas, divided by one line — not a darker slab.
+      // The cards beside it are the raised things; a black rail framing them
+      // was a third level the page did not need.
       style={{
-        background: 'var(--surface-recessed)',
+        background: 'transparent',
         borderRight: '1px solid var(--border-subtle)',
       }}
     >
-      {/* The club's one appearance in the whole dashboard: a hairline down the
-          outer edge, fading out at both ends. Club colour is identity, not
-          information — everything else here is greyscale so the event colours
-          are the only thing that means something. */}
-      <div className="club-edge" />
-
       {/* Club header */}
-      <div style={{ padding: '24px 16px 20px', borderBottom: '1px solid var(--border-default)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {/* The crest stands in for the club, so this one circle keeps the
-              colour — it is identity, the way an avatar is. */}
+      <div style={{ padding: '32px 30px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* The crest stands in for the club, so this circle keeps the colour
+              — it is identity, the way an avatar is. */}
           <div style={{
-            width: 32, height: 32,
-            borderRadius: 'var(--radius-sm)',
+            width: 36, height: 36,
+            borderRadius: 'var(--radius-full)',
             background: clubColor,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, fontWeight: 600,
+            fontSize: 14, fontWeight: 700,
             color: 'var(--accent-on)',
             flexShrink: 0,
           }}>
             {clubName[0]?.toUpperCase()}
           </div>
-          <div style={{ minWidth: 0 }}>
-            <div className="t-body-medium" style={{ color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {clubName}
-            </div>
-            <div className="t-label" style={{ marginTop: 2 }}>Staff dashboard</div>
+          <div style={{
+            minWidth: 0, fontSize: 17, fontWeight: 500, letterSpacing: '-0.01em',
+            color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {clubName}
           </div>
         </div>
       </div>
 
       {/* Nav */}
-      <nav style={{ flex: 1, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {NAV.map(({ tab, label, icon: Icon, highlight }) => (
+      <nav style={{ flex: 1, padding: '44px 22px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {NAV.map(({ tab, label, icon: Icon }) => (
           <button
             key={tab}
             onClick={() => onTabChange(tab)}
             className={`nav-item${activeTab === tab ? ' active' : ''}`}
-            style={{
-              width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
-              marginTop: highlight ? 8 : 0,
-              // "New event" is the one thing a coach comes here to do, so it
-              // sits a little brighter than the rest — weight, not colour.
-              ...(highlight && activeTab !== tab ? {
-                background: 'var(--surface-raised)',
-                color:      'var(--text-primary)',
-              } : {}),
-            }}
+            style={{ width: '100%', textAlign: 'left', fontFamily: 'inherit' }}
           >
-            <Icon size={16} />
+            <Icon size={18} />
             {label}
           </button>
         ))}
       </nav>
 
       {/* Staff profile + sign out */}
-      <div style={{ padding: '14px 10px', borderTop: '1px solid var(--border-default)' }}>
+      <div style={{ padding: '14px 22px 24px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {/* The whole name/avatar block opens your profile — a name is the one thing
               everyone tries to click, so it has to lead somewhere. */}
@@ -209,12 +197,12 @@ export default function Sidebar({
             title="Your profile"
             className={`nav-item${activeTab === 'profile' ? ' active' : ''}`}
             style={{
-              flex: 1, minWidth: 0, gap: 10, padding: '6px 6px',
-              textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit',
+              flex: 1, minWidth: 0, gap: 12, height: 'auto', padding: '8px 8px',
+              textAlign: 'left', fontFamily: 'inherit',
             }}
           >
             <div style={{
-              width: 30, height: 30,
+              width: 36, height: 36,
               borderRadius: 'var(--radius-full)',
               background: 'var(--surface-active)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -225,7 +213,7 @@ export default function Sidebar({
               {getInitials(staffName)}
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="t-small" style={{ fontWeight: 600, color: 'inherit', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <div className="t-small" style={{ fontWeight: 500, fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {staffName}
               </div>
               <div className="t-label" style={{ marginTop: 1 }}>Staff</div>
@@ -235,7 +223,7 @@ export default function Sidebar({
             onClick={() => setConfirmSignOut(true)}
             title="Sign out"
             className="btn-ghost"
-            style={{ width: 28, height: 28, padding: 0, flexShrink: 0 }}
+            style={{ width: 32, height: 32, padding: 0, flexShrink: 0, background: 'transparent' }}
           >
             <SignOutIcon size={14} />
           </button>
@@ -276,7 +264,7 @@ function SignOutDialog({ busy, onCancel, onConfirm }: {
     >
       <div style={{
         width: 380, borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)', border: '1px solid var(--border-default)',
+        background: 'var(--surface-raised)', border: '1px solid var(--border-default)',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)', padding: 24,
       }}>
         <div className="t-subheading" style={{ color: 'var(--text-primary)', marginBottom: 10 }}>

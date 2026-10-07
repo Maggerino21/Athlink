@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { FolderOpen, Plus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { matteAccent } from '@/lib/clubTheme';
 
 /* ── Types ──────────────────────────────────────────────────────────── */
 type Group = {
@@ -25,10 +26,6 @@ const PRESET_COLORS = [
 ];
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
-function hexToRgb(hex: string): string {
-  const c = hex.replace('#', '');
-  return `${parseInt(c.slice(0,2),16)}, ${parseInt(c.slice(2,4),16)}, ${parseInt(c.slice(4,6),16)}`;
-}
 
 function getInitials(name: string): string {
   const parts = name.trim().split(' ').filter(Boolean);
@@ -80,7 +77,6 @@ export default function GroupsTab({ clubId }: { clubId: string }) {
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '28px 32px 20px',
-        borderBottom: '1px solid var(--border-subtle)', flexShrink: 0,
       }}>
         <div>
           <div className="t-label" style={{ marginBottom: 4 }}>Dashboard</div>
@@ -101,7 +97,7 @@ export default function GroupsTab({ clubId }: { clubId: string }) {
         {loading ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
             {[1,2,3].map(i => (
-              <div key={i} className="skeleton" style={{ height: 140, borderRadius: 'var(--radius-lg)', background: 'var(--surface-2)' }} />
+              <div key={i} className="skeleton" style={{ height: 140, borderRadius: 'var(--radius-lg)', background: 'var(--surface-hover)' }} />
             ))}
           </div>
         ) : groups.length === 0 ? (
@@ -127,7 +123,7 @@ export default function GroupsTab({ clubId }: { clubId: string }) {
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, width: 420, zIndex: 30,
         display: 'flex', flexDirection: 'column',
-        background: 'var(--surface-3)', borderLeft: '1px solid var(--border-default)',
+        background: 'var(--surface-active)', borderLeft: '1px solid var(--border-default)',
         boxShadow: '-12px 0 48px rgba(0,0,0,0.35)',
         transform: activeGroup ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.26s cubic-bezier(0.25,0.46,0.45,0.94)',
@@ -148,7 +144,7 @@ export default function GroupsTab({ clubId }: { clubId: string }) {
       <div style={{
         position: 'absolute', top: 0, right: 0, bottom: 0, width: 420, zIndex: 30,
         display: 'flex', flexDirection: 'column',
-        background: 'var(--surface-3)', borderLeft: '1px solid var(--border-default)',
+        background: 'var(--surface-active)', borderLeft: '1px solid var(--border-default)',
         boxShadow: '-12px 0 48px rgba(0,0,0,0.35)',
         transform: showCreate ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.26s cubic-bezier(0.25,0.46,0.45,0.94)',
@@ -166,72 +162,58 @@ export default function GroupsTab({ clubId }: { clubId: string }) {
 }
 
 /* ── Group card ─────────────────────────────────────────────────────── */
+/**
+ * A group card is a grey card with a **hint** of the group's colour: a dot and
+ * the member-count chip, both run through `matteAccent` so a user-picked
+ * `#60A5FA` sits down against the matte ground.
+ *
+ * Deliberately **not** the filled card an event gets. The two kinds of colour
+ * mean different things — an event's says what is happening, a group's is a
+ * label for telling two lists of names apart — and they must not be mistakable
+ * for each other at a glance.
+ */
 function GroupCard({ group, active, onClick }: { group: Group; active: boolean; onClick: () => void }) {
   const { name, color, description, member_count } = group;
-  const rgb = hexToRgb(color);
+  const tone = matteAccent(color);
 
   return (
     <button
       onClick={onClick}
       style={{
-        background:    active ? `rgba(${rgb}, 0.13)` : `rgba(${rgb}, 0.07)`,
-        border:        active ? `1px solid rgba(${rgb}, 0.45)` : `1px solid rgba(${rgb}, 0.22)`,
-        borderRadius:  'var(--radius-lg)', padding: '0 0 20px',
+        background:    active ? 'var(--surface-active)' : 'var(--surface-raised)',
+        border:        'none',
+        borderRadius:  'var(--radius-lg)', padding: '18px 20px 16px',
         textAlign:     'left', cursor: 'pointer', fontFamily: 'inherit',
-        display:       'flex', flexDirection: 'column',
-        transition:    'background 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s',
-        position:      'relative', overflow: 'hidden',
-        transform:     active ? 'translateY(-2px)' : 'translateY(0)',
-        boxShadow:     active ? `0 8px 32px rgba(${rgb}, 0.20)` : 'none',
+        display:       'flex', flexDirection: 'column', gap: 8,
+        transition:    'background 0.15s',
       }}
       onMouseEnter={e => {
         if (active) return;
-        const b = e.currentTarget as HTMLButtonElement;
-        b.style.background   = `rgba(${rgb}, 0.11)`;
-        b.style.borderColor  = `rgba(${rgb}, 0.35)`;
-        b.style.transform    = 'translateY(-2px)';
-        b.style.boxShadow    = `0 6px 24px rgba(${rgb}, 0.15)`;
+        (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-active)';
       }}
       onMouseLeave={e => {
         if (active) return;
-        const b = e.currentTarget as HTMLButtonElement;
-        b.style.background   = `rgba(${rgb}, 0.07)`;
-        b.style.borderColor  = `rgba(${rgb}, 0.22)`;
-        b.style.transform    = 'translateY(0)';
-        b.style.boxShadow    = 'none';
+        (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface-raised)';
       }}
     >
-      {/* Color bar */}
-      <div style={{ height: 4, background: color, borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', flexShrink: 0 }} />
-
-      <div style={{ padding: '18px 20px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {/* Name + member count */}
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color, letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+      {/* Name + member count */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+          <div style={{ width: 9, height: 9, borderRadius: '50%', background: tone.ink, flexShrink: 0 }} />
+          <div className="t-subheading" style={{ color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {name}
           </div>
-          <div style={{
-            flexShrink: 0, padding: '2px 8px', borderRadius: 'var(--radius-full)',
-            background: `rgba(${rgb}, 0.14)`, border: `1px solid rgba(${rgb}, 0.28)`,
-            fontSize: 11, fontWeight: 700, color,
-          }}>
-            {member_count} {member_count === 1 ? 'player' : 'players'}
-          </div>
         </div>
-
-        {description && (
-          <div className="t-small" style={{ color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-            {description}
-          </div>
-        )}
-
-        {/* Arrow */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5 }}>
-            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
-          </svg>
+        <div className="badge" style={{ flexShrink: 0, background: tone.fill, color: tone.ink }}>
+          {member_count} {member_count === 1 ? 'player' : 'players'}
         </div>
       </div>
+
+      {description && (
+        <div className="t-small" style={{ color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+          {description}
+        </div>
+      )}
     </button>
   );
 }
@@ -327,12 +309,11 @@ function CreateGroupPanel({ clubId, onClose, onCreated }: { clubId: string; onCl
     }
   }
 
-  const rgb = hexToRgb(color);
 
   return (
     <>
       {/* Panel header */}
-      <div style={{ padding: '24px 24px 20px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '24px 24px 20px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div className="t-label" style={{ marginBottom: 4 }}>Groups</div>
           <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>New group</div>
@@ -347,7 +328,7 @@ function CreateGroupPanel({ clubId, onClose, onCreated }: { clubId: string; onCl
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 8,
           padding: '6px 14px', borderRadius: 'var(--radius-full)',
-          background: `rgba(${rgb}, 0.12)`, border: `1px solid rgba(${rgb}, 0.30)`,
+          background: 'var(--surface-active)',
           alignSelf: 'flex-start',
         }}>
           <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
@@ -378,7 +359,7 @@ function CreateGroupPanel({ clubId, onClose, onCreated }: { clubId: string; onCl
         </PanelField>
 
         <PanelField label={`Add athletes (${selected.length} selected)`}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-1)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 220, overflowY: 'auto', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-raised)' }}>
             {athletes.length === 0 && <div className="t-small" style={{ color: 'var(--text-tertiary)', padding: '12px 14px' }}>No athletes found</div>}
             {athletes.map(a => {
               const checked = selected.includes(a.id);
@@ -393,21 +374,12 @@ function CreateGroupPanel({ clubId, onClose, onCreated }: { clubId: string; onCl
       </form>
 
       {/* Footer */}
-      <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+      <div style={{ padding: '16px 24px', flexShrink: 0 }}>
         <button
           onClick={handleSubmit as any}
           disabled={loading}
-          style={{
-            width: '100%', padding: '11px 18px', fontSize: 14, fontWeight: 600,
-            fontFamily: 'inherit', cursor: loading ? 'not-allowed' : 'pointer',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-            borderRadius: 'var(--radius-md)',
-            background: `rgba(${rgb}, 0.15)`,
-            border: `1px solid rgba(${rgb}, 0.35)`,
-            color,
-            opacity: loading ? 0.5 : 1,
-            transition: 'opacity 0.15s',
-          }}
+          className="btn-primary"
+          style={{ width: '100%', padding: '12px 18px' }}
         >
           {loading ? 'Creating…' : 'Create group'}
         </button>
@@ -437,7 +409,6 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
   const [adding,      setAdding]      = useState(false);
   const [delConfirm,  setDelConfirm]  = useState(false);
 
-  const rgb = hexToRgb(group.color);
 
   async function fetchMembers() {
     const { data } = await supabase
@@ -495,13 +466,13 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
   return (
     <>
       {/* Header */}
-      <div style={{ padding: '24px 24px 20px', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
+      <div style={{ padding: '24px 24px 20px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 12, height: 12, borderRadius: '50%', background: group.color, flexShrink: 0 }} />
+            <div style={{ width: 12, height: 12, borderRadius: '50%', background: matteAccent(group.color).ink, flexShrink: 0 }} />
             <div>
               <div className="t-label" style={{ marginBottom: 2 }}>Group</div>
-              <div className="t-subheading" style={{ color: group.color }}>{group.name}</div>
+              <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>{group.name}</div>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
@@ -524,7 +495,7 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
 
         {/* Edit form */}
         {editing && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '16px 18px', borderRadius: 'var(--radius-md)', background: 'var(--surface-1)', border: '1px solid var(--border-default)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '16px 18px', borderRadius: 'var(--radius-md)', background: 'var(--surface-raised)' }}>
             <PanelField label="Name">
               <input className="input" value={editName} onChange={e => setEditName(e.target.value)} />
             </PanelField>
@@ -536,7 +507,7 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
             </PanelField>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={saveEdits} disabled={saving} className="btn-ghost"
-                style={{ flex: 1, justifyContent: 'center', background: `rgba(${rgb},0.12)`, borderColor: `rgba(${rgb},0.30)`, color: group.color }}>
+                style={{ flex: 1, justifyContent: 'center', background: 'var(--surface-active)', color: 'var(--text-primary)' }}>
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
               {!delConfirm ? (
@@ -570,7 +541,7 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
 
           {/* Add members dropdown */}
           {addOpen && nonMembers.length > 0 && (
-            <div style={{ marginBottom: 10, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-1)', overflow: 'hidden' }}>
+            <div style={{ marginBottom: 10, borderRadius: 'var(--radius-md)', border: '1px solid var(--border-default)', background: 'var(--surface-raised)', overflow: 'hidden' }}>
               <div style={{ maxHeight: 180, overflowY: 'auto' }}>
                 {nonMembers.map(a => {
                   const checked = toAdd.includes(a.id);
@@ -578,9 +549,9 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
                 })}
               </div>
               {toAdd.length > 0 && (
-                <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-subtle)' }}>
+                <div style={{ padding: '10px 12px', }}>
                   <button onClick={addMembers} disabled={adding} className="btn-ghost"
-                    style={{ width: '100%', justifyContent: 'center', background: `rgba(${rgb},0.12)`, borderColor: `rgba(${rgb},0.30)`, color: group.color }}>
+                    style={{ width: '100%', justifyContent: 'center', background: 'var(--surface-active)', color: 'var(--text-primary)' }}>
                     {adding ? 'Adding…' : `Add ${toAdd.length} athlete${toAdd.length > 1 ? 's' : ''}`}
                   </button>
                 </div>
@@ -597,13 +568,13 @@ function GroupDetail({ group, clubId, onClose, onUpdated, onDeleted }: {
                 <div key={m.id} style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '8px 12px', borderRadius: 'var(--radius-sm)',
-                  background: 'var(--surface-1)', border: '1px solid var(--border-subtle)',
+                  background: 'var(--surface-raised)',
                 }}>
                   <div style={{
                     width: 28, height: 28, borderRadius: 'var(--radius-full)', flexShrink: 0,
-                    background: `rgba(${rgb}, 0.15)`, border: `1px solid rgba(${rgb}, 0.30)`,
+                    background: 'var(--surface-active)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 10, fontWeight: 700, color: group.color,
+                    fontSize: 10, fontWeight: 500, color: 'var(--text-secondary)',
                   }}>
                     {getInitials(m.full_name)}
                   </div>
@@ -645,7 +616,7 @@ function AthleteRow({ athlete, checked, onToggle }: { athlete: Athlete; checked:
       style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px',
         textAlign: 'left', fontFamily: 'inherit', width: '100%',
-        background: checked ? 'var(--surface-2)' : 'transparent',
+        background: checked ? 'var(--surface-hover)' : 'transparent',
         border: 'none', borderBottom: '1px solid var(--border-subtle)',
         cursor: 'pointer', transition: 'background 0.1s',
       }}

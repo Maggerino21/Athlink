@@ -132,3 +132,73 @@ export function accentTokens(clubColor: string) {
     '--accent-on':     onSolid,
   } as Record<string, string>;
 }
+
+/* ── Matte accent ─────────────────────────────────────────────────────
+ * A port of `matteAccent()` in the mobile app's `utils/theme.ts`, so a colour
+ * chosen anywhere in Athlink is tempered the same way on both screens.
+ *
+ * Take the hue at a modest saturation, then mix it toward clay — a warm mid
+ * grey. The web palette is built for white backgrounds and reads neon on a
+ * matte ground; this is what makes a user-picked `#60A5FA` sit down.
+ *
+ * The event types have these pre-derived as `--event-*` tokens in globals.css.
+ * This function is for colours only known at runtime: a group's, mostly.
+ */
+const CLAY: RGB = [116, 104, 90];
+const CLAY_DARK: RGB = [58, 52, 46];
+const EARTH_MIX = 0.54;
+const FILL_MIX = 0.48;
+
+/** Hue in degrees, and how much colour there is to speak of. */
+function hueSat(hex: string): { h: number; s: number } {
+  const [r, g, b] = hexToRgb(hex).map(v => v / 255);
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  const l = (max + min) / 2;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  if (d === 0) return { h: 0, s: 0 };
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return { h: ((h * 60) % 360 + 360) % 360, s };
+}
+
+function hslRgb(h: number, s: number, l: number): RGB {
+  const H = ((h % 360) + 360) % 360, S = s / 100, L = l / 100;
+  const c = (1 - Math.abs(2 * L - 1)) * S;
+  const x = c * (1 - Math.abs(((H / 60) % 2) - 1));
+  const m = L - c / 2;
+  const [r, g, b] =
+    H < 60  ? [c, x, 0] : H < 120 ? [x, c, 0] : H < 180 ? [0, c, x] :
+    H < 240 ? [0, x, c] : H < 300 ? [x, 0, c] : [c, 0, x];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
+const mixRgb = (a: RGB, b: RGB, t: number): RGB =>
+  [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+const rgbCss = ([r, g, b]: RGB) =>
+  `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+
+export interface MatteAccent {
+  /** The label, the dot, the mark. */
+  ink: string;
+  /** An opaque card ground. */
+  fill: string;
+}
+
+const matteCache = new Map<string, MatteAccent>();
+
+export function matteAccent(hex: string): MatteAccent {
+  const hit = matteCache.get(hex);
+  if (hit) return hit;
+  const { h, s } = hueSat(hex);
+
+  // A white or near-grey source has no hue to keep, and hue 0 is red — a club
+  // playing in white would have come out crimson. Give it the clay itself.
+  const out: MatteAccent = s < 0.12
+    ? { ink: 'rgb(166, 158, 146)', fill: 'rgb(58, 55, 51)' }
+    : {
+        ink:  rgbCss(mixRgb(hslRgb(h, 52, 68), CLAY, EARTH_MIX - 0.14)),
+        fill: rgbCss(mixRgb(hslRgb(h, 52, 32), CLAY_DARK, FILL_MIX)),
+      };
+  matteCache.set(hex, out);
+  return out;
+}

@@ -22,7 +22,7 @@ export default function NotStaffNotice({ fullName }: { fullName: string }) {
       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 40, position: 'relative', zIndex: 10,
     }}>
-      <div className="glass" style={{
+      <div className="panel" style={{
         borderRadius: 'var(--radius-xl)', padding: '36px 32px',
         maxWidth: 420, textAlign: 'center',
       }}>

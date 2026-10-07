@@ -84,7 +84,7 @@ export default function ProfileTab({
       </div>
 
       {/* Identity */}
-      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: 24, marginBottom: 24 }}>
+      <div className="panel" style={{ borderRadius: 'var(--radius-lg)', padding: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <AvatarCircle name={fullName} size={64} />
           <div style={{ minWidth: 0 }}>
@@ -101,7 +101,7 @@ export default function ProfileTab({
       </div>
 
       {/* Editable */}
-      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '22px 24px', marginBottom: 24 }}>
+      <div className="panel" style={{ borderRadius: 'var(--radius-lg)', padding: '22px 24px', marginBottom: 24 }}>
         <div className="t-label" style={{ marginBottom: 18 }}>Your details</div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -165,7 +165,7 @@ export default function ProfileTab({
       </div>
 
       {/* Facts */}
-      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', padding: '22px 24px' }}>
+      <div className="panel" style={{ borderRadius: 'var(--radius-lg)', padding: '22px 24px' }}>
         <div className="t-label">Account</div>
 
         <Row label="Email" value={email} note="You sign in with this. Get in touch if you need it changed." />

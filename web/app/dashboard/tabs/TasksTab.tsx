@@ -134,7 +134,7 @@ export default function TasksTab({ staffId, clubId }: { staffId: string; clubId:
               padding: '6px 14px', borderRadius: 'var(--radius-full)',
               fontSize: 13, fontWeight: 500, fontFamily: 'inherit',
               cursor: 'pointer', border: 'none',
-              background: filter === f ? 'var(--surface-active)' : 'var(--surface-1)',
+              background: filter === f ? 'var(--surface-active)' : 'var(--surface-raised)',
               color: filter === f ? 'var(--text-primary)' : 'var(--text-secondary)',
               transition: 'background 0.12s',
             }}
@@ -152,7 +152,7 @@ export default function TasksTab({ staffId, clubId }: { staffId: string; clubId:
       </div>
 
       {/* Table */}
-      <div className="glass" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+      <div className="panel" style={{ borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
         {loading ? (
           <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-tertiary)' }} className="t-small">Loading…</div>
         ) : filtered.length === 0 ? (
@@ -316,13 +316,13 @@ function AssignTaskModal({
       <div style={{
         width: 480,
         borderRadius: 'var(--radius-xl)',
-        background: 'var(--bg-base)',
+        background: 'var(--surface-raised)',
         border: '1px solid var(--border-default)',
         display: 'flex', flexDirection: 'column',
         overflow: 'hidden',
         boxShadow: '0 24px 80px rgba(0,0,0,0.6)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid var(--border-default)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px' }}>
           <div className="t-subheading" style={{ color: 'var(--text-primary)' }}>Assign task</div>
           <button onClick={onClose} className="btn-ghost" style={{ width: 32, height: 32, padding: 0 }}>
             <CloseIcon />
@@ -362,7 +362,7 @@ function AssignTaskModal({
           {error && <div className="t-small" style={{ color: 'var(--color-danger)' }}>{error}</div>}
         </div>
 
-        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border-default)', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <div style={{ padding: '16px 24px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} className="btn-ghost">Cancel</button>
           <button onClick={save} disabled={!title.trim() || !athleteId || isSaving} className="btn-primary">
             {isSaving ? 'Saving…' : 'Assign task'}
@@ -430,7 +430,7 @@ function AthleteSelect({
           role="listbox"
           style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10,
-            background: 'var(--bg-base)',
+            background: 'var(--surface-raised)',
             border: '1px solid var(--border-default)',
             borderRadius: 'var(--radius-md)',
             maxHeight: 200, overflowY: 'auto',
@@ -461,7 +461,7 @@ function AthleteSelect({
                   color: 'var(--text-primary)',
                   transition: 'background 0.1s',
                 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                onMouseEnter={e => { if (!active) e.currentTarget.style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
               >
                 <AvatarCircle name={a.full_name} size={24} />

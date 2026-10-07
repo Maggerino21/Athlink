@@ -55,6 +55,17 @@ export type Database = {
           source: 'manual' | 'api';
           // Provider fixture id. Unique per club, so a re-sync upserts.
           external_id: string | null;
+          opponent_logo_url: string | null;
+          // Club-owned, every one of these: `sync_external_fixtures` must never
+          // list them in its DO UPDATE, or a sync wipes what a coach typed.
+          meet_time: string | null;
+          meet_location: string | null;
+          notes: string | null;
+          /** The opposing club's colour, e.g. '#FBD024'. Nullable. */
+          opponent_color: string | null;
+          // Provider fixtures are hidden, never deleted — a DELETE would be
+          // undone by the next sync. Every read must filter this IS NULL.
+          suppressed_at: string | null;
           created_at: string;
           updated_at: string;
         };
