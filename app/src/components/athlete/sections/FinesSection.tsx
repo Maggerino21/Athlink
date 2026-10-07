@@ -1,5 +1,5 @@
 /**
- * FinesSection — the fine box (bøtekasse).
+ * FinesSection — the fine box (botkasse).
  *
  * Data comes from `useFineBox`; see that file for what each number means.
  * "Give a fine" opens `GiveFineScreen` as a sheet; managing the fine list,
@@ -21,15 +21,19 @@
  */
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Dimensions, RefreshControl } from 'react-native';
-import Animated, { ZoomIn, ZoomOut } from 'react-native-reanimated';
+import Animated, { ZoomIn, ZoomOut, FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../../i18n';
 import PressableScale from '../../ui/PressableScale';
 import Reveal from '../../ui/Reveal';
 import haptics from '../../../utils/haptics';
 import { SURFACE, TEXT, RADIUS } from '../../../utils/tokens';
 import { DISPLAY_FONT, THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR, FLOURISH_FONT } from '../../../utils/type';
+import { useAuth } from '../../../context/AuthContext';
 import { useFineBox, REACTIONS, type Reaction } from '../useFineBox';
+import { weekdayShort, dayMonth } from '../../../utils/format';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
@@ -71,11 +75,24 @@ const TAB_BAR = 49;
  */
 const MEDAL = ['#C9A227', '#A8B0BA', '#B06A3B'] as const;
 
+/**
+ * How far down the leaderboard goes before you have to ask for the rest.
+ * A full squad is 25 rows, and a wall of names is not what anybody opens the
+ * fine box for — the top of the table is the story. Seven keeps the podium
+ * plus a chasing pack on screen without the card running past the fold.
+ */
+const RANKS_SHOWN = 7;
+
 export default function FinesSection({ isActive }: { isActive?: boolean }) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const { profile } = useAuth();
   const { box, reload, react: writeReaction } = useFineBox(isActive);
   const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
+
+  // The leaderboard past the podium is capped until asked for — see RANKS_SHOWN.
+  const [allRanks, setAllRanks] = useState(false);
 
   // Which fine has its picker open. One at a time, like a context menu.
   const [picking, setPicking] = useState<string | null>(null);
@@ -94,6 +111,16 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
 
   const goalPct = box.goal ? Math.min(1, box.total / box.goal.amount) : 0;
   const podium = box.leaderboard.slice(0, 3);
+  /** Ranks 4 and down: all of them, or the first few. */
+  const ranks = box.leaderboard.slice(3, allRanks ? undefined : RANKS_SHOWN);
+  const hidden = box.leaderboard.length - 3 - ranks.length;
+  /**
+   * Your own row, pinned under the cut when the list is folded past you. The
+   * question a collapsed table always raises is "where am I", and scrolling a
+   * squad to find out is the chore the cap exists to avoid.
+   */
+  const myRank = box.leaderboard.findIndex(p => p.id === profile?.id);
+  const me = myRank >= RANKS_SHOWN && !allRanks ? box.leaderboard[myRank] : null;
 
   const chromeText = kr(box.total);
   const chromeX = chromeLayout(chromeText, CARD_W - 36);
@@ -101,7 +128,7 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
   return (
     <View style={styles.root}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Fines</Text>
+        <Text style={styles.headerTitle}>{t('fines.title')}</Text>
       </View>
 
       {/* Title first, content when it is all in — see Reveal. */}
@@ -111,21 +138,21 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
           // Scrolling away is the natural "never mind" for an open picker.
           onScrollBeginDrag={() => setPicking(null)}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />}
-          // The bøtesjef's floating button sits over the list, so their list needs
+          // The botsjef's floating button sits over the list, so their list needs
           // enough extra room at the end to scroll the last fine clear of it.
           contentContainerStyle={{ paddingHorizontal: PAD, paddingBottom: insets.bottom + TAB_BAR + 24 + (box.isFineManager ? 64 : 0), gap: GAP }}
         >
           {/* A box nobody runs never fills. Say so, and who can fix it. */}
           {box.loaded && !box.hasManager && (
             <View style={styles.card}>
-              <Text style={styles.label}>No bøtesjef yet</Text>
-              <Text style={styles.emptyText}>Your staff choose who runs the fine box.</Text>
+              <Text style={styles.label}>{t('fines.noManagerTitle')}</Text>
+              <Text style={styles.emptyText}>{t('fines.noManagerBody')}</Text>
             </View>
           )}
 
           {/* The box itself. One figure, the way Home leads with one. */}
           <View style={styles.card}>
-            <Text style={[styles.label, styles.centered]}>In the box</Text>
+            <Text style={[styles.label, styles.centered]}>{t('fines.inTheBox')}</Text>
 
             <Svg width={CARD_W - 36} height={CHROME_H} style={styles.chrome}>
               <Defs>
@@ -164,7 +191,7 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
                   <View style={[styles.goalFill, { width: `${goalPct * 100}%` }]} />
                 </View>
                 <View style={styles.goalRow}>
-                  <Text style={styles.goalLabel}>{box.goal.label ?? 'Goal'}</Text>
+                  <Text style={styles.goalLabel}>{box.goal.label ?? t('fines.goal')}</Text>
                   <Text style={styles.goalLabel}>{kr(box.goal.amount)} kr</Text>
                 </View>
               </View>
@@ -174,14 +201,25 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
           {/* You. Owed first, because that is what you came to check. */}
           <View style={styles.row}>
             <View style={[styles.card, styles.halfCard]}>
-              <Text style={styles.label}>You owe</Text>
+              <Text style={styles.label}>{t('fines.youOwe')}</Text>
               <View style={styles.amountRow}>
                 <Text style={styles.figure} allowFontScaling={false}>{kr(box.owed)}</Text>
                 <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
               </View>
+              {/* Nothing owed, nothing to pay — the button would be a dead end. */}
+              {box.owed > 0 && (
+                <PressableScale
+                  style={styles.payBtn}
+                  scaleTo={0.96}
+                  haptic="medium"
+                  onPress={() => navigation.navigate('PayFine')}
+                >
+                  <Text style={styles.payBtnText}>{t('fines.payNow')}</Text>
+                </PressableScale>
+              )}
             </View>
             <View style={[styles.card, styles.halfCard]}>
-              <Text style={styles.label}>You have paid</Text>
+              <Text style={styles.label}>{t('fines.youHavePaid')}</Text>
               <View style={styles.amountRow}>
                 <Text style={styles.figure} allowFontScaling={false}>{kr(box.paid)}</Text>
                 <Text style={styles.figureUnit} allowFontScaling={false}>kr</Text>
@@ -190,11 +228,11 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
           </View>
 
           {/* Podium: three columns of different heights, then the rest as a list. */}
-          <View style={styles.card}>
-            <Text style={styles.label}>Season leaderboard</Text>
+          <Animated.View style={styles.card} layout={LinearTransition.duration(260)}>
+            <Text style={styles.label}>{t('fines.leaderboard')}</Text>
 
             {podium.length === 0 ? (
-              <Text style={styles.emptyText}>Nobody has been fined yet this season.</Text>
+              <Text style={styles.emptyText}>{t('fines.nobodyFined')}</Text>
             ) : (
               <View style={styles.podium}>
                 {[1, 0, 2].map(rank => {
@@ -214,21 +252,51 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
               </View>
             )}
 
-            {box.leaderboard.slice(3).map((p, i) => (
-              <View key={p.id} style={styles.rankRow}>
+            {ranks.map((p, i) => (
+              <Animated.View
+                key={p.id}
+                style={styles.rankRow}
+                entering={FadeIn.duration(180)}
+                exiting={FadeOut.duration(120)}
+              >
                 <Text style={styles.rankNum} allowFontScaling={false}>{i + 4}</Text>
                 <Text style={styles.rankName} numberOfLines={1}>{p.name}</Text>
                 <Text style={styles.rankAmount} allowFontScaling={false}>{kr(p.amount)} kr</Text>
-              </View>
+              </Animated.View>
             ))}
-          </View>
+
+            {me ? (
+              <Animated.View
+                style={[styles.rankRow, styles.myRankRow]}
+                entering={FadeIn.duration(180)}
+                exiting={FadeOut.duration(120)}
+              >
+                <Text style={styles.rankNum} allowFontScaling={false}>{myRank + 1}</Text>
+                <Text style={[styles.rankName, styles.myRankName]} numberOfLines={1}>{me.name}</Text>
+                <Text style={styles.rankAmount} allowFontScaling={false}>{kr(me.amount)} kr</Text>
+              </Animated.View>
+            ) : null}
+
+            {hidden > 0 || allRanks ? (
+              <PressableScale
+                style={styles.moreBtn}
+                scaleTo={0.97}
+                haptic="none"
+                onPress={() => { haptics.soft(); setAllRanks(v => !v); }}
+              >
+                <Text style={styles.moreText}>
+                  {allRanks ? t('fines.showFewer') : t('fines.showAll', { count: hidden })}
+                </Text>
+              </PressableScale>
+            ) : null}
+          </Animated.View>
 
           {/* The feed. Where the banter lives, so reactions sit right on it. */}
-          <Text style={[styles.label, styles.feedLabel]}>Latest fines</Text>
+          <Text style={[styles.label, styles.feedLabel]}>{t('fines.latest')}</Text>
 
           {box.loaded && box.feed.length === 0 && (
             <View style={styles.card}>
-              <Text style={styles.emptyText}>No fines yet. Enjoy it while it lasts.</Text>
+              <Text style={styles.emptyText}>{t('fines.noFines')}</Text>
             </View>
           )}
 
@@ -303,7 +371,7 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
 
         </ScrollView>
 
-        {/* Only the bøtesjef sees this. Everything they can do lives behind it. */}
+        {/* Only the botsjef sees this. Everything they can do lives behind it. */}
         {box.isFineManager && (
           <PressableScale
             style={[styles.fab, { bottom: insets.bottom + TAB_BAR + 16 }]}
@@ -311,7 +379,7 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
             haptic="medium"
             onPress={() => navigation.navigate('GiveFine')}
           >
-            <Text style={styles.fabText}>Give a fine</Text>
+            <Text style={styles.fabText}>{t('fines.giveFine')}</Text>
           </PressableScale>
         )}
       </Reveal>
@@ -340,15 +408,15 @@ function chromeLayout(text: string, boxWidth: number): { num: number; unit: numb
 function when(iso: string): string {
   const d = new Date(iso);
   const mins = Math.floor((Date.now() - d.getTime()) / 60000);
-  if (mins < 1) return 'now';
+  if (mins < 1) return i18n.t('fines.now');
   if (mins < 60) return `${mins}m`;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const day = new Date(d); day.setHours(0, 0, 0, 0);
   const days = Math.round((today.getTime() - day.getTime()) / 86400000);
   if (days === 0) return `${Math.floor(mins / 60)}h`;
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return d.toLocaleDateString('en-GB', { weekday: 'short' });
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  if (days === 1) return i18n.t('common.yesterday');
+  if (days < 7) return weekdayShort(d);
+  return dayMonth(d);
 }
 
 /** 6450 → "6 450". Norwegian grouping, which is a space. */
@@ -383,6 +451,11 @@ const styles = StyleSheet.create({
   feedLabel: { marginTop: 8, marginLeft: 4 },
 
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 5, marginTop: 6 },
+  payBtn: {
+    height: 38, marginTop: 12, borderRadius: RADIUS.pill, backgroundColor: TEXT.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  payBtnText: { fontFamily: UI_FONT, fontSize: 15, color: SURFACE.base },
   figure: {
     fontFamily: THIN_FONT, fontSize: 40, lineHeight: 46,
     color: TEXT.primary, letterSpacing: -1.4,
@@ -420,6 +493,20 @@ const styles = StyleSheet.create({
   rankNum: { fontFamily: UI_FONT_REGULAR, fontSize: 13, color: TEXT.tertiary, width: 18 },
   rankName: { fontFamily: UI_FONT_REGULAR, fontSize: 15, color: TEXT.primary, flex: 1 },
   rankAmount: { fontFamily: UI_FONT_REGULAR, fontSize: 15, color: TEXT.secondary },
+  /**
+   * You, when the cut is above you. Drawn the way everything "current" is in
+   * this app — a brighter surface, no colour — so it reads as your row rather
+   * than as another rank.
+   */
+  myRankRow: {
+    backgroundColor: SURFACE.active,
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 10,
+    marginTop: 4,
+  },
+  myRankName: { fontFamily: UI_FONT },
+  moreBtn: { alignSelf: 'center', paddingVertical: 10, paddingHorizontal: 14, marginTop: 2 },
+  moreText: { fontFamily: UI_FONT, fontSize: 14, color: TEXT.secondary },
 
   fineTop: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
   fineWho: { flex: 1 },

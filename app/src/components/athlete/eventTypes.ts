@@ -10,6 +10,7 @@
  * web app writes (see CLAUDE.md § Event types).
  */
 
+import i18n from '../../i18n';
 import { matteAccent, type MatteAccent } from '../../utils/theme';
 import type { ToDoItem } from './useToDo';
 
@@ -38,6 +39,8 @@ export interface CalEvent {
   notes?: string | null;
   opponent_logo_url?: string | null;
   is_home?: boolean | null;
+  /** The opposing club's colour, when the club has recorded one. */
+  opponent_color?: string | null;
   /** Set on `task` / `feedback` rows: what the sheet shows when one is tapped. */
   note?: ToDoItem;
 }
@@ -76,12 +79,40 @@ export function eventMeta(type: string): { icon: string; color: string } {
 }
 
 /**
+ * The type's name in the user's language.
+ *
+ * `type` is a plain text column, so a category the app has never heard of just
+ * falls back to the raw value with a capital — the same degrade-don't-throw
+ * rule as `eventMeta`.
+ */
+export function eventTypeLabel(type: string): string {
+  const key = `eventType.${type}`;
+  const label = i18n.t(key);
+  return label === key ? type.charAt(0).toUpperCase() + type.slice(1) : label;
+}
+
+/**
  * The matte form of a type's colour — what the UI should actually draw.
  *
  * `EVENT_META.color` stays the source of truth for the hue, but nothing should
  * paint it raw any more: at full saturation it reads neon against the matte
  * surfaces. Ask for the accent, not the colour.
  */
+/**
+ * What a calendar item is actually drawn in.
+ *
+ * **A match wears the opposing side's colour** where the club has recorded one
+ * — a fixture against Lillestrøm is yellow, against Tromsø red — because that
+ * is how a squad thinks about its season. Everything else wears its type, and
+ * a match with no colour stored falls back to the match clay, so a club that
+ * never fills the field in sees exactly what it saw before.
+ */
+export function itemAccent(item: { type: string; opponent_color?: string | null }): MatteAccent {
+  return item.type === 'match' && item.opponent_color
+    ? matteAccent(item.opponent_color)
+    : eventAccent(item.type);
+}
+
 export function eventAccent(type: string): MatteAccent {
   return matteAccent(eventMeta(type).color);
 }

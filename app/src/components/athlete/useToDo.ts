@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { readCache, writeCache } from '../../utils/cache';
+import i18n from '../../i18n';
 
 export interface TaskItem {
   kind: 'task';
@@ -68,7 +69,7 @@ export function toTaskItem(row: any): TaskItem {
     title: row.title,
     description: row.description || null,
     due: row.due_date ?? null,
-    from: row.staff?.full_name ?? 'Your staff',
+    from: row.staff?.full_name ?? i18n.t('common.yourStaff'),
     done: row.status !== 'pending',
   };
 }
@@ -81,8 +82,10 @@ export function toFeedbackItem(row: any): FeedbackItem {
     title: row.title || null,
     body: row.processed_text || row.feedback_text,
     actionPoint: row.action_point || null,
-    from: row.staff?.full_name ?? 'Your staff',
-    about: m ? `${m.is_home === false ? 'Away vs' : 'vs'} ${m.opponent}` : null,
+    from: row.staff?.full_name ?? i18n.t('common.yourStaff'),
+    about: m
+      ? i18n.t(m.is_home === false ? 'common.awayVs' : 'common.vs', { opponent: m.opponent })
+      : null,
     dayOf: m?.match_date ?? row.created_at,
     sentAt: row.created_at,
     done: !!row.acknowledged,

@@ -175,6 +175,19 @@ integration contract and its limits.
 
 **One app, two UIs.** Login role determines whether the user sees the athlete dashboard or the staff interface. Same codebase.
 
+**A match wears the opposing side's colour** (2026-10-01). `matches.opponent_color` holds
+a hex for the other club; a fixture against Lillestrøm is yellow, against Tromsø red, and
+Home's light takes that hue in the days before kick-off. It is **club-owned** — keep it
+out of `sync_external_fixtures`' `DO UPDATE`, like `meet_time` — and nullable, so a match
+with nothing stored falls back to the match clay and nothing is lost. Read it through
+`itemAccent()` (mobile, `eventTypes.ts`) or `itemVars()` / `matteAccent()` (web); both run
+it through the same clay mix so a raw club hex never lands on screen.
+
+Still to do: nothing fills it in automatically. `web/lib/badgeColor.ts` can sample a
+provider crest and `nearestClubColor()` snap it to the palette — wire that into the sync
+path — and a coach has no UI to set it on a manual fixture yet. The demo club's nine
+fixtures were filled in by hand.
+
 **Club theming.** Each club picks a `primary_color` at signup. All background gradients (top + bottom orbs) derive from this color via `clubGradientOrbs()` in `utils/theme.ts`. Athletes in the same club see the same color theme.
 
 **Language per user.** User selects language at signup (EN / NO). Stored on `profiles.language`. Applied via `i18n.changeLanguage()` on login. AI feedback is translated into the athlete's language by the edge function.
@@ -215,14 +228,14 @@ page-sheet route in the same group (see Athlete app — tabs).
 | `clubs` | `name`, `sport`, `invite_code` + `staff_invite_code` (6-char), `primary_color`, and the provider link: `external_provider`, `external_team_id`, `external_team_name`, `external_badge_url`, `external_synced_at` |
 | `match_feedback` | Staff → athlete feedback. Has `match_id` (**required in practice** — the staff policy refuses a row whose match is not in the caller's club, so a NULL is refused), `title`, `feedback_text`, `processed_text` (AI), `is_ai_processed`, `action_point`, `athlete_language`, `acknowledged`. `reaction` and `athlete_reply` are legacy — nothing writes them; replies were cut (no chat) |
 | `tasks` | Assigned tasks. `title`, `description`, `due_date` (optional), `status`, `assigned_to`, `created_by`, `club_id`, `completed_at` |
-| `matches` | Fixtures. Provider-owned: `opponent`, `opponent_logo_url`, `match_date`, `is_home`, `location`. Club-owned: `meet_time`, `meet_location`, `notes`. Plus `source` ('manual'\|'api'), `external_id`, `suppressed_at` |
+| `matches` | Fixtures. Provider-owned: `opponent`, `opponent_logo_url`, `match_date`, `is_home`, `location`. Club-owned: `meet_time`, `meet_location`, `notes`, `opponent_color`. Plus `source` ('manual'\|'api'), `external_id`, `suppressed_at` |
 | `events` | Generic events. `type`, `title`, `event_date`, `end_date`, `location`, `description`, `pdf_url`, `line_items` (jsonb) |
 | `event_assignments` | Joins `event_id` → `athlete_id`. Absent rows = whole squad |
 | `groups` | Athlete groupings — `name`, `color`, `description`, `club_id`, `created_by` |
 | `group_members` | Joins `group_id` → `athlete_id` |
 | `match_plans` | Defined in SQL; **no app or web code reads it yet** |
 | `self_assessments` | Defined in SQL; **no app or web code reads it yet** |
-| `fine_seasons` / `fine_rules` / `fines` / `fine_payments` / `fine_reactions` | The fine box. **Players only** — staff can read none of it; staff only pick the bøtesjef (`clubs.fine_manager_id`, via `set_fine_manager`). All writes except reactions and rules go through SECURITY DEFINER functions. See `supabase/fine_box.sql` |
+| `fine_seasons` / `fine_rules` / `fines` / `fine_payments` / `fine_reactions` | The fine box. **Players only** — staff can read none of it; staff only pick the botsjef (`clubs.fine_manager_id`, via `set_fine_manager`). All writes except reactions and rules go through SECURITY DEFINER functions. See `supabase/fine_box.sql` |
 
 > **`profiles` ↔ `clubs` has two foreign keys** — `profiles.club_id` and
 > `clubs.fine_manager_id`. A bare `clubs(...)` embed from `profiles` (or the
@@ -355,8 +368,9 @@ no policy changes at all.**
 **Home shows mock data in dev.** `USE_MOCK = __DEV__` fills in stand-in values
 wherever a real count is 0 — judge Home's data with that flag off.
 
-**Home's Fines card is still mock-only** — the fine box itself is live
-(`useFineBox`), the Home card just has not been wired to it yet.
+**Home's Fines card reads the live box** (`useFineBox`, 2026-10-01) and shows
+what you owe. It says `—` rather than `0` until the number is real, and is
+never mocked: a stand-in amount beside a real fine box contradicted it.
 
 **The design is still being iterated** — the code is the reference for the
 current layout. Rules learned so far that hold regardless of layout:
@@ -372,6 +386,33 @@ current layout. Rules learned so far that hold regardless of layout:
 - **`react-native-svg`'s `FeGaussianBlur` works in Expo Go on iOS**, unlike RN's
   `filter: blur` (see `Blob.tsx`).
 
+## Logged-out screen
+
+`LandingScreen` is a **marketing page**, rewritten 2026-10-01: a claim set large, one
+line saying what the app replaces, a feature row, and two buttons. Nothing else — a
+squad app that opens like admin software has lost the argument before the first tap.
+
+- **The light is Home's**, hung from the ceiling in the same stretched 100×100 viewBox
+  (`HomeBackdrop`), reaching further down because this screen has less to say. Logging
+  in should feel like walking further into the same room. No club colour — there is no
+  club yet.
+- **Grain over the gradient.** A pool that wide bands into steps on an OLED panel
+  without it. State the grain layer's `width`/`height` in points: an `<Image>` given
+  only `absoluteFill`'s insets covered the top 59% and left a visible edge.
+- The copy lives in `landing.*` and names what the app actually holds — it used to
+  promise "fremgang", a tab that was deleted. The wordmark is Home's, to the letter
+  (Space Grotesk 27, `-0.3`), so the first screen and the one behind it do not set the
+  product's name two different ways.
+- **Two Modals cannot swap in the same frame on iOS.** The "Har du ikke konto? Bli med"
+  links set one sheet false and the other true together, and the second was dropped
+  silently: both links did nothing at all. The swap now waits out the first sheet's
+  close (`SHEET_CLOSE_MS`).
+- The login/signup sheets are still the hand-built `BottomSheet`, but on the app's
+  tokens now, and `GlassInput` with them. Focus is a brighter surface and an edge, not
+  a blue ring. Both the wrapper *and* the TextInput carry the focused fill — the input
+  keeps its own opaque background for the iOS autofill-yellow fix, and leaving that one
+  behind drew a seam against the eye button.
+
 ## Athlete app — tabs
 
 Three tabs, **icons only** (SF Symbols, outline in both states, no titles):
@@ -381,7 +422,7 @@ Home · Schedule · Fines.
 |---|---|---|
 | Home | `HomeSection` | Next match + next up / today / to do / fines. **`ThisWeekSection` is dead code** — delete it rather than edit it |
 | Schedule | `ScheduleSection` | Month pager of day cards; tap a day to reveal its events; event detail sheet |
-| Fines | `FinesSection` | The fine box (bøtekasse). Live data via `useFineBox`. The bøtesjef's "Give a fine" opens `GiveFineScreen`: two sliding pages — fine cards (Schedule's day-card style, colour-coded via `fine_rules.color`, falling back to `fineAccent()`'s id-derived colour) → players by squad number → Give. Managing rules, payments, goal and reset not built yet. Schema + rules in `supabase/fine_box.sql` |
+| Fines | `FinesSection` | The fine box (botkasse). Live data via `useFineBox`. The botsjef's "Give a fine" opens `GiveFineScreen`: two sliding pages — fine cards (Schedule's day-card style, colour-coded via `fine_rules.color`, falling back to `fineAccent()`'s id-derived colour) → players by squad number → Give. The leaderboard is a podium plus ranks 4–`RANKS_SHOWN` (7); the rest is behind "Vis alle", and when the cut falls above you your own row is pinned under it. Managing rules, payments, goal and reset not built yet. Schema + rules in `supabase/fine_box.sql` |
 
 **There is no Tasks or Feedback tab (decided 2026-09-19).** On the athlete side they are
 one thing — something the staff sent *you* — and a player has 0–3 of them at a time; a
@@ -421,7 +462,7 @@ All tabs are built and backed by live Supabase queries (no mock data).
 |---|---|
 | Overview | KPI cards (athletes, unread feedback, pending/overdue tasks) + upcoming matches & events |
 | Athletes | Athlete list with per-athlete task/feedback counts → `AthletesClient` detail |
-| Calendar | Month grid, events + matches, athlete filter, day panel. Add / edit / remove per item, "Clear this day", matchday editor (meet time, meeting point, notes), restore for hidden fixtures |
+| Calendar | Month grid, events + matches, athlete filter (honours `event_assignments`; absent rows = whole squad), day panel. Add / edit / remove per item, "Clear this day", matchday editor (meet time, meeting point, notes), restore for hidden fixtures |
 | Feedback | Athlete list → history; compose modal with AI process-and-preview before sending |
 | Tasks | Table with filters/search, complete/delete inline, assign-task modal |
 | Groups | Create/edit/delete groups, manage members, slide-in side panels |
@@ -431,7 +472,82 @@ All tabs are built and backed by live Supabase queries (no mock data).
 
 ### Web UI conventions
 
+**The web app has its own layout language (2026-10-02).** It shares the phone's materials
+— greys, text levels, radii, event palette — but not its architecture, because a desktop
+and a 6" screen have different jobs. Three rules, spelled out in `web/DESIGN.md`:
+
+- **It fills the window.** No centred column and no measured margin between the sidebar
+  and the content; panels tile to every edge with an even 8px gutter. A centred 960px
+  stack with canvas either side is the most recognisable shape of a generated dashboard.
+- **Sizes are unequal, and the size is the argument.** On the home screen the next
+  fixture is the biggest thing on the page, the four counts are figures rather than
+  cards, and the lists take the floor. A grid of identical cards tells a coach nothing
+  about what matters.
+- **Numbers are set like numbers** — `.figure`, `clamp(42px, 4.6vw, 86px)` at weight 200,
+  scaling with the viewport.
+
+The home screen (`OverviewTab`) was rebuilt **2026-10-03** as six equal cards, three by
+two — equal sizes, unequal fills: the next match in the club colour, today on a light
+card, the rest raised grey. See the top of `web/DESIGN.md`. `OverviewTab` loads;
+`HomeView` renders from a `HomeData`, so the layout can be looked at without a session.
+The sidebar was restyled with it (on the canvas, tall soft pills, "Home" not
+"Overview"). **Calendar** followed the same day: the month as one ruled card, events as
+a type square + line rather than filled pills, today in a club-colour circle, and the
+day panel as Home's light card. The other tabs are not converted yet.
+
+**Four surfaces, named for their job**: `--surface-recessed` (wells) · `--surface-raised`
+(cards) · `--surface-hover` · `--surface-active` (current). They were `--surface-1/2/3`
+until the numbers stopped saying anything.
+
+**The typeface is Archivo, not Inter** — Inter is the house font of software that was not
+designed at all, and it is also the phone's display face, so the two apps read as
+siblings. Loaded variable in `app/layout.tsx`.
+
+**The dashboard was rebuilt on the mobile app's design system (2026-10-01).** It is a
+companion to the phone, not a product of its own, so `globals.css` now mirrors
+`app/src/utils/tokens.ts`: the same greys, four text levels, radii and event palette.
+`web/DESIGN.md` is the full specification. What changed, and why it must not come back:
+
+- **Surfaces are opaque, and a card is a fill and nothing else.** `.panel` /
+  `.panel-strong` (named `.glass` until the opaque pass made that a lie) — no `rgba()`
+  fills, no backdrop blur, **no 1px outline and no coloured bar down the left edge**. Same two tells as mobile (see [[no-translucent-cards]]). Badges,
+  ghost buttons and inputs lost their borders too; an input shows an edge only while
+  focused. Rules under page and dialog headers are gone — the lines that remain are
+  structural (table rows, the calendar grid, a slide-in panel's edge).
+- **No club-coloured gradients.** The background orbs are gone from the dashboard, the
+  login page and signup. The **canvas** does carry one neutral gradient
+  (`--bg-canvas-top` → `--bg-canvas-bottom`, fixed to the viewport) and the whole
+  surface ladder sits a step above the phone's: a desktop page is mostly empty space,
+  and mobile's near-black ground read as a void across 1440px. The sidebar stays the
+  darkest thing in the window, which is what frames the canvas.
+- **Club colour is spent on purpose (2026-10-03)**: a page's one main action
+  (`.btn-accent`), "today" (Home's week bar, the calendar's date circle), Home's
+  next-match card and the crest circles.
+  `.club-edge` is gone. It used to fill orbs, every primary
+  button, the active nav item, badges and the largest figure on Overview — which left it
+  competing with the event colours, the only colour that tells a coach anything.
+  `accentTokens()` returns three values now, not six.
+- **"Current" is brightness**, not a tint — selected rows, the open tab, a focused field.
+- **The primary button is a near-white pill**, as on the phone.
+- **Event colours come from the tokens**, derived from mobile's `matteAccent()`. The web
+  app used to hold its own hardcoded list in which `home` and `rehab` had each other's
+  colours.
+- **An event type is a label, never a filled card.** The calendar's day panel drew each
+  event as a full-size card filled with the type colour — a stack of blue, olive and
+  maroon slabs. Same rule as mobile: the type is "a matte edge, icon and label, never a
+  filled tinted card". Small fills (the month-grid pills, the type badges) are fine.
+- **A group's colour is a dot beside its name**, like an event type's is an edge. Group
+  cards used to be built out of the colour — tinted ground, outline, top bar, title,
+  count and arrow — so a group that picked orange looked like a warning.
+- **No emoji, anywhere** — copy, labels, empty states. Six were removed; don't add more.
 - **Never write raw hex or `rgba()` in components** — use the tokens in `globals.css`.
+- **A side panel beside a long list must be `position: sticky`, and its row needs
+  `minHeight: 100%` rather than `height: 100%`.** The athlete detail panel scrolled away
+  with the squad: picking the 24th player opened a panel at the top of the page and you
+  had to scroll back up to read it. Sticky alone did not fix it — a sticky child cannot
+  travel outside its parent's box, and a row fixed at `height: 100%` is only one screen
+  tall, so the panel came unstuck the moment you scrolled past it. The panel also needs
+  `alignSelf: flex-start`, or the flex row stretches it and sticky never engages.
 - **Slide-in side panels** (Groups, Calendar) sit at `translateX(100%)` while closed. Their
   container must use `overflow: clip`, **not** `overflow: hidden` — `hidden` still creates a
   scrollable overflow area, and focusing anything inside a closed/animating panel makes the
@@ -529,10 +645,49 @@ const orbs = clubGradientOrbs(profile?.club_color ?? '#3B82F6');
 
 ## Test accounts
 
+Dev-only data in a dev-only project. Nothing here is a real person's account.
+
 | Email | Password | Role |
 |---|---|---|
-| `coach@test.no` | `test1234` | Staff |
-| *(athlete accounts created via invite code from staff club)* | | |
+| `coach@test.no` | `test1234` | Staff, club "FC United" |
+| *(FC United athletes created via invite code)* | | |
+
+### Demo club — Bodø/Glimt (seeded 2026-10-01, for the co-founder demo)
+
+A real squad in a real club, because an empty screen or "Test Utøver" reads as
+a prototype — see [[design-quality-is-the-pitch]]. Seeded **through the signup
+trigger**, not by writing `profiles` directly: `auth.users` rows carry
+`club_name` (the manager) or `invite_code` (the players) in
+`raw_user_meta_data`, and `handle_new_user` does the rest, so the data is
+exactly what a real signup produces.
+
+| Email | Password | Role |
+|---|---|---|
+| `kjetil@glimt.demo` | `glimt2026` | Staff + club manager (Kjetil Knutsen) |
+| `patrick.berg@glimt.demo` | `glimt2026` | Athlete #7 — **the botsjef**, so this account can give fines |
+| `<first>.<last>@glimt.demo` | `glimt2026` | The other 23 players, e.g. `jens.petter.hauge@glimt.demo` |
+
+Names are lower-cased with `ø→o`, `æ→a`, `å→a` (so `fredrik.bjorkan@glimt.demo`).
+Everyone is `language = 'no'`. Invite codes: athletes `7850AD`, staff `0F0D0C`.
+
+**What is seeded, and until when.** The demo data is dated around **1 Oct 2026**
+and thins out after **17 Oct** (events) / **8 Nov** (fixtures) — re-seed or
+shift the dates if the demo slips past that.
+
+| | |
+|---|---|
+| Matches | 9, all `source = 'manual'`. Two completed (Viking away, Rosenborg home), next is Molde away on 4 Oct; Molde and Haugesund carry `meet_time` / `meet_location` / `notes` so the matchday sheet has something to show |
+| Events | ~20 over three weeks — training, styrke, møter, reiser, a 12–16 Oct `Landslagspause` (multi-day, to exercise the span logic) and one `exercise` assigned **only to Patrick Berg**, so his Schedule has something nobody else sees |
+| Fine box | One open season, goal 25 000 kr "Juleavslutning". 8 `manual` rules, each with its own `color`. 125 fines (35 hand-written with notes, the rest filler so the pot is realistic), 22 400 kr issued, 19 750 kr paid in. Seven players still owe; everyone else is square |
+| Patrick Berg | Owes **600 kr** across 3 fines, so "Betal nå" opens a real screen. Also 2 open tasks + 1 unread feedback → "Å gjøre 3" |
+| Crest | `clubs.external_badge_url` points at Wikipedia's PNG rendering of the Glimt logo. `external_team_id` stays **null** — Glimt is not on the Sportmonks free plan, and a provider link would start a sync that can only fail |
+
+Fixtures and opponents are **invented**, not the real Eliteserien calendar.
+
+Why the fine box is seeded this heavily: it is the screen the demo is really
+about, and a leaderboard with three names on it argues the opposite of what we
+want. Numbers were chosen so every figure on the Fines tab reconciles — the
+unpaid list adds up to "Du skylder", payments add up to "I kassa".
 
 To get the invite code for a club:
 ```sql
@@ -564,9 +719,42 @@ SELECT name, invite_code, primary_color FROM clubs;
 
 - **No invite-code display** — a coach working purely from mobile cannot onboard anyone.
 - **Progress tab** — still a placeholder.
-- **Mobile is English-only below the landing screen.** 171 translation keys exist but only
-  `LandingScreen` consumes them, and there is still no way to change language after signup
-  (mobile signup *does* have an EN/NO picker — it's the web signup that hardcodes `en`).
+- **The athlete app is translated (2026-10-01).** Every athlete-facing screen reads from
+  `i18n` — Home, Schedule, the fine box, the To do sheet, the event sheet, Give a fine and
+  the navigator's states — and dates go through `utils/format.ts`, which follows the active
+  language. **Never call `toLocaleDateString('en-GB')` again**: a hardcoded locale survives
+  a translation pass and then prints "Saturday 20 Sep" in the middle of a Norwegian screen.
+  Still English: the staff *mobile* screens, the whole web app, and Home's dev-only mock
+  values.
+
+  **Five languages (2026-10-01): English, Norwegian, German, Spanish, French.**
+  `i18n/languages.ts` is the one list — code, native name, English name — and the signup
+  picker, the device-locale guess and anything else read it, so **adding a language is
+  its row there plus two lines in `i18n/index.ts`**. `LanguagePicker` is a type-to-search
+  dropdown that expands *in place* (never a second modal — iOS drops one opened over a
+  sheet). `npm run check:i18n` fails if a file has drifted from `en.json`; it also
+  checks that every `{{placeholder}}` survived translation, which is the failure that
+  would otherwise reach a player as a literal `{{count}}`.
+
+  **fr / es / de have not been read by a native speaker yet.** They are careful
+  translations, not verified ones, and the fine box is where that matters — "botsjef"
+  became *responsable de la caisse* / *encargado del bote* / *Kassenwart*, and whether
+  those land in a dressing room is not something a translation pass can settle. Get one
+  speaker per language over `fines`, `giveFine`, `pay` and `todo` before launch; the rest
+  is ordinary UI text and lower risk.
+
+  Two deliberate decisions: **dates stay English or Norwegian** whatever the UI language
+  (`localeTag()`), because an English date is legible to everyone and a locale map is not
+  worth carrying; and **a language goes in the list only when it is actually translated**
+  — i18next's fallback means a half-done language shows English in patches, which reads
+  worse to a player than English would have.
+
+  **The logged-out screen is English for everyone**, not translated — before anyone signs
+  in there is no `profiles.language`, only the device setting, and a squad is not all on
+  the same one. The sheets below it do follow the picker.
+
+  Still missing: no way to change language after signup on mobile — that belongs in the
+  Settings screen that does not exist yet. The web signup still hardcodes `en`.
 
 **Fixed in the correctness pass** (all verified against production rows):
 
@@ -583,6 +771,13 @@ SELECT name, invite_code, primary_color FROM clubs;
   `localYMD()` now do this; **never slice a timestamptz string.**
 - **Suppressed fixtures reappeared on mobile** — no `suppressed_at IS NULL` filter on any
   of the three `matches` reads.
+- **The web calendar printed UTC** (fixed 2026-10-01). `CalendarTab` did
+  `iso.slice(11, 16)` in three places, so a 09:30 session showed as 07:30 and the
+  dashboard disagreed with the phone by two hours about the same event — the identical
+  bug mobile had. `localTime()` now does it. **Never slice a timestamptz, in either app.**
+- **Day-panel cards were squashed, not scrolled.** The list is a flex column and the
+  cards had the default `flex-shrink: 1`, so a day with three events compressed them and
+  `overflow: hidden` cut the Edit / Remove buttons in half. `flexShrink: 0` on the card.
 - **Multi-day events collapsed to day one.** `end_date` was read nowhere in `app/`.
   `expandEvent()` now spans them, tagged `spanDay` / `spanTotal`, capped at 60 days.
 - **Matchday fields are now read** — `meet_time`, `meet_location`, `notes` and

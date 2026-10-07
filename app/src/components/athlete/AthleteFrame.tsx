@@ -17,6 +17,12 @@ import { SURFACE_BASE } from '../../utils/theme';
 
 export interface AthleteFrameProps {
   /**
+   * Drawn behind everything in the frame, header included. Home's light hangs
+   * from the top of the screen, and inside the section it started under the
+   * wordmark — a hard seam across the top. Only Home passes one.
+   */
+  backdrop?: React.ReactNode;
+  /**
    * `brand` is the redesigned Home header: the wordmark centred and the avatar,
    * nothing else — no greeting, no chips, no rule. `default` is the older header the other
    * four tabs still use — they are being redesigned one at a time, and a tab
@@ -38,7 +44,7 @@ export interface AthleteFrameProps {
 
 export default function AthleteFrame({
   variant = 'default', clubColor, greeting, name, initials, clubName, dateLabel,
-  nextMatchLabel, onAvatarPress, onAvatarLongPress, children,
+  nextMatchLabel, onAvatarPress, onAvatarLongPress, backdrop, children,
 }: AthleteFrameProps) {
   // No header at all — just the safe area and the ground colour. Every tab
   // except Home uses this: the greeting and avatar belong on the screen you
@@ -56,6 +62,7 @@ export default function AthleteFrame({
   if (variant === 'brand') {
     return (
       <View style={styles.root}>
+        {backdrop}
         <SafeAreaView style={styles.safeArea} edges={['top']}>
           <View style={styles.brandHeader}>
             <View style={styles.brandRow}>

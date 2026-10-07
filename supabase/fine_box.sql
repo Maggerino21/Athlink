@@ -1,19 +1,19 @@
 -- ════════════════════════════════════════════════════════════════════════════
--- Fine box (bøtekasse) — v1 schema
+-- Fine box (botkasse) — v1 schema
 --
--- Players only. Staff choose the bøtesjef and otherwise have no access: every
+-- Players only. Staff choose the botsjef and otherwise have no access: every
 -- read policy below requires user_role() = 'athlete', so a staff session sees
 -- nothing, and every write goes through a SECURITY DEFINER function that checks
--- the caller is the club's current bøtesjef.
+-- the caller is the club's current botsjef.
 --
 -- Money is whole kroner. "You owe" is computed across ALL seasons (fines minus
 -- payments), so debts carry over a reset without any copying.
 -- ════════════════════════════════════════════════════════════════════════════
 
 
--- ── 1. The bøtesjef ──────────────────────────────────────────────────────────
+-- ── 1. The botsjef ──────────────────────────────────────────────────────────
 -- One per club, so it lives on the club rather than as a flag on profiles:
--- "two bøtesjefs at once" is then unrepresentable.
+-- "two botsjefs at once" is then unrepresentable.
 
 ALTER TABLE public.clubs
   ADD COLUMN fine_manager_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
@@ -21,7 +21,7 @@ ALTER TABLE public.clubs
 -- `authenticated` currently holds UPDATE on the WHOLE clubs table, and club
 -- managers may update their club row — so without this a manager could write
 -- fine_manager_id directly, skipping the checks in set_fine_manager (e.g. make a
--- staff member or someone from another club the bøtesjef).
+-- staff member or someone from another club the botsjef).
 --
 -- A column-level REVOKE has no effect while a table-level grant exists, so the
 -- table grant is replaced with the only columns the web app writes directly
@@ -96,7 +96,7 @@ CREATE INDEX fines_club_season ON public.fines (club_id, season_id);
 CREATE INDEX fines_athlete     ON public.fines (athlete_id);
 
 -- Money in. `source` and `external_ref` are there for Vipps later, so switching
--- from "bøtesjef marks paid" to automatic payments changes no table.
+-- from "botsjef marks paid" to automatic payments changes no table.
 CREATE TABLE public.fine_payments (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   club_id       uuid NOT NULL REFERENCES public.clubs(id) ON DELETE CASCADE,
@@ -155,7 +155,7 @@ $$;
 
 
 -- ── 4. Row level security ────────────────────────────────────────────────────
--- Reads: athletes of the club. Writes: none directly, except rules (bøtesjef)
+-- Reads: athletes of the club. Writes: none directly, except rules (botsjef)
 -- and your own reaction. Everything else goes through the functions in §5.
 
 ALTER TABLE public.fine_seasons   ENABLE ROW LEVEL SECURITY;
@@ -178,11 +178,11 @@ CREATE POLICY "Players read reactions" ON public.fine_reactions
     AND EXISTS (SELECT 1 FROM public.fines f WHERE f.id = fine_id AND f.club_id = public.user_club_id())
   );
 
--- Rules: the bøtesjef creates and edits (no delete — deactivate instead, so old
+-- Rules: the botsjef creates and edits (no delete — deactivate instead, so old
 -- fines keep a link to the rule they came from).
-CREATE POLICY "Bøtesjef creates rules" ON public.fine_rules
+CREATE POLICY "Botsjef creates rules" ON public.fine_rules
   FOR INSERT WITH CHECK (club_id = public.user_club_id() AND public.is_fine_manager());
-CREATE POLICY "Bøtesjef edits rules" ON public.fine_rules
+CREATE POLICY "Botsjef edits rules" ON public.fine_rules
   FOR UPDATE USING (club_id = public.user_club_id() AND public.is_fine_manager())
   WITH CHECK (club_id = public.user_club_id() AND public.is_fine_manager());
 
@@ -200,7 +200,7 @@ CREATE POLICY "Players remove their reaction" ON public.fine_reactions
 
 -- ── 5. Actions ───────────────────────────────────────────────────────────────
 
--- Staff (one-time setup) or the current bøtesjef (handing over).
+-- Staff (one-time setup) or the current botsjef (handing over).
 CREATE OR REPLACE FUNCTION public.set_fine_manager(p_profile_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -211,14 +211,14 @@ BEGIN
   SELECT fine_manager_id INTO v_current FROM public.clubs WHERE id = v_club;
 
   IF v_club IS NULL OR NOT (v_role = 'staff' OR v_current = auth.uid()) THEN
-    RAISE EXCEPTION 'Only staff or the current bøtesjef can choose the bøtesjef';
+    RAISE EXCEPTION 'Only staff or the current botsjef can choose the botsjef';
   END IF;
 
   IF NOT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = p_profile_id AND club_id = v_club AND role = 'athlete' AND removed_at IS NULL
   ) THEN
-    RAISE EXCEPTION 'The bøtesjef has to be a player in your club';
+    RAISE EXCEPTION 'The botsjef has to be a player in your club';
   END IF;
 
   UPDATE public.clubs SET fine_manager_id = p_profile_id WHERE id = v_club;
@@ -234,7 +234,7 @@ DECLARE
   v_count  integer;
 BEGIN
   IF NOT public.is_fine_manager() THEN
-    RAISE EXCEPTION 'Only the bøtesjef can give fines';
+    RAISE EXCEPTION 'Only the botsjef can give fines';
   END IF;
 
   SELECT * INTO v_rule FROM public.fine_rules
@@ -262,20 +262,20 @@ CREATE OR REPLACE FUNCTION public.void_fine(p_fine_id uuid)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
   IF NOT public.is_fine_manager() THEN
-    RAISE EXCEPTION 'Only the bøtesjef can remove fines';
+    RAISE EXCEPTION 'Only the botsjef can remove fines';
   END IF;
   UPDATE public.fines SET voided_at = now(), voided_by = auth.uid()
   WHERE id = p_fine_id AND club_id = public.user_club_id() AND voided_at IS NULL;
 END $$;
 
--- Temporary: the bøtesjef records money received. Vipps will write the same
+-- Temporary: the botsjef records money received. Vipps will write the same
 -- table with source = 'vipps'.
 CREATE OR REPLACE FUNCTION public.record_fine_payment(p_athlete_id uuid, p_amount integer)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_club uuid := public.user_club_id();
 BEGIN
   IF NOT public.is_fine_manager() THEN
-    RAISE EXCEPTION 'Only the bøtesjef can record payments';
+    RAISE EXCEPTION 'Only the botsjef can record payments';
   END IF;
   IF p_amount IS NULL OR p_amount <= 0 THEN
     RAISE EXCEPTION 'The amount has to be more than 0';
@@ -293,7 +293,7 @@ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE v_club uuid := public.user_club_id();
 BEGIN
   IF NOT public.is_fine_manager() THEN
-    RAISE EXCEPTION 'Only the bøtesjef can set the goal';
+    RAISE EXCEPTION 'Only the botsjef can set the goal';
   END IF;
   UPDATE public.fine_seasons
   SET goal_amount = CASE WHEN p_amount > 0 THEN p_amount END,
@@ -311,7 +311,7 @@ DECLARE
   v_recap  jsonb;
 BEGIN
   IF NOT public.is_fine_manager() THEN
-    RAISE EXCEPTION 'Only the bøtesjef can reset the fine box';
+    RAISE EXCEPTION 'Only the botsjef can reset the fine box';
   END IF;
   v_season := public.fine_open_season(v_club);
 
@@ -343,7 +343,7 @@ END $$;
 -- ── 6. Scheduled fines ───────────────────────────────────────────────────────
 
 -- Milestones: once per season per rule per player. Counts only fines the
--- bøtesjef GAVE (issued_by set), like clean sheets: recurring fees would
+-- botsjef GAVE (issued_by set), like clean sheets: recurring fees would
 -- otherwise push everyone over at once, and automatic fines — including this
 -- rule's own — have issued_by = NULL, so it cannot feed itself.
 CREATE OR REPLACE FUNCTION public.apply_milestone_fines(p_club_id uuid)
@@ -418,7 +418,7 @@ BEGIN
         FROM public.profiles p
         WHERE p.club_id = v_club AND p.role = 'athlete' AND p.removed_at IS NULL
           AND (p.created_at AT TIME ZONE 'Europe/Oslo')::date <= v_start
-          -- Only fines the bøtesjef GAVE count. Recurring fees land on everyone,
+          -- Only fines the botsjef GAVE count. Recurring fees land on everyone,
           -- so counting them would mean nobody ever keeps a clean sheet.
           AND NOT EXISTS (
             SELECT 1 FROM public.fines f

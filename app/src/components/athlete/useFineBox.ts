@@ -22,7 +22,7 @@ import { matteAccent, type MatteAccent } from '../../utils/theme';
 export const REACTIONS = ['😂', '💀', '🔥', '👏', '🤡'] as const;
 
 /**
- * Hues a fine type can take when the bøtesjef has not picked one. Spread round
+ * Hues a fine type can take when the botsjef has not picked one. Spread round
  * the wheel so neighbours differ; run through `matteAccent` so they sit in the
  * same clay family as Schedule's event colours.
  */
@@ -65,26 +65,89 @@ export interface FeedItem {
   mine: Reaction | null;
 }
 
+/**
+ * One of your fines that is still outstanding.
+ *
+ * `fine_payments` records amounts, not settlements of particular fines — the
+ * botsjef takes 200 kr, not "the red card". So which fines are unpaid is
+ * derived: payments cover your oldest fines first, and what is left over is
+ * this list. `amount` is what remains of that fine, so the list always adds up
+ * to `owed` and the screen cannot contradict the box.
+ */
+export interface UnpaidFine {
+  id: string;
+  name: string;
+  /** What is still outstanding on it — less than the fine where one is part-paid. */
+  amount: number;
+  note: string | null;
+  createdAt: string;
+  /** For `fineAccent`, so a fine wears the same colour it had when it was given. */
+  ruleId: string;
+  color: string | null;
+}
+
 export interface FineBox {
   loaded: boolean;
-  /** The club has a bøtesjef at all. Without one nothing gets fined. */
+  /** The club has a botsjef at all. Without one nothing gets fined. */
   hasManager: boolean;
   isFineManager: boolean;
+  /** The botsjef's name — who a player is paying. Null when nobody runs it. */
+  managerName: string | null;
   total: number;
   goal: { label: string | null; amount: number } | null;
   owed: number;
   paid: number;
   leaderboard: { id: string; name: string; amount: number }[];
   feed: FeedItem[];
+  /** Oldest first — what "Betal nå" offers to settle. */
+  unpaid: UnpaidFine[];
 }
 
 const EMPTY: FineBox = {
-  loaded: false, hasManager: false, isFineManager: false,
-  total: 0, goal: null, owed: 0, paid: 0, leaderboard: [], feed: [],
+  loaded: false, hasManager: false, isFineManager: false, managerName: null,
+  total: 0, goal: null, owed: 0, paid: 0, leaderboard: [], feed: [], unpaid: [],
 };
 
 const sum = (rows: { amount: number }[] | null | undefined) =>
   (rows ?? []).reduce((acc, r) => acc + r.amount, 0);
+
+type RuleRef = { color: string | null };
+type MyFineRow = {
+  id: string; name: string; amount: number; note: string | null;
+  created_at: string; rule_id: string | null;
+  // PostgREST returns one object for a to-one embed; supabase-js infers an
+  // array from the select string alone. Accept either and read it safely.
+  rule: RuleRef | RuleRef[] | null;
+};
+
+const ruleColor = (r: MyFineRow['rule']): string | null =>
+  (Array.isArray(r) ? r[0]?.color : r?.color) ?? null;
+
+/**
+ * What is left after `paid` has been applied to the fines oldest first.
+ *
+ * A part-paid fine keeps its place in the list with only its remainder, so the
+ * amounts always sum to what the box says you owe.
+ */
+function outstanding(fines: MyFineRow[], paid: number): UnpaidFine[] {
+  let left = paid;
+  const out: UnpaidFine[] = [];
+  for (const f of fines) {
+    if (left >= f.amount) { left -= f.amount; continue; }
+    out.push({
+      id: f.id,
+      name: f.name,
+      amount: f.amount - left,
+      note: f.note,
+      createdAt: f.created_at,
+      // Falls back to the fine's own id, which `fineAccent` hashes the same way.
+      ruleId: f.rule_id ?? f.id,
+      color: ruleColor(f.rule),
+    });
+    left = 0;
+  }
+  return out;
+}
 
 /**
  * A load that failed keeps what is already on screen — usually last session's
@@ -114,7 +177,12 @@ export function useFineBox(isActive?: boolean) {
       supabase.from('fine_seasons').select('id, goal_amount, goal_label')
         .eq('club_id', club).is('ended_at', null).maybeSingle(),
       supabase.from('profiles').select('id, full_name').eq('club_id', club).eq('role', 'athlete'),
-      supabase.from('fines').select('amount').eq('athlete_id', me).is('voided_at', null),
+      // Every fine of mine, any season: a debt outlives a reset. Oldest first,
+      // because that is the order payments settle them in.
+      supabase.from('fines')
+        .select('id, name, amount, note, created_at, rule_id, rule:fine_rules(color)')
+        .eq('athlete_id', me).is('voided_at', null)
+        .order('created_at', { ascending: true }),
       supabase.from('fine_payments').select('amount').eq('athlete_id', me),
     ]);
     if ([clubRes, seasonRes, membersRes, myFinesRes, myPaysRes].some(r => r.error)) {
@@ -127,12 +195,17 @@ export function useFineBox(isActive?: boolean) {
     );
     const manager = (clubRes.data as { fine_manager_id: string | null } | null)?.fine_manager_id ?? null;
     const season = seasonRes.data as { id: string; goal_amount: number | null; goal_label: string | null } | null;
-    const owed = Math.max(0, sum(myFinesRes.data) - sum(myPaysRes.data));
+    const myFines = (myFinesRes.data ?? []) as MyFineRow[];
+    const owed = Math.max(0, sum(myFines) - sum(myPaysRes.data));
+    const unpaid = outstanding(myFines, sum(myPaysRes.data));
 
     // No open season yet means nothing has happened in this box: no fines, no
     // payments. The first fine or payment opens one.
     if (!season) {
-      setBox({ ...EMPTY, loaded: true, hasManager: !!manager, isFineManager: manager === me, owed });
+      setBox({
+        ...EMPTY, loaded: true, hasManager: !!manager, isFineManager: manager === me,
+        managerName: manager ? names.get(manager) ?? null : null, owed, unpaid,
+      });
       return;
     }
 
@@ -182,9 +255,11 @@ export function useFineBox(isActive?: boolean) {
       loaded: true,
       hasManager: !!manager,
       isFineManager: manager === me,
+      managerName: manager ? names.get(manager) ?? null : null,
       total: sum(pays),
       goal: season.goal_amount ? { label: season.goal_label, amount: season.goal_amount } : null,
       owed,
+      unpaid,
       paid: sum(pays.filter(p => p.athlete_id === me)),
       leaderboard,
       feed,

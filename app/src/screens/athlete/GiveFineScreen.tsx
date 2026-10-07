@@ -1,5 +1,5 @@
 /**
- * GiveFineScreen — the bøtesjef hands out a fine, in two steps.
+ * GiveFineScreen — the botsjef hands out a fine, in two steps.
  *
  * 1. **Which fine.** Cards built like Schedule's day cards — a small spaced
  *    label, then the amount set large with a small "kr" beside it — with the
@@ -23,7 +23,7 @@
  * corner is the iOS convention for exactly that case.
  *
  * The write is `give_fine(rule, players[], note)`, which checks on the server
- * that the caller is the bøtesjef and that every player is in the club.
+ * that the caller is the botsjef and that every player is in the club.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -34,6 +34,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import PressableScale from '../../components/ui/PressableScale';
 import haptics from '../../utils/haptics';
 import { useAuth } from '../../context/AuthContext';
@@ -57,6 +58,7 @@ interface Rule { id: string; name: string; amount: number; color: string | null 
 interface Player { id: string; name: string; number: number | null }
 
 export default function GiveFineScreen({ navigation }: Props) {
+  const { t } = useTranslation();
   const { profile } = useAuth();
   const insets = useSafeAreaInsets();
 
@@ -141,7 +143,7 @@ export default function GiveFineScreen({ navigation }: Props) {
     setSending(false);
     if (error) {
       haptics.error();
-      Alert.alert('The fine was not given', error.message);
+      Alert.alert(t('giveFine.failed'), error.message);
       return;
     }
     haptics.success();
@@ -149,7 +151,7 @@ export default function GiveFineScreen({ navigation }: Props) {
     navigation.goBack();
   };
 
-  const giveLabel = picked.size <= 1 ? 'Give fine' : `Give to ${picked.size} players`;
+  const giveLabel = picked.size <= 1 ? t('giveFine.give') : t('giveFine.giveToMany', { count: picked.size });
   const total = rule ? rule.amount * Math.max(1, picked.size) : 0;
 
   return (
@@ -159,10 +161,10 @@ export default function GiveFineScreen({ navigation }: Props) {
         {/* ── Step 1: which fine ─────────────────────────────────────────── */}
         <View style={styles.page}>
           <View style={[styles.header, styles.headerRow, styles.headerStep1]}>
-            <Text style={[styles.title, styles.headerText]}>Give a fine</Text>
+            <Text style={[styles.title, styles.headerText]}>{t('giveFine.title')}</Text>
             <CloseButton onPress={() => navigation.goBack()} />
           </View>
-          <SearchField value={fineQuery} onChange={setFineQuery} placeholder="Search fines" />
+          <SearchField value={fineQuery} onChange={setFineQuery} placeholder={t('giveFine.searchFines')} />
 
           {rules === null ? (
             <ActivityIndicator color={TEXT.tertiary} style={styles.loading} />
@@ -202,12 +204,12 @@ export default function GiveFineScreen({ navigation }: Props) {
               <Ionicons name="chevron-back" size={22} color={TEXT.primary} />
             </PressableScale>
             <View style={styles.headerText}>
-              <Text style={styles.title} numberOfLines={1}>{rule?.name ?? 'Choose players'}</Text>
+              <Text style={styles.title} numberOfLines={1}>{rule?.name ?? t('giveFine.choosePlayers')}</Text>
               {rule && <Text style={styles.subtitle}>{rule.amount} kr</Text>}
             </View>
             <CloseButton onPress={() => navigation.goBack()} />
           </View>
-          <SearchField value={playerQuery} onChange={setPlayerQuery} placeholder="Search name or number" />
+          <SearchField value={playerQuery} onChange={setPlayerQuery} placeholder={t('giveFine.searchPlayer')} />
 
           {players === null ? (
             <ActivityIndicator color={TEXT.tertiary} style={styles.loading} />
@@ -219,7 +221,7 @@ export default function GiveFineScreen({ navigation }: Props) {
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag"
               showsVerticalScrollIndicator={false}
-              ListEmptyComponent={<Text style={styles.empty}>No players match.</Text>}
+              ListEmptyComponent={<Text style={styles.empty}>{t('giveFine.noPlayers')}</Text>}
               renderItem={({ item }) => (
                 <PlayerCard player={item} selected={picked.has(item.id)} onPress={() => togglePlayer(item.id)} />
               )}
@@ -231,13 +233,13 @@ export default function GiveFineScreen({ navigation }: Props) {
               style={styles.note}
               value={note}
               onChangeText={setNote}
-              placeholder="Add a note (optional)"
+              placeholder={t('giveFine.note')}
               placeholderTextColor={TEXT.tertiary}
               returnKeyType="done"
               maxLength={120}
             />
             <PrimaryButton
-              label={picked.size > 0 ? `${giveLabel}  ·  ${total} kr` : 'Pick a player'}
+              label={picked.size > 0 ? `${giveLabel}  ·  ${total} ${t('common.kr')}` : t('giveFine.pickPlayer')}
               disabled={picked.size === 0 || sending}
               busy={sending}
               onPress={give}

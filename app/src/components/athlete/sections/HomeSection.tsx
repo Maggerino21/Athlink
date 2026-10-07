@@ -1,19 +1,18 @@
 /**
  * HomeSection — the athlete home.
  *
- * Built up from a stripped floor (2026-09-13):
+ * Rebuilt 2026-09-20 after a reference Magne liked, and it reads top to bottom
+ * as one sentence about the day:
  *
- * - **The match sits at the top as text**, not a card.
- * - **Light rises from the bottom of the screen** in the competition's hue,
- *   clearly visible every day, and more vivid on matchday. It shows in the space between the match and
- *   the panel, and under the tab bar.
- * - **One solid panel, cut into tiles.** Not cards floating on a card — a
- *   single opaque slab divided by thin grooves of the page colour, like a
- *   bento box. One wide tile for what is next, three narrow ones beneath it.
- *   The wide tile gives the panel a lead; four equal squares never had one.
- * - **Colour lives in the type**: each tile's figure and dot take its category
- *   ink. Fills stay grey and opaque.
- * - **Thin Inter, set large.**
+ * - **The light hangs from the top** and is gone by half way down — see
+ *   `HomeBackdrop`, which lives in `AthleteFrame` so it covers the header too.
+ * - **In the light, two lines**: the next match as one small line, and under it,
+ *   bigger, the next thing actually happening. The match is the week's headline;
+ *   what you do next is today's.
+ * - **Where it turns dark, a section headline** in Schedule's and the fine
+ *   box's face, then **boxes of different sizes** — a tall one beside two
+ *   stacked — in Schedule's greys. No colour: Schedule's day cards do not use
+ *   any either, and Home had a dot per tile for three categories nobody sorts by.
  *
  * Data: fixtures must filter `suppressed_at IS NULL`, and squad-wide events can
  * only be resolved by `visible_events_for_me` — an athlete cannot distinguish
@@ -22,82 +21,60 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, {
-  useSharedValue, useAnimatedStyle, withTiming, withRepeat, withSequence, cancelAnimation, Easing,
-} from 'react-native-reanimated';
-import Svg, { Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { readCache, writeCache } from '../../../utils/cache';
 import Reveal from '../../ui/Reveal';
 import PressableScale from '../../ui/PressableScale';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import Crest from '../../ui/Crest';
 import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
 import { useToDo } from '../useToDo';
+import { useFineBox } from '../useFineBox';
 import { SURFACE, TEXT, RADIUS } from '../../../utils/tokens';
-import { THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR } from '../../../utils/type';
-import { hsla, matteAccent, type MatteAccent } from '../../../utils/theme';
-import { eventAccent } from '../eventTypes';
+import { DISPLAY_FONT, THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR } from '../../../utils/type';
+import { time as localTime } from '../../../utils/format';
 
 /** Schedule's gutter. */
 const PAD = 8;
-/** Space between tiles. They are separate cards, edge to edge on the sides. */
-const GROOVE = 11;
-/** The match text lines up with the text inside the tiles. */
-const TEXT_INSET = PAD + 20;
-/** How much open space is kept between the match and the panel, for the glow. */
-const GLOW_ROOM = 48;
-/** Floor for the panel, so a very short screen still gets usable tiles. */
-const PANEL_MIN = 400;
-/** The narrow row keeps a fixed height; the wide tile grows upward into the rest. */
-const ROW_H = 212;
+/** Between boxes. */
+const GAP = 8;
+/** Inside a box, text sits this far from the edge. */
+const BOX_PAD_X = 18;
+/** One left edge for every line of text on Home, boxes included. */
+const TEXT_INSET = PAD + BOX_PAD_X;
+/** The least dark room between the headline and the section below it. */
+const DARK_ROOM = 28;
+/** The boxes' block. A tall one beside two stacked, as in the reference. */
+const BENTO_H = 232;
 
 /** The tab bar floats over content: 49pt of bar plus the home-indicator inset. */
 const TAB_BAR = 49;
 const BOTTOM_GAP = 12;
 
-const EASE = Easing.bezier(0.22, 1, 0.36, 1);
-
-/**
- * The glow's hue. Nothing stores a match's competition yet (the `football`
- * edge function receives `league`, but `matches` has no column for it), so
- * every match glows Eliteserien blue until that exists.
- */
-const COMPETITION_HUE = 200;
-
-/**
- * Category colours for the text inside each card, through `matteAccent` so they
- * sit in Schedule's family. "Next up" takes whatever the event's type is.
- * Today, Tasks and Fines are not event types, so their hues are chosen here.
- */
-const CATEGORY: Record<'today' | 'todo' | 'fines' | 'none', MatteAccent> = {
-  today: matteAccent('#3B82F6'),
-  // Matches EVENT_META's task/feedback hue, so To do reads the same in Schedule.
-  todo: matteAccent('#14B8A6'),
-  fines: matteAccent('#EF4444'),
-  none: matteAccent('#6B7280'),
-};
-
 /**
  * Stand-in data for design work, dev-only and never shipped. Real data always
  * wins: these fill in only where the live value is absent or zero.
  *
- * Fines are mock-only because the fine box does not exist yet — it is the next
- * feature to be built. Until then a release build shows a dash, not a number.
+ * Fines are mock-only because Home's box is not wired to the fine box yet.
+ * Until then a release build shows a dash, not a number.
  */
 const USE_MOCK = __DEV__;
 const MOCK = {
-  opponent: 'Brann', isHome: false, daysUntil: 8,
+  opponent: 'Brann', isHome: false, daysUntil: 8, logo: null as string | null,
   next: { title: 'Team training', days: 1, time: '18:00', location: 'Lerkendal kunstgress' },
-  today: 2,
-  fines: 150,
 };
 
 interface NextMatch {
   opponent: string;
   match_date: string;
   is_home: boolean | null;
+  // Optional: caches written before the crest existed do not have them.
+  opponent_logo_url?: string | null;
+  location?: string | null;
 }
 
 interface UpcomingEvent {
@@ -131,6 +108,7 @@ function fromCache(userId: string | undefined): HomeCache | undefined {
 }
 
 export default function HomeSection({ isActive }: { isActive?: boolean }) {
+  const { t } = useTranslation();
   const { profile } = useAuth();
   const insets = useSafeAreaInsets();
   const [cached] = useState(() => fromCache(profile?.id));
@@ -138,6 +116,9 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
   const [events, setEvents] = useState<UpcomingEvent[]>(cached?.events ?? []);
   // Open tasks and unread feedback — see useToDo. Its own load and cache.
   const todo = useToDo(isActive);
+  // What you owe the box. Its own load and cache too, so Home never waits on
+  // it — the card says nothing until the number is real.
+  const { box: fineBox } = useFineBox(isActive);
   const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
   /** Nothing below the header is drawn until this — see `Reveal`. */
   const [loaded, setLoaded] = useState(!!cached);
@@ -150,7 +131,7 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
         profile.club_id
           ? supabase
               .from('matches')
-              .select('opponent, match_date, is_home')
+              .select('opponent, match_date, is_home, opponent_logo_url, location')
               .eq('club_id', profile.club_id)
               .eq('status', 'upcoming')
               // Fixtures a coach removed are hidden, not deleted — a real DELETE
@@ -216,32 +197,46 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
   const mock = USE_MOCK && loaded;
 
   const match = nextMatch
-    ? { opponent: nextMatch.opponent, isHome: nextMatch.is_home, iso: nextMatch.match_date }
-    : mock ? { opponent: MOCK.opponent, isHome: MOCK.isHome, iso: mockKickoff(MOCK.daysUntil) } : null;
+    ? {
+        opponent: nextMatch.opponent, isHome: nextMatch.is_home, iso: nextMatch.match_date,
+        logo: nextMatch.opponent_logo_url ?? null,
+      }
+    : mock ? {
+        opponent: MOCK.opponent, isHome: MOCK.isHome, iso: mockKickoff(MOCK.daysUntil),
+        logo: MOCK.logo,
+      } : null;
 
   const nextEvent = events[0];
   const next = nextEvent
-    ? { title: nextEvent.title, days: calendarDaysUntil(nextEvent.event_date), time: localTime(nextEvent.event_date), location: nextEvent.location }
+    ? {
+        title: nextEvent.title,
+        days: calendarDaysUntil(nextEvent.event_date),
+        // An all-day event is stored at midnight, and "00:00" is not a time
+        // anybody is being asked to turn up at.
+        time: allDay(nextEvent.event_date) ? null : localTime(nextEvent.event_date),
+        location: nextEvent.location,
+      }
     : mock ? MOCK.next : null;
-  const nextType = nextEvent?.type ?? (mock ? 'training' : null);
+
+  /** Today's events, in order, for the tall box. */
+  const todayList = events
+    .filter(e => calendarDaysUntil(e.event_date) === 0)
+    .map(e => ({ id: e.id, title: e.title, time: allDay(e.event_date) ? null : localTime(e.event_date) }));
 
   // The events RPC starts at "now", so this counts what is still to come today.
-  const todayCount = events.filter(e => calendarDaysUntil(e.event_date) === 0).length || (mock ? MOCK.today : 0);
-  // Never mocked: the tile opens the real list, and a stand-in "3" that opens
+  // Not mocked: the box lists what it counts, and a stand-in count with an
+  // empty list underneath contradicts itself.
+  const todayCount = todayList.length;
+  // Never mocked: the box opens the real list, and a stand-in "3" that opens
   // nothing reads as broken.
   const toDoCount = todo.items.length;
 
   const bottom = insets.bottom + TAB_BAR + BOTTOM_GAP;
 
-  const nextAccent = nextType ? eventAccent(nextType) : CATEGORY.none;
-
   return (
     <View style={styles.root}>
-      {/* Behind everything, so it lights the space above the panel and reaches
-          under the tab bar, whose glass picks it up. */}
-      <RisingGlow days={match ? calendarDaysUntil(match.iso) : null} hue={COMPETITION_HUE} />
-
-      {/* Both halves, so the To do figure never arrives after the rest. */}
+      {/* Both halves, so no figure arrives after the rest. The light behind all
+          of this is `HomeBackdrop`, in the frame. */}
       <Reveal ready={loaded && todo.loaded}>
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -250,47 +245,60 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={TEXT.tertiary} />
           }
         >
-          <Match match={match} />
+          <View style={styles.lead}>
+            <MatchLine match={match} t={t} />
 
-          {/* Open space for the glow, between the match and the panel. */}
+            <Text style={styles.headline} numberOfLines={2}>
+              {next ? next.title : t('home.nothingPlanned')}
+            </Text>
+            {next ? (
+              <Text style={styles.headlineMeta} numberOfLines={1}>
+                {[relativeDay(next.days, t), next.time, next.location].filter(Boolean).join('  ·  ')}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* The dark room between the light and the boxes. */}
           <View style={styles.spacer} />
 
-          {/* Flexbox, not measurement: the panel grows into whatever the match
-              leaves, and the lead tile into whatever the row leaves. This was
-              computed from two onLayout heights, both 0 on the first frame —
-              so a Home drawn from the cache opened at the minimum size and
-              jumped once measured. */}
-          <View style={styles.panel}>
-            <LeadTile
-              accent={nextAccent}
-              kind={nextType ? capitalise(nextType) : null}
-              when={next ? relativeDay(next.days) : null}
-              figure={next ? next.time : '—'}
-              title={next?.title ?? 'Nothing planned'}
-              place={next?.location ?? null}
-            />
-            <View style={styles.row}>
-              <Tile
-                accent={CATEGORY.today}
-                label="Today"
-                figure={String(todayCount)}
-                detail={todayCount === 0 ? 'nothing on' : todayCount === 1 ? 'event' : 'events'}
-              />
-              <Tile
-                accent={CATEGORY.todo}
-                label="To do"
+          <Text style={styles.sectionTitle}>{t('home.sectionToday')}</Text>
+
+          <View style={styles.bento}>
+            <Box
+              style={styles.boxTall}
+              label={t('home.events')}
+              figure={String(todayCount)}
+              size={58}
+            >
+              {/* The count alone left the tall box mostly air; what the events
+                  actually are is the useful thing to put in it. */}
+              {todayList.length === 0 ? <Text style={styles.boxLine}>{t('home.nothingOn')}</Text> : null}
+              {todayList.slice(0, 2).map(e => (
+                <Text key={e.id} style={styles.boxLine} numberOfLines={1}>
+                  {[e.time, e.title].filter(Boolean).join('  ')}
+                </Text>
+              ))}
+              {todayList.length > 2 ? (
+                <Text style={styles.boxLine}>{t('home.more', { count: todayList.length - 2 })}</Text>
+              ) : null}
+            </Box>
+            <View style={styles.bentoCol}>
+              <Box
+                style={styles.boxMid}
+                label={t('home.todo')}
                 figure={String(toDoCount)}
-                detail={toDoCount === 0 ? 'all done' : 'for you'}
+                sub={toDoCount === 0 ? t('home.allDone') : t('home.forYou')}
+                size={40}
                 // Only when there is something to open: an empty sheet is a
                 // tap spent on nothing.
                 onPress={toDoCount > 0 ? () => navigation.navigate('ToDo') : undefined}
               />
-              <Tile
-                accent={CATEGORY.fines}
-                label="Fines"
-                figure={mock ? String(MOCK.fines) : '—'}
-                unit={mock ? 'kr' : undefined}
-                detail={mock ? 'unpaid' : undefined}
+              <Box
+                style={styles.boxShort}
+                label={t('home.fines')}
+                figure={fineBox.loaded ? String(fineBox.owed) : '—'}
+                unit={fineBox.loaded ? t('common.kr') : undefined}
+                size={30}
               />
             </View>
           </View>
@@ -302,210 +310,71 @@ export default function HomeSection({ isActive }: { isActive?: boolean }) {
 
 // ── The match ──────────────────────────────────────────────────────────────
 
-function Match({ match }: { match: { opponent: string; isHome: boolean | null; iso: string } | null }) {
+/**
+ * The match, as one line in the light: crest, who, and when. It was a card with
+ * both crests and the kick-off between them, which made the week's fixture
+ * louder than the session you actually have to turn up to.
+ */
+function MatchLine({ match, t }: {
+  match: { opponent: string; isHome: boolean | null; iso: string; logo: string | null } | null;
+  t: TFunction;
+}) {
   if (!match) {
-    return (
-      <View style={styles.match}>
-        <Text style={styles.matchWhen}>No match scheduled</Text>
-      </View>
-    );
+    return <Text style={styles.matchLine}>{t('home.noMatch')}</Text>;
   }
-
   const days = calendarDaysUntil(match.iso);
-  const when = days === 0 ? 'Match today' : days === 1 ? 'Match tomorrow' : `Match in ${days} days`;
-  const venue = match.isHome === false ? '(A)' : match.isHome ? '(H)' : '';
-
+  const when = days === 0 ? t('home.matchToday')
+    : days === 1 ? t('home.matchTomorrow')
+    : t('home.matchInDays', { count: days });
+  const venue = match.isHome === false ? ` ${t('home.awayShort')}`
+    : match.isHome ? ` ${t('home.homeShort')}` : '';
   return (
-    <View style={styles.match}>
-      <Text style={styles.matchWhen}>{when}</Text>
-      <Text style={styles.matchName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-        {match.opponent}
-        {venue ? <Text style={styles.matchVenue}>{` ${venue}`}</Text> : null}
+    <View style={styles.matchRow}>
+      <Crest url={match.logo} name={match.opponent} size={20} />
+      <Text style={styles.matchLine} numberOfLines={1}>
+        {match.opponent}{venue}  ·  {when} {localTime(match.iso)}
       </Text>
-      <Text style={styles.matchTime}>Kick off {localTime(match.iso)}</Text>
     </View>
   );
 }
 
-// ── The glow ───────────────────────────────────────────────────────────────
+// ── Boxes ──────────────────────────────────────────────────────────────────
 
 /**
- * Light rising from the bottom edge of the screen.
- *
- * **Every day** it is fully visible — two pools anchored below the screen's
- * floor, the hue and a neighbour 18° away, so it reads as atmosphere rather
- * than a spotlight. It is not earned by the calendar any more: a faint glow on
- * six days out of seven left Home looking black most of the week.
- *
- * **Matchday** adds a second, more vivid layer on top: denser colour, reaching
- * higher up the screen, a brighter core low in the middle, and a slow breath.
- * It fades in over the everyday glow rather than replacing it, so the two can
- * never disagree about where the light sits.
- *
- * Gradients, not blur, so nothing ends in a hard edge. The screen's bottom edge
- * is the only boundary the pools meet, and a screen edge is a natural one.
- *
- * Drawn in a 100×100 viewBox stretched to the section (`preserveAspectRatio
- * "none"`): every pool was already sized as a fraction of the width across and
- * the height down, so stretching draws exactly the same shapes — and the glow
- * is there on the first frame instead of waiting for a measured height.
+ * One box: a small tracked label, a thin figure, a word under it. Schedule's day
+ * card, in the sizes the grid gives it.
  */
-function RisingGlow({ days, hue }: { days: number | null; hue: number }) {
-  const matchday = days === 0;
-  // Start where the first render says, not at 0: a Home drawn from the cache
-  // already knows its match, and the light should be on from the first frame.
-  const base = useSharedValue(days === null ? 0 : 1);
-  const boost = useSharedValue(matchday ? 1 : 0);
-  const breath = useSharedValue(1);
-
-  useEffect(() => {
-    base.value = withTiming(days === null ? 0 : 1, { duration: 600, easing: EASE });
-  }, [days === null]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    boost.value = withTiming(matchday ? 1 : 0, { duration: 700, easing: EASE });
-    if (matchday) {
-      breath.value = withRepeat(
-        withSequence(
-          withTiming(0.55, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
-          withTiming(1, { duration: 2400, easing: Easing.inOut(Easing.sin) }),
-        ),
-        -1,
-      );
-    } else {
-      cancelAnimation(breath);
-      breath.value = withTiming(1, { duration: 400 });
-    }
-  }, [matchday]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const baseStyle = useAnimatedStyle(() => ({ opacity: base.value }));
-  const boostStyle = useAnimatedStyle(() => ({ opacity: boost.value * breath.value }));
-
-  const a = hsla(hue, 95, 58);
-  const b = hsla(hue + 18, 95, 64);
-  // Matchday colour: more saturated, and a lighter core so it reads as brighter
-  // light rather than just more of the same paint.
-  const c = hsla(hue, 100, 62);
-  const core = hsla(hue - 12, 100, 72);
-
-  return (
-    <>
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, baseStyle]}>
-        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <Defs>
-            <RadialGradient id="riseA" cx="50%" cy="50%" r="50%">
-              <Stop offset={0} stopColor={a} stopOpacity={0.75} />
-              <Stop offset={0.55} stopColor={a} stopOpacity={0.32} />
-              <Stop offset={1} stopColor={a} stopOpacity={0} />
-            </RadialGradient>
-            <RadialGradient id="riseB" cx="50%" cy="50%" r="50%">
-              <Stop offset={0} stopColor={b} stopOpacity={0.55} />
-              <Stop offset={0.5} stopColor={b} stopOpacity={0.2} />
-              <Stop offset={1} stopColor={b} stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
-          {/* Centres sit at the floor, so the pools rise upward from it. */}
-          <Ellipse cx={30} cy={100} rx={100} ry={95} fill="url(#riseA)" />
-          <Ellipse cx={85} cy={100} rx={75} ry={75} fill="url(#riseB)" />
-        </Svg>
-      </Animated.View>
-
-      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, boostStyle]}>
-        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <Defs>
-            <RadialGradient id="boostWide" cx="50%" cy="50%" r="50%">
-              <Stop offset={0} stopColor={c} stopOpacity={0.85} />
-              <Stop offset={0.5} stopColor={c} stopOpacity={0.4} />
-              <Stop offset={0.88} stopColor={c} stopOpacity={0} />
-            </RadialGradient>
-            <RadialGradient id="boostCore" cx="50%" cy="50%" r="50%">
-              <Stop offset={0} stopColor={core} stopOpacity={0.7} />
-              <Stop offset={0.4} stopColor={core} stopOpacity={0.35} />
-              <Stop offset={1} stopColor={core} stopOpacity={0} />
-            </RadialGradient>
-          </Defs>
-          {/* Reaches as high as the section itself, and no higher: the section
-              is clipped under the header, so a pool that is still coloured at
-              the top edge gets cut into a hard horizontal line there. The
-              gradient ends at 88% of the radius for the same reason. */}
-          <Ellipse cx={50} cy={100} rx={115} ry={100} fill="url(#boostWide)" />
-          <Ellipse cx={45} cy={100} rx={70} ry={55} fill="url(#boostCore)" />
-        </Svg>
-      </Animated.View>
-    </>
-  );
-}
-
-// ── Tiles ──────────────────────────────────────────────────────────────────
-
-/**
- * What is next, across the full width.
- *
- * The time is the headline, set thin and very large in the event's colour, so
- * the tile reads from arm's length. What and where sit beside it, right-aligned
- * on the same baseline, so the tile has two ends instead of one stack.
- */
-function LeadTile({ accent, kind, when, figure, title, place }: {
-  accent: MatteAccent; kind: string | null; when: string | null;
-  figure: string; title: string; place: string | null;
+function Box({ label, figure, unit, sub, size, style, onPress, children }: {
+  label: string; figure: string; unit?: string; sub?: string; size: number;
+  style?: object; onPress?: () => void; children?: React.ReactNode;
 }) {
-  return (
-    <View style={styles.lead}>
-      <View style={styles.tileTop}>
-        <View style={styles.labelRow}>
-          <View style={[styles.dot, { backgroundColor: accent.ink }]} />
-          <Text style={styles.label}>{kind ? `Next · ${kind}` : 'Next up'}</Text>
-        </View>
-        {when && <Text style={styles.label}>{when}</Text>}
-      </View>
-
-      <View style={styles.leadBottom}>
-        <Text allowFontScaling={false} numberOfLines={1} style={styles.leadFigure}>
-          {figure}
-        </Text>
-        <View style={styles.leadText}>
-          <Text style={styles.leadTitle} numberOfLines={2}>{title}</Text>
-          {place ? <Text style={styles.leadPlace} numberOfLines={1}>{place}</Text> : null}
-        </View>
-      </View>
-    </View>
-  );
-}
-
-/** A narrow tile: dot and label, a thin figure, one or two words under it. */
-function Tile({ label, figure, unit, detail, accent, onPress }: {
-  label: string; figure: string; unit?: string; detail?: string; accent: MatteAccent;
-  onPress?: () => void;
-}) {
-  const size = figure.length <= 2 ? 64 : 48;
   const content = (
     <>
-      <View style={styles.labelRow}>
-        <View style={[styles.dot, { backgroundColor: accent.ink }]} />
-        <Text style={styles.label} numberOfLines={1}>{label}</Text>
+      <View style={styles.boxHead}>
+        <Text style={styles.boxLabel} numberOfLines={1}>{label}</Text>
+        {children}
       </View>
-
       <View>
         <View style={styles.figureRow}>
           <Text
             allowFontScaling={false}
             numberOfLines={1}
-            style={[styles.figure, { fontSize: size, lineHeight: Math.round(size * 1.08) }]}
+            style={[styles.boxFigure, { fontSize: size, lineHeight: Math.round(size * 1.06) }]}
           >
             {figure}
           </Text>
-          {unit ? <Text allowFontScaling={false} style={styles.unit}>{unit}</Text> : null}
+          {unit ? <Text allowFontScaling={false} style={styles.boxUnit}>{unit}</Text> : null}
         </View>
-        {detail ? <Text style={styles.detail} numberOfLines={2}>{detail}</Text> : null}
+        {sub ? <Text style={styles.boxSub} numberOfLines={1}>{sub}</Text> : null}
       </View>
     </>
   );
   return onPress ? (
-    <PressableScale style={styles.tile} scaleTo={0.96} dim={false} haptic="medium" onPress={onPress}>
+    <PressableScale style={[styles.box, style]} scaleTo={0.96} dim={false} haptic="medium" onPress={onPress}>
       {content}
     </PressableScale>
   ) : (
-    <View style={styles.tile}>{content}</View>
+    <View style={[styles.box, style]}>{content}</View>
   );
 }
 
@@ -524,19 +393,16 @@ function calendarDaysUntil(iso: string): number {
   return Math.max(0, Math.round((day - today) / 86400000));
 }
 
-/** Never slice a timestamptz — the wire format is UTC. Date applies the device zone. */
-function localTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+function relativeDay(days: number, t: TFunction): string {
+  if (days <= 0) return t('common.today');
+  if (days === 1) return t('common.tomorrow');
+  return t('common.inDays', { count: days });
 }
 
-function relativeDay(days: number): string {
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Tomorrow';
-  return `In ${days} days`;
-}
-
-function capitalise(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+/** Stored at local midnight: an all-day event, not a 00:00 start. */
+function allDay(iso: string): boolean {
+  const d = new Date(iso);
+  return d.getHours() === 0 && d.getMinutes() === 0;
 }
 
 function mockKickoff(days: number): string {
@@ -551,101 +417,44 @@ function mockKickoff(days: number): string {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   scroll: { flexGrow: 1 },
-  spacer: { height: GLOW_ROOM },
+  spacer: { flexGrow: 1, minHeight: DARK_ROOM },
 
-  match: {
-    paddingHorizontal: TEXT_INSET,
-    paddingTop: 20,
+  lead: { paddingHorizontal: TEXT_INSET, paddingTop: 10 },
+  matchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  matchLine: { fontFamily: UI_FONT_REGULAR, fontSize: 15, color: TEXT.primary, flexShrink: 1 },
+  headline: {
+    fontFamily: LIGHT_FONT, fontSize: 36, lineHeight: 42,
+    color: TEXT.primary, letterSpacing: -1, marginTop: 14,
   },
-  matchWhen: {
+  headlineMeta: {
     fontFamily: UI_FONT_REGULAR, fontSize: 16,
-    color: TEXT.primary,
-  },
-  // No lineHeight, deliberately. With `adjustsFontSizeToFit`, iOS shrinks the
-  // font until the text fits its frame, and Yoga's pixel rounding can hand
-  // that frame back a third of a point shorter than it measured. A fixed line
-  // height never shrinks with the font, so nothing ever fits and the fitter
-  // falls to its 4pt floor (on Fabric it ignores `minimumFontScale`) — the
-  // name drew as a smudge. A natural line height shrinks with the font, so the
-  // same rounding costs a fraction of a point instead.
-  matchName: {
-    fontFamily: LIGHT_FONT, fontSize: 44,
-    color: TEXT.primary, letterSpacing: -1.2,
-    marginTop: 4,
-  },
-  matchVenue: {
-    fontFamily: THIN_FONT, fontSize: 44,
-    color: TEXT.primary, letterSpacing: -1.2,
-  },
-  matchTime: {
-    fontFamily: UI_FONT_REGULAR, fontSize: 16,
-    color: TEXT.primary,
-    marginTop: 4,
+    color: TEXT.secondary, marginTop: 6,
   },
 
-  panel: {
-    flexGrow: 1,
-    minHeight: PANEL_MIN,
-    marginHorizontal: PAD,
-    gap: GROOVE,
+  // Schedule's and the fine box's section headline, to the point.
+  sectionTitle: {
+    fontFamily: DISPLAY_FONT, fontSize: 24, color: TEXT.primary, letterSpacing: -0.6,
+    marginHorizontal: TEXT_INSET, marginBottom: 12,
   },
-  row: { flexDirection: 'row', gap: GROOVE, height: ROW_H },
 
-  lead: {
-    flex: 1,
+  bento: { flexDirection: 'row', gap: GAP, marginHorizontal: PAD, height: BENTO_H },
+  bentoCol: { flex: 1, gap: GAP },
+  box: {
     borderRadius: RADIUS.lg,
     backgroundColor: SURFACE.raised,
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    paddingHorizontal: BOX_PAD_X, paddingTop: 16, paddingBottom: 14,
     justifyContent: 'space-between',
   },
-  tile: {
-    flex: 1,
-    borderRadius: RADIUS.lg,
-    backgroundColor: SURFACE.raised,
-    paddingHorizontal: 14, paddingTop: 16, paddingBottom: 14,
-    justifyContent: 'space-between',
-  },
+  // Different sizes on purpose: a tall one beside a taller and a shorter.
+  boxTall: { flex: 1.15 },
+  boxMid: { flex: 1.3 },
+  boxShort: { flex: 1 },
 
-  tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  dot: { width: 7, height: 7, borderRadius: RADIUS.pill },
-  label: {
-    fontFamily: UI_FONT_REGULAR, fontSize: 14,
-    color: TEXT.primary,
-  },
-
-  leadBottom: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 },
-  leadFigure: {
-    fontFamily: THIN_FONT, fontSize: 96, lineHeight: 100,
-    color: TEXT.primary,
-    letterSpacing: -4,
-    // Negative tracking leaves the box narrower than the ink; give it back.
-    paddingRight: 4,
-    marginBottom: -8,
-  },
-  leadText: { flexShrink: 1, alignItems: 'flex-end', paddingBottom: 6 },
-  leadTitle: {
-    fontFamily: LIGHT_FONT, fontSize: 20, lineHeight: 24,
-    color: TEXT.primary, textAlign: 'right', letterSpacing: -0.3,
-  },
-  leadPlace: {
-    fontFamily: UI_FONT_REGULAR, fontSize: 14,
-    color: TEXT.primary, textAlign: 'right', marginTop: 3,
-  },
-
+  boxHead: { gap: 10 },
+  boxLabel: { fontFamily: UI_FONT, fontSize: 12, letterSpacing: 1.4, color: TEXT.tertiary },
+  boxLine: { fontFamily: UI_FONT_REGULAR, fontSize: 14, color: TEXT.secondary },
   figureRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
-  figure: {
-    fontFamily: THIN_FONT,
-    color: TEXT.primary,
-    letterSpacing: -2.5,
-    paddingRight: 2,
-  },
-  unit: {
-    fontFamily: LIGHT_FONT, fontSize: 18,
-    color: TEXT.primary,
-  },
-  detail: {
-    fontFamily: UI_FONT_REGULAR, fontSize: 13, lineHeight: 17,
-    color: TEXT.primary, marginTop: 2,
-  },
+  boxFigure: { fontFamily: THIN_FONT, color: TEXT.primary, letterSpacing: -2 },
+  boxUnit: { fontFamily: LIGHT_FONT, fontSize: 16, color: TEXT.primary },
+  boxSub: { fontFamily: UI_FONT_REGULAR, fontSize: 13, color: TEXT.secondary, marginTop: 2 },
 });

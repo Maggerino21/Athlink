@@ -1,8 +1,7 @@
 {
   "landing": {
-    "heroPre": "Your platform for",
-    "heroTitle": "The athlete's\nEveryday.",
-    "heroSub": "Feedback, tasks and\nprogress — all in one place.",
+    "heroTitle": "The\nfootballer's\ndashboard",
+    "heroSub": "Schedule, feedback and fine box in one place.",
     "joinBtn": "Join",
     "loginBtn": "Log in"
   },
@@ -64,7 +63,8 @@
   "language": {
     "label": "Language",
     "en": "English",
-    "no": "Norsk"
+    "no": "Norsk",
+    "search": "Search languages"
   },
   "common": {
     "signOut": "Sign out",
@@ -78,58 +78,14 @@
     "justNow": "Just now",
     "minutesAgo": "{{count}}m ago",
     "hoursAgo": "{{count}}h ago",
-    "daysAgo": "{{count}} days ago"
-  },
-  "athlete": {
-    "greeting": {
-      "morning": "Good morning",
-      "afternoon": "Good afternoon",
-      "evening": "Good evening"
-    },
-    "tabs": {
-      "home": "Home",
-      "feedback": "Feedback",
-      "tasks": "Tasks",
-      "progress": "Progress"
-    },
-    "thisWeek": {
-      "nextMatch": "Next Match",
-      "noMatches": "No matches",
-      "noUpcomingMatches": "No upcoming matches",
-      "noMatchesHint": "Check back with your coach for the schedule.",
-      "daysAway": "{{count}}d away",
-      "matchToday": "Today",
-      "newFeedback": "New\nFeedback",
-      "tasksPending": "Tasks\nPending",
-      "matchWeekLabel": "Match Week",
-      "matchDay": "Match day!",
-      "daysUntilKickoff_one": "{{count}} day until kick-off",
-      "daysUntilKickoff_other": "{{count}} days until kick-off",
-      "focusRecovery": "Focus on recovery and activation. Stay sharp.",
-      "focusPrepare": "Prepare well. Review your coach feedback before match day."
-    },
-    "feedback": {
-      "unread": "Unread",
-      "earlier": "Earlier",
-      "emptyTitle": "No feedback yet",
-      "emptySub": "Your coach and staff feedback will appear here.",
-      "actionLabel": "Action",
-      "iUnderstand": "I understand",
-      "acknowledged": "Acknowledged"
-    },
-    "tasks": {
-      "pendingLabel": "Pending",
-      "completedLabel": "Completed",
-      "emptyTitle": "No tasks yet",
-      "emptySub": "Tasks assigned by your coach will appear here.",
-      "dueToday": "Due today",
-      "dueTomorrow": "Due tomorrow",
-      "overdueLabel": "{{count}}d overdue",
-      "noDueDate": "No due date"
-    },
-    "progress": {
-      "comingSoon": "Progress tracking coming soon."
-    }
+    "daysAgo": "{{count}} days ago",
+    "cancel": "Cancel",
+    "tomorrow": "Tomorrow",
+    "inDays": "In {{count}} days",
+    "kr": "kr",
+    "yourStaff": "Your staff",
+    "vs": "vs {{opponent}}",
+    "awayVs": "Away vs {{opponent}}"
   },
   "staff": {
     "dashboardLabel": "Staff dashboard",
@@ -213,5 +169,114 @@
       "overdueLabel": "{{count}}d overdue",
       "noDueDate": "No due date"
     }
+  },
+  "home": {
+    "noMatch": "No match scheduled",
+    "nothingPlanned": "Nothing planned",
+    "sectionToday": "Today",
+    "events": "EVENTS",
+    "todo": "TO DO",
+    "fines": "FINES",
+    "allDone": "all done",
+    "forYou": "for you",
+    "nothingOn": "Nothing on",
+    "more": "+{{count}} more",
+    "yourClub": "Your club",
+    "matchToday": "today",
+    "matchTomorrow": "tomorrow",
+    "matchInDays": "in {{count}} days",
+    "homeShort": "(H)",
+    "awayShort": "(A)"
+  },
+  "schedule": {
+    "title": "Schedule",
+    "todayBtn": "Today",
+    "todayLabel": "Today",
+    "goToDate": "Go to date",
+    "go": "Go",
+    "dayOf": "Day {{day}} of {{total}}"
+  },
+  "fines": {
+    "title": "Fines",
+    "inTheBox": "In the box",
+    "youOwe": "You owe",
+    "youHavePaid": "You have paid",
+    "leaderboard": "Season leaderboard",
+    "nobodyFined": "Nobody has been fined yet this season.",
+    "showAll": "Show all ({{count}} more)",
+    "showFewer": "Show fewer",
+    "latest": "Latest fines",
+    "noFines": "No fines yet. Enjoy it while it lasts.",
+    "giveFine": "Give a fine",
+    "noManagerTitle": "No botsjef yet",
+    "noManagerBody": "Your staff choose who runs the fine box.",
+    "now": "now",
+    "goal": "Goal",
+    "payNow": "Pay now"
+  },
+  "todo": {
+    "title": "To do",
+    "task": "Task",
+    "feedback": "Feedback",
+    "allDone": "All done.",
+    "done": "Done",
+    "gotIt": "Got it",
+    "seen": "Seen",
+    "from": "From {{name}}",
+    "yourFocus": "Your focus",
+    "overdue": "Overdue",
+    "dueToday": "Due today",
+    "dueTomorrow": "Due tomorrow",
+    "dueOn": "Due {{day}}",
+    "new": "New"
+  },
+  "event": {
+    "meet": "Meet",
+    "kickOff": "Kick-off",
+    "starts": "Starts",
+    "allDay": "All day"
+  },
+  "giveFine": {
+    "title": "Give a fine",
+    "searchFines": "Search fines",
+    "choosePlayers": "Choose players",
+    "searchPlayer": "Search name or number",
+    "noPlayers": "No players match.",
+    "note": "Add a note (optional)",
+    "give": "Give fine",
+    "giveToMany": "Give to {{count}} players",
+    "pickPlayer": "Pick a player",
+    "failed": "The fine was not given"
+  },
+  "eventType": {
+    "training": "Training",
+    "home": "Home training",
+    "rehab": "Rehab",
+    "exercise": "Exercise",
+    "recovery": "Recovery",
+    "travel": "Travel",
+    "meeting": "Meeting",
+    "match": "Match",
+    "vacation": "Vacation",
+    "other": "Other",
+    "task": "Task",
+    "feedback": "Feedback"
+  },
+  "account": {
+    "cantLoadProfile": "Couldn't load your profile",
+    "removedTitle": "You're no longer in this club",
+    "removedBodyClub": "Your access to {{club}} has ended. If this looks wrong, speak to your coach — they can add you back.",
+    "removedBody": "Your club access has ended. If this looks wrong, speak to your coach.",
+    "signOutTitle": "Sign out?",
+    "signOutBody": "You will need your email and password to get back in."
+  },
+  "pay": {
+    "title": "Pay a fine",
+    "toPerson": "To {{name}}, who runs the fine box",
+    "toBox": "To the fine box",
+    "withVipps": "Pay with Vipps",
+    "comingSoon": "Vipps isn't connected yet. Until it is, pay the botsjef the usual way and they'll tick it off.",
+    "payAll": "Pay everything",
+    "nothing": "Nothing to pay. Keep it that way."
   }
 }

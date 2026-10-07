@@ -13,8 +13,10 @@ import { ScrollView as GHScrollView } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue, useAnimatedStyle, useDerivedValue, useAnimatedScrollHandler,
-  withTiming, withSpring, interpolate, interpolateColor, Easing, FadeIn,
+  withTiming, withSpring, interpolate, interpolateColor, Easing, FadeIn, runOnJS,
 } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../../i18n';
 import { useAuth } from '../../../context/AuthContext';
 import { supabase } from '../../../lib/supabase';
 import { readCache, writeCache } from '../../../utils/cache';
@@ -23,7 +25,8 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { SharedValue } from 'react-native-reanimated';
 import type { AthleteStackParamList } from '../../../navigation/RootNavigator';
-import { eventMeta, eventAccent, type EventType, type CalEvent } from '../eventTypes';
+import { eventMeta, eventAccent, itemAccent, eventTypeLabel, type EventType, type CalEvent } from '../eventTypes';
+import { weekdayLong, monthShort, localeTag } from '../../../utils/format';
 import {
   TASK_SELECT, FEEDBACK_SELECT, toTaskItem, toFeedbackItem, onToDoChanged,
 } from '../useToDo';
@@ -44,6 +47,9 @@ import haptics from '../../../utils/haptics';
  * friction, which is the opposite of what the motion is for.
  */
 const EASE = Easing.bezier(0.22, 1, 0.36, 1);
+
+/** How far the date sheet starts below its resting place — off-screen either way. */
+const SHEET_RISE = 460;
 const SWAP   = { duration: 170, easing: EASE } as const;
 const TRAVEL = { duration: 210, easing: EASE } as const;
 /** Quick and barely overshooting — a selection should land, not wobble. */
@@ -88,8 +94,6 @@ interface DayGroup {
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const SHORT_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 /**
  * Local wall-clock time from a timestamptz.
@@ -137,7 +141,7 @@ function addDays(d: Date, n: number): Date {
  * what a heading is for — the row says which day, the heading says which week.
  */
 function buildDayLabel(date: Date, today: Date): string {
-  return toYMD(date) === toYMD(today) ? 'Today' : DAYS[date.getDay()];
+  return toYMD(date) === toYMD(today) ? i18n.t('schedule.todayLabel') : weekdayLong(date);
 }
 
 // ── Month maths ────────────────────────────────────────────────────────────────
@@ -238,6 +242,7 @@ function expandEvent(e: any): CalEvent[] {
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function ScheduleSection({ isActive }: { isActive: boolean }) {
+  const { t } = useTranslation();
   const { profile } = useAuth();
   const insets = useSafeAreaInsets();
 
@@ -428,7 +433,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
       }),
       supabase
         .from('matches')
-        .select('id, opponent, match_date, location, is_home, meet_time, meet_location, notes, opponent_logo_url')
+        .select('id, opponent, match_date, location, is_home, meet_time, meet_location, notes, opponent_logo_url, opponent_color')
         .eq('club_id', profile.club_id)
         // Provider fixtures a coach removed are hidden, not deleted — the sync
         // would recreate them. Every read of `matches` must filter this.
@@ -469,6 +474,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
         meet_location: m.meet_location ?? null,
         notes: m.notes ?? null,
         opponent_logo_url: m.opponent_logo_url ?? null,
+        opponent_color: m.opponent_color ?? null,
         is_home: m.is_home,
       })),
       // After the day's events: they have no time of their own. The whole item
@@ -478,7 +484,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
         type: 'task' as EventType,
         title: t.title,
         start_time: null,
-        location: t.done ? 'Done' : `From ${t.from}`,
+        location: t.done ? i18n.t('todo.done') : i18n.t('todo.from', { name: t.from }),
         description: t.description,
         date: localYMD(t.due!),
         source: 'task' as const,
@@ -491,7 +497,7 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
           type: 'feedback' as EventType,
           title: f.title ?? 'Feedback',
           start_time: null,
-          location: f.done ? `From ${f.from}` : `From ${f.from}  ·  New`,
+          location: i18n.t('todo.from', { name: f.from }) + (f.done ? '' : `  ·  ${i18n.t('todo.new')}`),
           description: null,
           date: localYMD(f.dayOf),
           source: 'feedback' as const,
@@ -589,20 +595,30 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
           disappearing cannot resize the header and shove the list down — a
           control that shifts the page when it arrives is worse than no control. */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Schedule</Text>
-        {!isDefaultView && (
+        <Text style={styles.headerTitle}>{t('schedule.title')}</Text>
+        {/* Absolute, so a button appearing or disappearing cannot resize the
+            header and shove the list down. */}
+        <View style={styles.headerActions}>
+          {!isDefaultView && (
+            <TouchableOpacity style={styles.headerBtn} onPress={goToToday} activeOpacity={0.7}>
+              <Ionicons name="return-up-back" size={14} color={TEXT.secondary} style={{ marginRight: 4 }} />
+              <Text style={styles.backBtnText}>{t('schedule.todayBtn')}</Text>
+            </TouchableOpacity>
+          )}
+          {/* Jumping to a date is its own button. It used to be hidden behind
+              tapping a month name, which is where you reach to step a month. */}
           <TouchableOpacity
-            style={styles.backBtn}
-            onPress={goToToday}
+            style={styles.headerBtn}
+            onPress={() => setPickerVisible(true)}
             activeOpacity={0.7}
+            accessibilityLabel={t('schedule.goToDate')}
           >
-            <Ionicons name="return-up-back" size={14} color={TEXT.secondary} style={{ marginRight: 4 }} />
-            <Text style={styles.backBtnText}>Today</Text>
+            <Ionicons name="calendar-outline" size={15} color={TEXT.secondary} />
           </TouchableOpacity>
-        )}
+        </View>
       </View>
 
-      <MonthStrip months={months} page={page} onStep={slideTo} onJump={() => setPickerVisible(true)} />
+      <MonthStrip months={months} page={page} onStep={slideTo} onPick={goToIndex} />
 
       {/* Every month, end to end. FlatList mounts only what is near. */}
       <Animated.FlatList
@@ -651,30 +667,12 @@ export default function ScheduleSection({ isActive }: { isActive: boolean }) {
           that would take a dozen swipes. */}
       {pickerVisible && (
         Platform.OS === 'ios' ? (
-          <Modal transparent animationType="slide" onRequestClose={() => setPickerVisible(false)}>
-            <View style={styles.pickerBackdrop}>
-              <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => setPickerVisible(false)} />
-              <View style={styles.pickerSheet}>
-                <View style={styles.pickerHeader}>
-                  <TouchableOpacity onPress={() => setPickerVisible(false)}>
-                    <Text style={styles.pickerCancel}>Cancel</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.pickerTitle}>Go to date</Text>
-                  <TouchableOpacity onPress={() => { jumpTo(pickerDate); setPickerVisible(false); }}>
-                    <Text style={styles.pickerDone}>Go</Text>
-                  </TouchableOpacity>
-                </View>
-                <DateTimePicker
-                  value={pickerDate}
-                  mode="date"
-                  display="spinner"
-                  onChange={(_, d) => { if (d) setPickerDate(d); }}
-                  textColor="#fff"
-                  style={styles.picker}
-                />
-              </View>
-            </View>
-          </Modal>
+          <DatePickerSheet
+            value={pickerDate}
+            onChangeDate={setPickerDate}
+            onClose={() => setPickerVisible(false)}
+            onGo={d => { jumpTo(d); setPickerVisible(false); }}
+          />
         ) : (
           <DateTimePicker
             value={pickerDate}
@@ -871,12 +869,13 @@ const MonthList = React.memo(function MonthList({
  * screen suggests there is anywhere to go.
  */
 function MonthStrip({
-  months, page, onStep, onJump,
+  months, page, onStep, onPick,
 }: {
   months: Date[];
   page: SharedValue<number>;
   onStep: (n: number) => void;
-  onJump: () => void;
+  /** Tapping a month goes to it — the same move as a swipe or a chevron. */
+  onPick: (index: number) => void;
 }) {
   /**
    * The same scroll, at a different scale.
@@ -904,10 +903,10 @@ function MonthStrip({
           {months.map((m, i) => (
             <StripLabel
               key={monthKey(m)}
-              label={SHORT_MONTHS[m.getMonth()].toUpperCase()}
+              label={monthShort(m).toUpperCase()}
               index={i}
               page={page}
-              onJump={onJump}
+              onPress={() => onPick(i)}
             />
           ))}
         </Animated.View>
@@ -920,10 +919,92 @@ function MonthStrip({
   );
 }
 
+/**
+ * The date picker, as a sheet that rises while the backdrop fades.
+ *
+ * `animationType="slide"` slides the *whole* modal — the dim layer included —
+ * so the darkness swept up the screen behind the sheet instead of settling over
+ * the page. The modal appears instantly now and the two parts are animated
+ * apart: the backdrop fades, the sheet rises, and both reverse before it
+ * unmounts (hence the callback: React must not drop it mid-exit).
+ */
+function DatePickerSheet({ value, onChangeDate, onClose, onGo }: {
+  value: Date;
+  onChangeDate: (d: Date) => void;
+  onClose: () => void;
+  onGo: (d: Date) => void;
+}) {
+  const { t } = useTranslation();
+  const anim = useSharedValue(0);
+
+  /**
+   * Started when the modal is actually on screen, not when it mounts: the
+   * native window takes a frame or two to appear, and an animation started at
+   * mount has already run most of its course by the time anyone can see it —
+   * so the sheet looked like it popped. The timer is a fallback in case
+   * `onShow` never fires; whichever lands first wins.
+   */
+  const started = useRef(false);
+  const open = useCallback(() => {
+    if (started.current) return;
+    started.current = true;
+    anim.value = withTiming(1, { duration: 280, easing: EASE });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const id = setTimeout(open, 250);
+    return () => clearTimeout(id);
+  }, [open]);
+
+  const leave = (done: () => void) => {
+    anim.value = withTiming(0, { duration: 200, easing: EASE }, finished => {
+      if (finished) runOnJS(done)();
+    });
+  };
+
+  const backdropStyle = useAnimatedStyle(() => ({ opacity: anim.value }));
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: (1 - anim.value) * SHEET_RISE }],
+  }));
+
+  return (
+    <Modal transparent animationType="none" onShow={open} onRequestClose={() => leave(onClose)}>
+      <View style={styles.pickerRoot}>
+        <Animated.View style={[StyleSheet.absoluteFill, styles.pickerBackdrop, backdropStyle]}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={() => leave(onClose)} />
+        </Animated.View>
+
+        <Animated.View style={[styles.pickerSheet, sheetStyle]}>
+          <View style={styles.pickerHeader}>
+            <TouchableOpacity onPress={() => leave(onClose)}>
+              <Text style={styles.pickerCancel}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+            <Text style={styles.pickerTitle}>{t('schedule.goToDate')}</Text>
+            <TouchableOpacity onPress={() => leave(() => onGo(value))}>
+              <Text style={styles.pickerDone}>{t('schedule.go')}</Text>
+            </TouchableOpacity>
+          </View>
+          <DateTimePicker
+            value={value}
+            mode="date"
+            display="spinner"
+            // The wheel is Apple's and follows the *device* locale otherwise,
+            // so a Norwegian app on an English phone spun "October".
+            locale={localeTag()}
+            onChange={(_, d) => { if (d) onChangeDate(d); }}
+            textColor="#fff"
+            style={styles.picker}
+          />
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 /** One month name. Brightens as it approaches the centre of the strip. */
 function StripLabel({
-  label, index, page, onJump,
-}: { label: string; index: number; page: SharedValue<number>; onJump: () => void }) {
+  label, index, page, onPress,
+}: { label: string; index: number; page: SharedValue<number>; onPress: () => void }) {
   const style = useAnimatedStyle(() => {
     const d = Math.abs(index - page.value);   // 0 at centre, 1 either side
     return {
@@ -932,7 +1013,7 @@ function StripLabel({
     };
   });
   return (
-    <PressableScale style={styles.stripSlot} scaleTo={0.94} onPress={onJump}>
+    <PressableScale style={styles.stripSlot} scaleTo={0.94} onPress={onPress}>
       <Animated.Text style={[styles.stripLabel, style]} numberOfLines={1}>
         {label}
       </Animated.Text>
@@ -968,7 +1049,7 @@ const DayCard = React.memo(function DayCard({
 }) {
   const isPast = day.isPast && !day.isToday;
   const isSlim = isPast && day.events.length === 0;
-  const monthLabel = SHORT_MONTHS[day.date.getMonth()].toUpperCase();
+  const monthLabel = monthShort(day.date).toUpperCase();
   const hasEvents = day.events.length > 0;
 
   const todayStyle = day.isToday && { backgroundColor: SURFACE.active };
@@ -1006,7 +1087,7 @@ const DayCard = React.memo(function DayCard({
                 a task and feedback share one and two identical dots would read
                 as two different kinds. */}
             <View style={styles.dotRow}>
-              {[...new Set(day.events.map(e => eventAccent(e.type).edge))].slice(0, 4).map(edge => (
+              {[...new Set(day.events.map(e => itemAccent(e).edge))].slice(0, 4).map(edge => (
                 <View key={edge} style={[styles.bigDot, { backgroundColor: edge }]} />
               ))}
             </View>
@@ -1060,7 +1141,7 @@ function DayReveal({ events, onEventPress }: { events: CalEvent[]; onEventPress:
  */
 function DayEventCard({ event, onPress }: { event: CalEvent; onPress: () => void }) {
   const meta = eventMeta(event.type);
-  const accent = eventAccent(event.type);
+  const accent = itemAccent(event);
   const sub = [event.start_time, event.location].filter(Boolean).join('  ·  ');
   return (
     <PressableScale
@@ -1072,11 +1153,11 @@ function DayEventCard({ event, onPress }: { event: CalEvent; onPress: () => void
       <View style={styles.evTypeRow}>
         <Ionicons name={meta.icon as any} size={13} color={accent.ink} />
         <Text style={[styles.evType, { color: accent.ink }]} numberOfLines={1}>
-          {event.type.charAt(0).toUpperCase() + event.type.slice(1)}
+          {eventTypeLabel(event.type)}
         </Text>
         {event.spanTotal && event.spanTotal > 1 ? (
           <Text style={[styles.evType, { color: TEXT.tertiary }]}>
-            · Day {event.spanDay} of {event.spanTotal}
+            · {i18n.t('schedule.dayOf', { day: event.spanDay, total: event.spanTotal })}
           </Text>
         ) : null}
       </View>
@@ -1103,8 +1184,11 @@ const styles = StyleSheet.create({
     fontFamily: DISPLAY_FONT, fontSize: 24, color: '#FFFFFF', letterSpacing: -0.6,
   },
 
-  backBtn: {
+  headerActions: {
     position: 'absolute', right: 20, top: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+  },
+  headerBtn: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm,
     backgroundColor: SURFACE.recessed,
@@ -1130,7 +1214,8 @@ const styles = StyleSheet.create({
   stripArrow: { paddingHorizontal: 2, paddingVertical: 6 },
 
   // ── Go to date
-  pickerBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
+  pickerRoot: { flex: 1, justifyContent: 'flex-end' },
+  pickerBackdrop: { backgroundColor: 'rgba(0,0,0,0.55)' },
   pickerSheet: {
     backgroundColor: '#14161F',
     borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg,

@@ -1,3 +1,27 @@
+/**
+ * LandingScreen — the first thing anybody sees, and the only screen that has
+ * to sell rather than serve.
+ *
+ * **It is a marketing page, not a form with decoration.** A claim set large,
+ * one line saying what the app replaces, and two buttons. Everything else is
+ * light and space, because a squad app that looks like admin software has lost
+ * the argument before the first tap.
+ *
+ * **The light is Home's, hung the same way** (2026-10-01) — a wide pool whose
+ * centre sits on the ceiling, drawn in a 100×100 viewBox stretched to the
+ * frame (`preserveAspectRatio="none"`), so the shape is identical on any
+ * screen and nothing waits for a measured size. See `HomeBackdrop`. It reaches
+ * further down here: Home has a screenful of content to get out of the way of,
+ * this has three paragraphs. The continuity is deliberate — logging in should
+ * feel like walking further into the same room, not like arriving somewhere
+ * else.
+ *
+ * **No club colour** — there is no club yet. The blue belongs to the product
+ * here rather than to a match.
+ *
+ * The sheets below (login, signup) are the older hand-built `BottomSheet`.
+ * They still work; they have not had the tokens pass this screen just had.
+ */
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Dimensions,
@@ -6,174 +30,185 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  useSharedValue, useAnimatedStyle, withSpring, withTiming,
-  runOnJS, interpolate, Extrapolation, Easing,
+  useSharedValue, useAnimatedStyle, withSpring, withTiming, withRepeat, withSequence,
+  runOnJS, interpolate, Extrapolation, Easing, FadeInDown, FadeIn,
 } from 'react-native-reanimated';
+import Svg, { Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
 import haptics from '../../utils/haptics';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import i18n from '../../i18n';
 import { supabase } from '../../lib/supabase';
 import GlassInput from '../../components/ui/GlassInput';
+import LanguagePicker from '../../components/ui/LanguagePicker';
 import AthlinkMark from '../../components/ui/AthlinkMark';
+import PressableScale from '../../components/ui/PressableScale';
+import { hsla } from '../../utils/theme';
+import { SURFACE, TEXT, LINE, RADIUS } from '../../utils/tokens';
+import { DISPLAY_FONT, DISPLAY_FONT_LARGE, UI_FONT, UI_FONT_REGULAR } from '../../utils/type';
 
-// Pre-login palette — derived entirely from the mark's own gradient.
-// Zero club color here. The atmosphere echoes the mark: warm white top, cool white bottom.
-const BASE_BG    = '#080C1E';
-const OFF_WHITE  = '#F4F1ED';  // warm near-white  (mark gradient top)
-const COOL_WHITE = '#ECE9F5';  // barely-cool near-white (mark gradient bottom)
+// Pre-login palette — the mark's own gradient, warm white to barely-cool.
+const OFF_WHITE  = '#F4F1ED';
+const COOL_WHITE = '#ECE9F5';
 
 const { width: W, height: H } = Dimensions.get('window');
+
+/** Home's blue. Same light, same product. */
+const HUE = 200;
+
+/**
+ * The one red in the app. Nothing else on an athlete screen is allowed to be
+ * red, so a failed sign-in reads instantly.
+ */
+const ERROR = '#E5484D';
+
+/** How long the entrance takes to walk down the page. */
+const STEP = 90;
+
+/** The sheet's own close animation, below. One place, so the swap can wait it out. */
+const SHEET_CLOSE_MS = 260;
 
 export default function LandingScreen() {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+
+  /**
+   * **The page itself is English, whoever is holding the phone.**
+   *
+   * Before anyone signs in there is no `profiles.language` to go on, only the
+   * phone's own setting — and a squad is not all on the same one. English is
+   * what every dressing room has in common, and it is the language the product
+   * is pitched in. The sheets below do follow the picker, so the moment someone
+   * chooses their language the form switches under them.
+   *
+   * The Norwegian strings are kept in step in `no.json` so the two can never
+   * come to mean different things if this is ever localised again.
+   */
+  const en = (key: string) => t(key, { lng: 'en' });
   const [loginVisible,  setLoginVisible]  = useState(false);
   const [signupVisible, setSignupVisible] = useState(false);
+
+  /**
+   * "Har du ikke konto? Bli med" swaps one sheet for the other — and iOS
+   * presents one Modal at a time, so opening the second while the first is
+   * still dismissing drops it silently and leaves you looking at the landing
+   * page. Verified: both links did nothing at all. Let the first close first.
+   */
+  const swap = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(swap.current), []);
+  const switchTo = useCallback((open: (v: boolean) => void) => {
+    swap.current = setTimeout(() => open(true), SHEET_CLOSE_MS + 60);
+  }, []);
 
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <Background />
+      <Glow />
 
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-        {/* Wordmark */}
-        <View style={styles.wordmarkRow}>
-          <AthlinkMark width={26} fromColor={OFF_WHITE} toColor={COOL_WHITE} />
-          <Text style={styles.wordmark}>ATHLINK</Text>
+        <Animated.View style={styles.wordmarkRow} entering={FadeIn.duration(600)}>
+          <AthlinkMark width={22} fromColor={OFF_WHITE} toColor={COOL_WHITE} />
+          <Text style={styles.wordmark}>Athlink</Text>
+        </Animated.View>
+
+        <View style={styles.spacerTop} />
+
+        <View style={styles.pitch}>
+          <Animated.Text style={styles.title} entering={FadeInDown.delay(STEP).duration(620)}>
+            {en('landing.heroTitle')}
+          </Animated.Text>
+          <Animated.Text style={styles.sub} entering={FadeInDown.delay(STEP * 2).duration(620)}>
+            {en('landing.heroSub')}
+          </Animated.Text>
         </View>
 
-        {/* Hero — large faded mark as visual centrepiece */}
-        <View style={styles.heroWrap}>
-          <View style={styles.heroMarkWrap}>
-            <AthlinkMark width={148} fromColor={OFF_WHITE} toColor={COOL_WHITE} />
-          </View>
-        </View>
+        {/* The dark room between the claim and the buttons. */}
+        <View style={styles.spacer} />
 
-        {/* Hero text — sits directly above buttons */}
-        <View style={styles.heroTextWrap}>
-          <Text style={styles.heroPre}>{t('landing.heroPre')}</Text>
-          <Text style={styles.heroTitle}>
-            {t('landing.heroTitle')}
-          </Text>
-          <Text style={styles.heroSub}>
-            {t('landing.heroSub')}
-          </Text>
-        </View>
+        <Animated.View
+          style={[styles.ctaWrap, { paddingBottom: Math.max(insets.bottom, 16) }]}
+          entering={FadeInDown.delay(STEP * 3).duration(620)}
+        >
+          <PressableScale style={styles.primaryBtn} scaleTo={0.97} haptic="soft" onPress={() => setSignupVisible(true)}>
+            <Text style={styles.primaryBtnText}>{en('landing.joinBtn')}</Text>
+          </PressableScale>
 
-        {/* CTA buttons */}
-        <View style={[styles.ctaWrap, { paddingBottom: Math.max(insets.bottom, 16) }]}>
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={() => setSignupVisible(true)}
-            activeOpacity={0.88}
-          >
-            <Text style={styles.primaryBtnText}>{t('landing.joinBtn')}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryBtn}
-            onPress={() => setLoginVisible(true)}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.secondaryBtnText}>{t('landing.loginBtn')}</Text>
-          </TouchableOpacity>
-        </View>
+          <PressableScale style={styles.secondaryBtn} scaleTo={0.97} haptic="soft" onPress={() => setLoginVisible(true)}>
+            <Text style={styles.secondaryBtnText}>{en('landing.loginBtn')}</Text>
+          </PressableScale>
+        </Animated.View>
       </SafeAreaView>
 
       <LoginSheet
         visible={loginVisible}
         onClose={() => setLoginVisible(false)}
-        onSwitchToSignup={() => { setLoginVisible(false); setSignupVisible(true); }}
+        onSwitchToSignup={() => { setLoginVisible(false); switchTo(setSignupVisible); }}
       />
       <SignupSheet
         visible={signupVisible}
         onClose={() => setSignupVisible(false)}
-        onSwitchToLogin={() => { setSignupVisible(false); setLoginVisible(true); }}
+        onSwitchToLogin={() => { setSignupVisible(false); switchTo(setLoginVisible); }}
       />
     </View>
   );
 }
 
-// ─── Background — toned-down beam system in the mark's warm→cool palette ─────
-// Structure mirrors the original three-beam layout; all colour stripped to
-// near-white so the atmosphere reads as light, not as a specific hue.
-function Background() {
+/**
+ * The light. Two pools whose centres sit on the ceiling, so they hang rather
+ * than rise, over the app's own ground.
+ *
+ * It breathes — slowly, about eight seconds a cycle. A static poster is the
+ * one thing a first screen cannot afford to be, and a breath costs one shared
+ * value on the UI thread rather than an animation loop in JS.
+ */
+function Glow() {
+  const breath = useSharedValue(1);
+
+  useEffect(() => {
+    breath.value = withRepeat(
+      withSequence(
+        withTiming(0.82, { duration: 4200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 4200, easing: Easing.inOut(Easing.sin) }),
+      ),
+      -1,
+    );
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const breathing = useAnimatedStyle(() => ({ opacity: breath.value }));
+
+  const a = hsla(HUE, 95, 58);
+  const b = hsla(HUE + 20, 95, 64);
+
   return (
-    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+      <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <Defs>
+          <RadialGradient id="landA" cx="50%" cy="50%" r="50%">
+            <Stop offset={0} stopColor={a} stopOpacity={0.7} />
+            <Stop offset={0.5} stopColor={a} stopOpacity={0.26} />
+            <Stop offset={1} stopColor={a} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Ellipse cx={46} cy={0} rx={104} ry={62} fill="url(#landA)" />
+      </Svg>
 
-      {/* Base */}
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: BASE_BG }]} />
+      <Animated.View style={[StyleSheet.absoluteFill, breathing]}>
+        <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <Defs>
+            <RadialGradient id="landB" cx="50%" cy="50%" r="50%">
+              <Stop offset={0} stopColor={b} stopOpacity={0.45} />
+              <Stop offset={0.5} stopColor={b} stopOpacity={0.16} />
+              <Stop offset={1} stopColor={b} stopOpacity={0} />
+            </RadialGradient>
+          </Defs>
+          <Ellipse cx={86} cy={0} rx={66} ry={48} fill="url(#landB)" />
+        </Svg>
+      </Animated.View>
 
-      {/* Centre beam — warm white, falls from top centre */}
-      <LinearGradient
-        colors={[
-          'rgba(244,241,237,0.10)',
-          'rgba(244,241,237,0.065)',
-          'rgba(244,241,237,0.025)',
-          'rgba(244,241,237,0.005)',
-          'rgba(244,241,237,0)',
-        ]}
-        locations={[0, 0.14, 0.36, 0.60, 1]}
-        style={styles.beamCenter}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
-      {/* Left beam — cool white, slightly offset */}
-      <LinearGradient
-        colors={[
-          'rgba(236,233,245,0.06)',
-          'rgba(236,233,245,0.03)',
-          'rgba(236,233,245,0.008)',
-          'rgba(236,233,245,0)',
-        ]}
-        locations={[0, 0.20, 0.50, 1]}
-        style={styles.beamLeft}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
-      {/* Right beam — warm white, mirror of left */}
-      <LinearGradient
-        colors={[
-          'rgba(244,241,237,0.055)',
-          'rgba(244,241,237,0.025)',
-          'rgba(244,241,237,0.006)',
-          'rgba(244,241,237,0)',
-        ]}
-        locations={[0, 0.20, 0.48, 1]}
-        style={styles.beamRight}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
-      {/* Top edge — brightest strip right at the top */}
-      <LinearGradient
-        colors={['rgba(244,241,237,0.07)', 'rgba(244,241,237,0)']}
-        style={styles.topEdgeGlow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
-      {/* Bottom vignette — deepens the lower half for readability */}
-      <LinearGradient
-        colors={['rgba(8,12,30,0)', 'rgba(8,12,30,0.65)', 'rgba(8,12,30,0.95)']}
-        locations={[0, 0.42, 1]}
-        style={styles.bottomVignette}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
-      {/* Noise grain */}
-      <Image
-        source={require('../../../assets/noise.png')}
-        style={styles.noiseLayer}
-        resizeMode="cover"
-        blurRadius={1.5}
-      />
+      {/* Grain. A pool this wide bands into visible steps on an OLED panel
+          without something to break the ramp up. */}
+      <Image source={require('../../../assets/noise.png')} style={styles.grain} resizeMode="cover" />
     </View>
   );
 }
@@ -228,7 +263,7 @@ function LoginSheet({
         activeOpacity={0.85}
       >
         {loading
-          ? <ActivityIndicator color="#e3d7d7" size="small" />
+          ? <ActivityIndicator color={SURFACE.base} size="small" />
           : <Text style={sheetStyles.submitText}>{t('login.submit')}</Text>
         }
       </TouchableOpacity>
@@ -251,12 +286,10 @@ function SignupSheet({
   const { t } = useTranslation();
 
   type Step = 1 | 2;
-  type Lang = 'en' | 'no';
 
   const [step, setStep]         = useState<Step>(1);
-  const [language, setLanguage] = useState<Lang>(
-    (i18n.language === 'no' ? 'no' : 'en') as Lang
-  );
+  // Whatever the phone's own language resolved to at launch — see i18n/index.
+  const [language, setLanguage] = useState<string>(i18n.language);
   const [fullName, setFullName]     = useState('');
   const [email, setEmail]           = useState('');
   const [password, setPassword]     = useState('');
@@ -272,7 +305,9 @@ function SignupSheet({
     }
   }, [visible]);
 
-  const handleLanguageChange = (lang: Lang) => {
+  // Switch the whole screen as they pick, so the choice is self-evidencing:
+  // you see the language you chose before you have typed anything.
+  const handleLanguageChange = (lang: string) => {
     setLanguage(lang);
     i18n.changeLanguage(lang);
   };
@@ -329,19 +364,12 @@ function SignupSheet({
     return (
       <BottomSheet visible={visible} onClose={onClose} title={t('signup.step1Title')}>
         <Text style={sheetStyles.fieldLabel}>{t('language.label')}</Text>
-        <View style={[sheetStyles.roleRow, { marginBottom: 24 }]}>
-          {(['en', 'no'] as Lang[]).map(lang => (
-            <TouchableOpacity
-              key={lang}
-              style={[sheetStyles.roleBtn, language === lang && sheetStyles.roleBtnActive]}
-              onPress={() => handleLanguageChange(lang)}
-              activeOpacity={0.8}
-            >
-              <Text style={[sheetStyles.roleBtnText, language === lang && sheetStyles.roleBtnTextActive]}>
-                {lang === 'en' ? '🇬🇧  English' : '🇳🇴  Norsk'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ marginBottom: 24 }}>
+          <LanguagePicker
+            value={language}
+            onChange={handleLanguageChange}
+            placeholder={t('language.search')}
+          />
         </View>
 
         <GlassInput label={t('signup.fullName')} value={fullName} onChangeText={setFullName}
@@ -394,7 +422,7 @@ function SignupSheet({
         activeOpacity={0.85}
       >
         {loading
-          ? <ActivityIndicator color="#e3d7d7" size="small" />
+          ? <ActivityIndicator color={SURFACE.base} size="small" />
           : <Text style={sheetStyles.submitText}>{t('signup.joinBtn')}</Text>
         }
       </TouchableOpacity>
@@ -431,7 +459,7 @@ function BottomSheet({
     } else if (mounted) {
       translateY.value = withTiming(
         H,
-        { duration: 260, easing: Easing.in(Easing.cubic) },
+        { duration: SHEET_CLOSE_MS, easing: Easing.in(Easing.cubic) },
         (done) => { if (done) runOnJS(finishClose)(); }
       );
     }
@@ -495,7 +523,7 @@ function BottomSheet({
           sheetStyle,
         ]}
       >
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10,13,28,0.97)' }]} />
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: SURFACE.base }]} />
 
         {/* Handle area — larger tap/drag target wrapping the visible pill */}
         <GestureDetector gesture={pan}>
@@ -521,124 +549,78 @@ function BottomSheet({
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  root: { flex: 1 },
+  root: { flex: 1, backgroundColor: SURFACE.base },
   safe: { flex: 1 },
 
-  // Background layers — three-beam structure, neutral palette
-  beamCenter: {
-    position: 'absolute',
-    top: 0,
-    left: W * 0.14, right: W * 0.14,
-    height: H * 0.75,
-  },
-  beamLeft: {
-    position: 'absolute',
-    top: 0,
-    left: -W * 0.05,
-    width: W * 0.48,
-    height: H * 0.62,
-  },
-  beamRight: {
-    position: 'absolute',
-    top: 0,
-    right: -W * 0.05,
-    width: W * 0.48,
-    height: H * 0.62,
-  },
-  topEdgeGlow: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: 160,
-  },
-  bottomVignette: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    height: H * 0.62,
-  },
-  noiseLayer: {
-    position: 'absolute',
-    top: 0, left: 0,
-    width: W, height: H,
-    opacity: 0.032,
-  },
-
-  // Wordmark
   wordmarkRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    paddingHorizontal: 24, paddingTop: 8,
+    flexDirection: 'row', alignItems: 'center', gap: 9,
+    paddingHorizontal: 24, paddingTop: 10,
   },
+  /**
+   * Home's wordmark, to the letter — same face, size and tracking as the one in
+   * `AthleteFrame`'s brand header. The first screen and the screen behind it
+   * should not be setting the name two different ways.
+   */
   wordmark: {
-    fontSize: 15, fontWeight: '800',
-    color: OFF_WHITE,
-    letterSpacing: 3.5,
+    fontFamily: 'SpaceGrotesk_400Regular', fontSize: 27,
+    color: '#FFFFFF', letterSpacing: -0.3,
   },
 
-  // Hero — large faded mark centred in negative space
-  heroWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroMarkWrap: {
-    opacity: 0.11,
-  },
+  /**
+   * Stated in points, not `absoluteFill`: an Image given only insets covered
+   * the top 59% of the screen and left a visible edge where the grain
+   * stopped — measured off a screenshot, not guessed.
+   */
+  grain: { position: 'absolute', top: 0, left: 0, width: W, height: H, opacity: 0.035 },
 
-  heroTextWrap: {
-    paddingHorizontal: 26,
-    paddingBottom: 20,
-  },
-  heroPre: {
-    fontSize: 11, fontWeight: '600',
-    color: 'rgba(244,241,237,0.35)',
-    letterSpacing: 2.2,
-    textTransform: 'uppercase',
-    marginBottom: 10,
-  },
-  heroTitle: {
-    fontSize: 44, fontWeight: '800',
-    color: OFF_WHITE,
-    letterSpacing: -1, lineHeight: 48,
-    marginBottom: 12,
-  },
-  heroSub: {
-    fontSize: 15,
-    color: 'rgba(236,233,245,0.38)',
-    lineHeight: 22, letterSpacing: 0.1,
-    marginBottom: 24,
-  },
+  /**
+   * The claim is weighted above centre: more light over it than dark under it,
+   * so the page leads with the light rather than floating in the middle.
+   */
+  spacerTop: { flex: 4 },
+  spacer: { flex: 1 },
 
-  // CTA buttons
-  ctaWrap: { paddingHorizontal: 24, gap: 12 },
-
-  // Primary — neutral glass, warm-white border
+  pitch: { paddingHorizontal: 24 },
+  /**
+   * The claim. Archivo Regular rather than Medium: at this size the stroke
+   * stops being type and starts being a logo, and the size is the emphasis.
+   */
+  title: {
+    fontFamily: DISPLAY_FONT_LARGE, fontSize: 40, lineHeight: 43,
+    color: OFF_WHITE, letterSpacing: -1.3,
+  },
+  sub: {
+    fontFamily: UI_FONT_REGULAR, fontSize: 16, lineHeight: 23,
+    color: TEXT.secondary, marginTop: 16, maxWidth: 320,
+  },
+  ctaWrap: { paddingHorizontal: 24, paddingTop: 30, gap: 10 },
+  /** The app's own button: an opaque near-white pill, as on Betal alt. */
   primaryBtn: {
-    height: 58, borderRadius: 15,
+    height: 56, borderRadius: RADIUS.pill,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(244,241,237,0.08)',
-    borderWidth: 1, borderColor: 'rgba(244,241,237,0.18)',
+    backgroundColor: OFF_WHITE,
   },
-  primaryBtnText: {
-    fontSize: 16, fontWeight: '700',
-    color: OFF_WHITE, letterSpacing: 0.3,
-  },
-
-  // Secondary — ghost, minimal border
+  primaryBtnText: { fontFamily: UI_FONT, fontSize: 16, color: SURFACE.base },
   secondaryBtn: {
-    height: 54, borderRadius: 15,
+    height: 52, borderRadius: RADIUS.pill,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1, borderColor: 'rgba(244,241,237,0.11)',
   },
-  secondaryBtnText: {
-    fontSize: 16, fontWeight: '600',
-    color: 'rgba(244,241,237,0.45)', letterSpacing: 0.2,
-  },
+  secondaryBtnText: { fontFamily: UI_FONT, fontSize: 16, color: TEXT.secondary },
 });
 
+/**
+ * The sheets, on the app's own tokens (2026-10-01). They used to sit on a navy
+ * panel of their own, which read as a different product the moment the landing
+ * page stopped being navy. Same surfaces and the same near-white pill as the
+ * rest of the app now; the shell itself is still the hand-built one.
+ *
+ * Several styles below (`roleCard*`, `roleBtnSpec`) belong to signup steps that
+ * no longer exist — left alone rather than swept in a design pass.
+ */
 const sheetStyles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.6)' },
   sheet: {
-    borderTopLeftRadius: 30, borderTopRightRadius: 30,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
     overflow: 'hidden', height: H * 0.85,
   },
   handleArea: {
@@ -647,88 +629,75 @@ const sheetStyles = StyleSheet.create({
   },
   handle: {
     width: 38, height: 4, borderRadius: 2,
-    backgroundColor: 'rgba(244,241,237,0.18)',
+    backgroundColor: TEXT.faint,
   },
   sheetContent: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 16, zIndex: 1 },
   sheetTitle: {
-    fontSize: 22, fontWeight: '700', color: OFF_WHITE,
-    marginBottom: 24, letterSpacing: -0.4,
+    fontFamily: DISPLAY_FONT, fontSize: 24, color: TEXT.primary,
+    marginBottom: 24, letterSpacing: -0.6,
   },
 
   roleLabel: {
-    fontSize: 11, fontWeight: '600', color: 'rgba(244,241,237,0.4)',
+    fontFamily: UI_FONT, fontSize: 11, color: TEXT.tertiary,
     letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 10,
   },
   roleRow: {
     flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: 14, borderWidth: 1, borderColor: 'rgba(244,241,237,0.09)',
+    backgroundColor: SURFACE.recessed,
+    borderRadius: RADIUS.md,
     padding: 4, gap: 4, marginBottom: 20, overflow: 'hidden',
   },
   roleBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 10,
+    flex: 1, paddingVertical: 11, borderRadius: RADIUS.sm,
     alignItems: 'center', overflow: 'hidden',
   },
-  roleBtnActive: {
-    backgroundColor: 'rgba(244,241,237,0.10)',
-    borderWidth: 1, borderColor: 'rgba(244,241,237,0.20)',
-  },
+  /** Chosen is brighter, not coloured — as everywhere else in the app. */
+  roleBtnActive: { backgroundColor: SURFACE.active },
   roleBtnSpec: {
     position: 'absolute', top: 0, left: 12, right: 12, height: 1,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: LINE.soft,
   },
-  roleBtnText: { fontSize: 14, fontWeight: '500', color: 'rgba(244,241,237,0.4)' },
-  roleBtnTextActive: { color: OFF_WHITE, fontWeight: '700' },
+  roleBtnText: { fontFamily: UI_FONT_REGULAR, fontSize: 14, color: TEXT.tertiary },
+  roleBtnTextActive: { fontFamily: UI_FONT, color: TEXT.primary },
 
   submitBtn: {
-    height: 56, borderRadius: 15,
+    height: 54, borderRadius: RADIUS.pill,
     alignItems: 'center', justifyContent: 'center',
-    marginTop: 20,
-    backgroundColor: 'rgba(244,241,237,0.08)',
-    borderWidth: 1, borderColor: 'rgba(244,241,237,0.18)',
+    marginTop: 24,
+    backgroundColor: OFF_WHITE,
   },
-  submitText: { fontSize: 15, fontWeight: '700', color: OFF_WHITE, letterSpacing: 0.3 },
+  submitText: { fontFamily: UI_FONT, fontSize: 16, color: SURFACE.base },
 
-  error: { fontSize: 13, color: '#FCA5A5', textAlign: 'center', marginTop: 12 },
+  error: { fontFamily: UI_FONT_REGULAR, fontSize: 13, color: ERROR, textAlign: 'center', marginTop: 14 },
   switchRow: { alignItems: 'center', marginTop: 18 },
-  switchText: { fontSize: 14, color: 'rgba(244,241,237,0.35)' },
-  switchLink: { color: COOL_WHITE, fontWeight: '600' },
+  switchText: { fontFamily: UI_FONT_REGULAR, fontSize: 14, color: TEXT.tertiary },
+  switchLink: { fontFamily: UI_FONT, color: TEXT.primary },
 
   doneWrap: { alignItems: 'center', paddingVertical: 16 },
   doneIcon: { fontSize: 52, marginBottom: 16 },
-  doneSub: { fontSize: 15, color: 'rgba(244,241,237,0.45)', textAlign: 'center', lineHeight: 24 },
+  doneSub: {
+    fontFamily: UI_FONT_REGULAR, fontSize: 15, color: TEXT.secondary,
+    textAlign: 'center', lineHeight: 23,
+  },
 
-  // Step 1 role cards
   roleCards: { gap: 12, marginBottom: 24 },
-  roleCard: {
-    padding: 18, borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1, borderColor: 'rgba(244,241,237,0.09)',
-  },
-  roleCardActive: {
-    backgroundColor: 'rgba(244,241,237,0.09)',
-    borderColor: 'rgba(244,241,237,0.22)',
-  },
+  roleCard: { padding: 18, borderRadius: RADIUS.md, backgroundColor: SURFACE.raised },
+  roleCardActive: { backgroundColor: SURFACE.active },
   roleCardEmoji: { fontSize: 28, marginBottom: 8 },
-  roleCardTitle: { fontSize: 16, fontWeight: '700', color: 'rgba(244,241,237,0.5)', marginBottom: 4 },
-  roleCardTitleActive: { color: OFF_WHITE },
-  roleCardSub: { fontSize: 13, color: 'rgba(244,241,237,0.3)', lineHeight: 18 },
+  roleCardTitle: { fontFamily: UI_FONT, fontSize: 16, color: TEXT.secondary, marginBottom: 4 },
+  roleCardTitleActive: { color: TEXT.primary },
+  roleCardSub: { fontFamily: UI_FONT_REGULAR, fontSize: 13, color: TEXT.tertiary, lineHeight: 18 },
 
   fieldLabel: {
-    fontSize: 11, fontWeight: '600',
-    color: 'rgba(244,241,237,0.4)',
-    textTransform: 'uppercase', letterSpacing: 0.8,
-    marginBottom: 10,
+    fontFamily: UI_FONT, fontSize: 11, color: TEXT.tertiary,
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10,
   },
 
-  // Back button
   backBtn: { marginBottom: 20 },
-  backText: { fontSize: 14, color: 'rgba(236,233,245,0.6)', fontWeight: '500' },
+  backText: { fontFamily: UI_FONT, fontSize: 14, color: TEXT.secondary },
 
-  // Club hint text
   clubHint: {
-    fontSize: 13, color: 'rgba(244,241,237,0.35)',
-    lineHeight: 20, marginBottom: 16,
+    fontFamily: UI_FONT_REGULAR, fontSize: 14, color: TEXT.secondary,
+    lineHeight: 21, marginBottom: 16,
   },
-
 });

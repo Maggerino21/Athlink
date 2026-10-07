@@ -20,6 +20,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, Dimensions } from 'react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
+import { longDate as fullDate } from '../../utils/format';
 import { eventAccent } from '../../components/athlete/eventTypes';
 import { DISPLAY_FONT, DISPLAY_FONT_LARGE, UI_FONT } from '../../utils/type';
 import { RADIUS } from '../../utils/tokens';
@@ -51,18 +53,14 @@ type Props = NativeStackScreenProps<AthleteStackParamList, 'EventDetail'>;
  */
 const SHEET_H = Dimensions.get('window').height;
 
-const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-const MONTHS = ['January','February','March','April','May','June',
-                'July','August','September','October','November','December'];
-
-/** "Saturday 12 September" from a local YYYY-MM-DD. */
+/** "Saturday 12 September" · "lørdag 12. september", from a local YYYY-MM-DD. */
 function longDate(ymd: string): string {
   const [y, m, d] = ymd.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return `${DAYS[date.getDay()]} ${d} ${MONTHS[m - 1]}`;
+  return fullDate(new Date(y, m - 1, d));
 }
 
 export default function EventDetailScreen({ route }: Props) {
+  const { t } = useTranslation();
   const { event } = route.params;
   const accent = eventAccent(event.type);
   const isMatch = event.source === 'match';
@@ -104,19 +102,19 @@ export default function EventDetailScreen({ route }: Props) {
         {isMatch && (event.meet_time || event.meet_location) ? (
           <>
             <Figure
-              label="Meet"
+              label={t('event.meet')}
               value={event.meet_time ?? '—'}
               caption={event.meet_location ?? undefined}
               emphasis
             />
             {event.start_time ? (
-              <Figure label="Kick-off" value={event.start_time} caption={event.location ?? undefined} />
+              <Figure label={t('event.kickOff')} value={event.start_time} caption={event.location ?? undefined} />
             ) : null}
           </>
         ) : (
           <Figure
-            label={isMatch ? 'Kick-off' : 'Starts'}
-            value={event.start_time ?? 'All day'}
+            label={t(isMatch ? 'event.kickOff' : 'event.starts')}
+            value={event.start_time ?? t('event.allDay')}
             caption={event.location ?? undefined}
             emphasis
           />
@@ -127,7 +125,7 @@ export default function EventDetailScreen({ route }: Props) {
         {/* A block spanning days says so, rather than looking like a one-day
             event that mysteriously repeats. */}
         {event.spanTotal && event.spanTotal > 1 ? (
-          <Text style={styles.span}>Day {event.spanDay} of {event.spanTotal}</Text>
+          <Text style={styles.span}>{t('schedule.dayOf', { day: event.spanDay, total: event.spanTotal })}</Text>
         ) : null}
 
         {(isMatch ? event.notes : event.description) ? (

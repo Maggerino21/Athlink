@@ -41,16 +41,20 @@ import { StatusBar } from 'expo-status-bar';
 import { Tabs, type TabSelectedEvent } from 'react-native-screens';
 import type { NativeSyntheticEvent } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
+import { weekdayDayMonth } from '../../utils/format';
 import { supabase } from '../../lib/supabase';
 import haptics from '../../utils/haptics';
 import AthleteFrame from '../../components/athlete/AthleteFrame';
 import HomeSection from '../../components/athlete/sections/HomeSection';
+import HomeBackdrop from '../../components/athlete/HomeBackdrop';
 import ScheduleSection from '../../components/athlete/sections/ScheduleSection';
 import FinesSection from '../../components/athlete/sections/FinesSection';
 import GlassLab from '../dev/GlassLab';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { SURFACE_BASE } from '../../utils/theme';
+import { SURFACE_BASE, hexToHsl } from '../../utils/theme';
 
 /**
  * SF Symbols rather than Ionicons — the native tab bar renders these itself, at
@@ -82,10 +86,11 @@ function getGreeting() {
 }
 
 function formatDate() {
-  return new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+  return weekdayDayMonth(new Date());
 }
 
 export default function HomeScreen() {
+  const { t } = useTranslation();
   const { profile, signOut } = useAuth();
   const [activeKey, setActiveKey] = useState<string>(SECTIONS[0].id);
   /**
@@ -99,6 +104,13 @@ export default function HomeScreen() {
    */
   const [provenance, setProvenance] = useState(0);
   const [nextMatchLabel, setNextMatchLabel] = useState<string | null>(null);
+  /** Home's light burns brighter on matchday — see HomeBackdrop. */
+  const [matchday, setMatchday] = useState(false);
+  /**
+   * The hue of the light, taken from the next opponent's colour when the club
+   * has one. Undefined leaves `HomeBackdrop` on its own default.
+   */
+  const [matchHue, setMatchHue] = useState<number | undefined>(undefined);
   const [glassLabOpen, setGlassLabOpen] = useState(false);
 
   // Tabs mount on first visit and stay mounted. Previously all five mounted at
@@ -114,7 +126,7 @@ export default function HomeScreen() {
     if (profile.club_id) {
       supabase
         .from('matches')
-        .select('match_date')
+        .select('match_date, opponent_color')
         .eq('club_id', profile.club_id)
         .eq('status', 'upcoming')
         // Removed fixtures are suppressed, not deleted — see CLAUDE.md.
@@ -128,7 +140,9 @@ export default function HomeScreen() {
           const days = Math.ceil(
             (new Date(data.match_date).getTime() - Date.now()) / 86400000
           );
-          setNextMatchLabel(days === 0 ? 'Match today' : `Match in ${days}d`);
+          setNextMatchLabel(days === 0 ? i18n.t('home.matchToday') : i18n.t('home.matchInDays', { count: days }));
+          setMatchday(days === 0);
+          setMatchHue(data.opponent_color ? hexToHsl(data.opponent_color).h : undefined);
         });
     }
   }, [profile]);
@@ -157,14 +171,14 @@ export default function HomeScreen() {
   const confirmSignOut = useCallback(() => {
     haptics.selection();
     Alert.alert(
-      'Sign out?',
-      'You will need your email and password to get back in.',
+      t('account.signOutTitle'),
+      t('account.signOutBody'),
       [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.signOut'), style: 'destructive', onPress: () => signOut() },
       ]
     );
-  }, [signOut]);
+  }, [signOut, t]);
 
   const name     = profile?.full_name ?? '';
   const initials = name ? getInitials(name) : '?';
@@ -216,7 +230,11 @@ export default function HomeScreen() {
               selectedIcon: { type: 'sfSymbol', name: sf },
             }}
           >
-            <AthleteFrame {...frameProps} variant={id === 'this-week' ? 'brand' : 'bare'}>
+            <AthleteFrame
+              {...frameProps}
+              variant={id === 'this-week' ? 'brand' : 'bare'}
+              backdrop={id === 'this-week' ? <HomeBackdrop matchday={matchday} hue={matchHue} /> : undefined}
+            >
               {visited.has(id) ? <Component isActive={activeKey === id} /> : null}
             </AthleteFrame>
           </Tabs.Screen>

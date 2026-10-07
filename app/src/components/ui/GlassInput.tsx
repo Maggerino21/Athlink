@@ -9,6 +9,11 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SURFACE, TEXT, LINE, RADIUS } from '../../utils/tokens';
+import { UI_FONT, UI_FONT_REGULAR } from '../../utils/type';
+
+/** Matches the landing screen's error red. The only red on these screens. */
+const ERROR = '#E5484D';
 
 interface GlassInputProps extends TextInputProps {
   label: string;
@@ -30,9 +35,9 @@ export default function GlassInput({ label, error, secure, style, ...props }: Gl
         !!error && styles.inputWrapError,
       ]}>
         <TextInput
-          style={[styles.input, style]}
-          placeholderTextColor="rgba(255,255,255,0.28)"
-          selectionColor="#3B82F6"
+          style={[styles.input, focused && styles.inputFocused, style]}
+          placeholderTextColor={TEXT.faint}
+          selectionColor={TEXT.secondary}
           secureTextEntry={secure && !visible}
           autoCapitalize="none"
           autoCorrect={false}
@@ -54,7 +59,7 @@ export default function GlassInput({ label, error, secure, style, ...props }: Gl
             <Ionicons
               name={visible ? 'eye-off-outline' : 'eye-outline'}
               size={18}
-              color="rgba(255,255,255,0.35)"
+              color={TEXT.tertiary}
             />
           </TouchableOpacity>
         )}
@@ -66,54 +71,45 @@ export default function GlassInput({ label, error, secure, style, ...props }: Gl
 }
 
 const styles = StyleSheet.create({
-  wrapper: {
-    gap: 6,
-  },
+  wrapper: { gap: 7 },
   label: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.5)',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
+    fontFamily: UI_FONT, fontSize: 11, color: TEXT.tertiary,
+    letterSpacing: 0.8, textTransform: 'uppercase',
   },
   inputWrap: {
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    // Explicit dark background — prevents iOS autofill yellow from making
-    // the field unreadable. rgba(0,0,0,x) on dark bg = barely visible but
-    // opaque enough that iOS respects it as the base layer.
-    backgroundColor: 'rgba(15,18,40,0.85)',
+    borderRadius: RADIUS.md,
+    // Opaque, and stated twice — see the TextInput's own background below.
+    backgroundColor: SURFACE.raised,
+    // Carried unfocused as well, transparent: a border that only appears on
+    // focus resizes the box and nudges the text by a pixel as you tap in.
+    borderWidth: 1, borderColor: 'transparent',
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
   },
+  /** Focus is brightness and an edge, not a colour. */
   inputWrapFocused: {
-    borderColor: 'rgba(59,130,246,0.5)',
-    backgroundColor: 'rgba(10,25,60,0.88)',
+    backgroundColor: SURFACE.active,
+    borderWidth: 1, borderColor: LINE.active,
   },
-  inputWrapError: {
-    borderColor: 'rgba(239,68,68,0.5)',
-  },
+  inputWrapError: { borderWidth: 1, borderColor: ERROR },
   input: {
     flex: 1,
-    color: '#FFFFFF',
-    fontSize: 15,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    // Explicit background on the TextInput node itself — must match wrapper.
-    // iOS autofill yellow is applied as a system overlay; having an explicit
-    // opaque background here means it blends to dark amber instead of bright
-    // yellow, keeping white text readable.
-    backgroundColor: 'rgba(15,18,40,0.85)',
+    fontFamily: UI_FONT_REGULAR, fontSize: 16,
+    color: TEXT.primary,
+    paddingHorizontal: 16, paddingVertical: 15,
+    // Explicit background on the TextInput node itself — must match the
+    // wrapper. iOS autofill yellow is a system overlay; an opaque background
+    // here blends it to dark amber instead of bright yellow, so white text
+    // stays readable.
+    backgroundColor: SURFACE.raised,
   },
-  eyeBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  errorText: {
-    fontSize: 12,
-    color: '#FCA5A5',
-    marginTop: 2,
-  },
+  /**
+   * The focused fill has to be repeated here. The wrapper brightens, but the
+   * TextInput carries its own opaque background for the autofill trick above,
+   * and leaving that one behind drew a visible seam against the eye button.
+   */
+  inputFocused: { backgroundColor: SURFACE.active },
+  eyeBtn: { paddingHorizontal: 14, paddingVertical: 14 },
+  errorText: { fontFamily: UI_FONT_REGULAR, fontSize: 12, color: ERROR, marginTop: 2 },
 });

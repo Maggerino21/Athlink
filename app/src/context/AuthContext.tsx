@@ -16,6 +16,8 @@ export interface Profile {
   club_id: string | null;
   club_name: string | null;
   club_color: string;
+  /** The club's crest from the fixture provider, when its team is linked. */
+  club_badge_url: string | null;
   language: string;
   /**
    * Set when the club removed this member. Removal is soft — `user_club_id()`
@@ -90,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // PostgREST refuses it with PGRST201 and nobody can sign in.
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, role, full_name, avatar_url, club_id, language, removed_at, clubs!profiles_club_id_fkey(name, primary_color)')
+        .select('id, role, full_name, avatar_url, club_id, language, removed_at, clubs!profiles_club_id_fkey(name, primary_color, external_badge_url)')
         .eq('id', userId)
         .abortSignal(controller.signal)
         .single();
@@ -111,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           ...rest,
           club_name:  clubs?.name          ?? null,
           club_color: clubs?.primary_color ?? '#3B82F6',
+          club_badge_url: clubs?.external_badge_url ?? null,
         };
         // The tabs seed their first frame from the cache, synchronously, the
         // moment they mount — which is right after this. It has been loading

@@ -1,9 +1,7 @@
 {
   "landing": {
-    "herePre": "Din plattform for",
-    "heroPre": "Din plattform for",
-    "heroTitle": "Utøverens\nHverdag.",
-    "heroSub": "Tilbakemeldinger, oppgaver og\nfremgang – alt på ett sted.",
+    "heroTitle": "Fotballspillerens\ndashbord",
+    "heroSub": "Kalender, tilbakemeldinger og botkassa på ett sted.",
     "joinBtn": "Bli med",
     "loginBtn": "Logg inn"
   },
@@ -65,7 +63,8 @@
   "language": {
     "label": "Språk",
     "en": "English",
-    "no": "Norsk"
+    "no": "Norsk",
+    "search": "Søk etter språk"
   },
   "common": {
     "signOut": "Logg ut",
@@ -79,58 +78,14 @@
     "justNow": "Akkurat nå",
     "minutesAgo": "{{count}}m siden",
     "hoursAgo": "{{count}}t siden",
-    "daysAgo": "{{count}} dager siden"
-  },
-  "athlete": {
-    "greeting": {
-      "morning": "God morgen",
-      "afternoon": "God ettermiddag",
-      "evening": "God kveld"
-    },
-    "tabs": {
-      "home": "Hjem",
-      "feedback": "Tilbakemelding",
-      "tasks": "Oppgaver",
-      "progress": "Fremgang"
-    },
-    "thisWeek": {
-      "nextMatch": "Neste kamp",
-      "noMatches": "Ingen kamper",
-      "noUpcomingMatches": "Ingen kommende kamper",
-      "noMatchesHint": "Sjekk med treneren din for kampplanen.",
-      "daysAway": "{{count}}d igjen",
-      "matchToday": "I dag",
-      "newFeedback": "Ny\ntilbakemelding",
-      "tasksPending": "Oppgaver\nventende",
-      "matchWeekLabel": "Kampuke",
-      "matchDay": "Kampdag!",
-      "daysUntilKickoff_one": "{{count}} dag til avspark",
-      "daysUntilKickoff_other": "{{count}} dager til avspark",
-      "focusRecovery": "Fokus på restitusjon og aktivering. Hold deg skarp.",
-      "focusPrepare": "Forbered deg godt. Gå gjennom tilbakemeldingene fra treneren din før kampdagen."
-    },
-    "feedback": {
-      "unread": "Ulest",
-      "earlier": "Tidligere",
-      "emptyTitle": "Ingen tilbakemeldinger ennå",
-      "emptySub": "Tilbakemeldinger fra trenere og stab vil dukke opp her.",
-      "actionLabel": "Handling",
-      "iUnderstand": "Jeg forstår",
-      "acknowledged": "Bekreftet"
-    },
-    "tasks": {
-      "pendingLabel": "Ventende",
-      "completedLabel": "Fullført",
-      "emptyTitle": "Ingen oppgaver ennå",
-      "emptySub": "Oppgaver tildelt av treneren din vil dukke opp her.",
-      "dueToday": "Frist i dag",
-      "dueTomorrow": "Frist i morgen",
-      "overdueLabel": "{{count}}d forsinket",
-      "noDueDate": "Ingen frist"
-    },
-    "progress": {
-      "comingSoon": "Fremgangssporing kommer snart."
-    }
+    "daysAgo": "{{count}} dager siden",
+    "cancel": "Avbryt",
+    "tomorrow": "I morgen",
+    "inDays": "Om {{count}} dager",
+    "kr": "kr",
+    "yourStaff": "Trenerne dine",
+    "vs": "mot {{opponent}}",
+    "awayVs": "Borte mot {{opponent}}"
   },
   "staff": {
     "dashboardLabel": "Stab-dashbord",
@@ -214,5 +169,114 @@
       "overdueLabel": "{{count}}d forsinket",
       "noDueDate": "Ingen frist"
     }
+  },
+  "home": {
+    "noMatch": "Ingen kamp satt opp",
+    "nothingPlanned": "Ingenting planlagt",
+    "sectionToday": "I dag",
+    "events": "PROGRAM",
+    "todo": "Å GJØRE",
+    "fines": "BØTER",
+    "allDone": "alt gjort",
+    "forYou": "til deg",
+    "nothingOn": "Ingenting i dag",
+    "more": "+{{count}} til",
+    "yourClub": "Klubben din",
+    "matchToday": "i dag",
+    "matchTomorrow": "i morgen",
+    "matchInDays": "om {{count}} dager",
+    "homeShort": "(H)",
+    "awayShort": "(B)"
+  },
+  "schedule": {
+    "title": "Kalender",
+    "todayBtn": "I dag",
+    "todayLabel": "I dag",
+    "goToDate": "Gå til dato",
+    "go": "Gå",
+    "dayOf": "Dag {{day}} av {{total}}"
+  },
+  "fines": {
+    "title": "Bøter",
+    "inTheBox": "I kassa",
+    "youOwe": "Du skylder",
+    "youHavePaid": "Du har betalt",
+    "leaderboard": "Ledertavle",
+    "nobodyFined": "Ingen har fått bot denne sesongen.",
+    "showAll": "Vis alle ({{count}} til)",
+    "showFewer": "Vis færre",
+    "latest": "Siste bøter",
+    "noFines": "Ingen bøter enda. Nyt det mens det varer.",
+    "giveFine": "Gi en bot",
+    "noManagerTitle": "Ingen botsjef enda",
+    "noManagerBody": "Trenerne velger hvem som styrer botkassa.",
+    "now": "nå",
+    "goal": "Mål",
+    "payNow": "Betal nå"
+  },
+  "todo": {
+    "title": "Å gjøre",
+    "task": "Oppgave",
+    "feedback": "Tilbakemelding",
+    "allDone": "Alt gjort.",
+    "done": "Ferdig",
+    "gotIt": "Skjønner",
+    "seen": "Sett",
+    "from": "Fra {{name}}",
+    "yourFocus": "Ditt fokus",
+    "overdue": "Forfalt",
+    "dueToday": "Frist i dag",
+    "dueTomorrow": "Frist i morgen",
+    "dueOn": "Frist {{day}}",
+    "new": "Ny"
+  },
+  "event": {
+    "meet": "Oppmøte",
+    "kickOff": "Avspark",
+    "starts": "Starter",
+    "allDay": "Hele dagen"
+  },
+  "giveFine": {
+    "title": "Gi en bot",
+    "searchFines": "Søk i bøter",
+    "choosePlayers": "Velg spillere",
+    "searchPlayer": "Søk navn eller nummer",
+    "noPlayers": "Ingen spillere passer.",
+    "note": "Legg til en kommentar (valgfritt)",
+    "give": "Gi bot",
+    "giveToMany": "Gi til {{count}} spillere",
+    "pickPlayer": "Velg en spiller",
+    "failed": "Boten ble ikke gitt"
+  },
+  "eventType": {
+    "training": "Trening",
+    "home": "Hjemmetrening",
+    "rehab": "Rehab",
+    "exercise": "Øvelse",
+    "recovery": "Restitusjon",
+    "travel": "Reise",
+    "meeting": "Møte",
+    "match": "Kamp",
+    "vacation": "Ferie",
+    "other": "Annet",
+    "task": "Oppgave",
+    "feedback": "Tilbakemelding"
+  },
+  "account": {
+    "cantLoadProfile": "Fikk ikke lastet profilen din",
+    "removedTitle": "Du er ikke lenger i denne klubben",
+    "removedBodyClub": "Tilgangen din til {{club}} er avsluttet. Ser dette feil ut, snakk med treneren din — de kan legge deg inn igjen.",
+    "removedBody": "Klubbtilgangen din er avsluttet. Ser dette feil ut, snakk med treneren din.",
+    "signOutTitle": "Logge ut?",
+    "signOutBody": "Du trenger e-posten og passordet ditt for å komme inn igjen."
+  },
+  "pay": {
+    "title": "Betal bot",
+    "toPerson": "Til {{name}}, som styrer botkassa",
+    "toBox": "Til botkassa",
+    "withVipps": "Betal med Vipps",
+    "comingSoon": "Vipps er ikke koblet til ennå. Fram til da betaler du botsjefen som vanlig, så krysser hen av.",
+    "payAll": "Betal alt",
+    "nothing": "Ingenting å betale. Hold det sånn."
   }
 }

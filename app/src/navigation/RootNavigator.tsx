@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../context/AuthContext';
 import LandingScreen from '../screens/auth/LandingScreen';
 import HomeScreen from '../screens/athlete/HomeScreen';
@@ -9,6 +10,7 @@ import EventDetailScreen from '../screens/athlete/EventDetailScreen';
 import BriefingScreen from '../screens/athlete/BriefingScreen';
 import GiveFineScreen from '../screens/athlete/GiveFineScreen';
 import ToDoScreen from '../screens/athlete/ToDoScreen';
+import PayFineScreen from '../screens/athlete/PayFineScreen';
 import { SURFACE } from '../utils/tokens';
 import type { CalEvent } from '../components/athlete/eventTypes';
 import type { ToDoItem } from '../components/athlete/useToDo';
@@ -30,8 +32,10 @@ export type AthleteStackParamList = {
    * serialisable and avoids a refetch just to render what the list already had.
    */
   EventDetail: { event: CalEvent };
-  /** The bøtesjef hands out a fine. Opened from the Fines tab. */
+  /** The botsjef hands out a fine. Opened from the Fines tab. */
   GiveFine: undefined;
+  /** Everything you still owe. Reads the fine box itself — no params. */
+  PayFine: undefined;
   /**
    * What the staff sent you. From Home: everything still open (no params).
    * From Schedule: the one item tapped, passed whole like `EventDetail`'s event.
@@ -139,6 +143,11 @@ function AthleteNavigator() {
           }}
         />
         <AthleteStack.Screen
+          name="PayFine"
+          component={PayFineScreen}
+          options={{ presentation: 'modal', contentStyle: { backgroundColor: SURFACE.base } }}
+        />
+        <AthleteStack.Screen
           name="ToDo"
           component={ToDoScreen}
           // A page sheet for the same reason as GiveFine: feedback can run
@@ -165,6 +174,7 @@ function StaffNavigator() {
 
 // ── Root: reads auth state and routes accordingly ──────────────────────────
 export default function RootNavigator() {
+  const { t } = useTranslation();
   const { session, profile, profileError, loading } = useAuth();
 
   // Brief loading state while Supabase checks for a persisted session
@@ -184,13 +194,13 @@ export default function RootNavigator() {
     return (
       <View style={styles.loadingRoot}>
         <Text style={styles.loadingWordmark}>ATHLINK</Text>
-        <Text style={styles.loadingHint}>Couldn't load your profile</Text>
+        <Text style={styles.loadingHint}>{t('account.cantLoadProfile')}</Text>
         {profileError ? <Text style={styles.errorCode}>{profileError}</Text> : null}
         <TouchableOpacity
           onPress={() => supabase.auth.signOut()}
           style={styles.signOutBtn}
         >
-          <Text style={styles.signOutText}>Sign out</Text>
+          <Text style={styles.signOutText}>{t('common.signOut')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -205,14 +215,14 @@ export default function RootNavigator() {
     return (
       <View style={styles.loadingRoot}>
         <Text style={styles.loadingWordmark}>ATHLINK</Text>
-        <Text style={styles.removedTitle}>You're no longer in this club</Text>
+        <Text style={styles.removedTitle}>{t('account.removedTitle')}</Text>
         <Text style={styles.removedBody}>
           {profile.club_name
-            ? `Your access to ${profile.club_name} has ended. If this looks wrong, speak to your coach — they can add you back.`
-            : 'Your club access has ended. If this looks wrong, speak to your coach.'}
+            ? t('account.removedBodyClub', { club: profile.club_name })
+            : t('account.removedBody')}
         </Text>
         <TouchableOpacity onPress={() => supabase.auth.signOut()} style={styles.signOutBtn}>
-          <Text style={styles.signOutText}>Sign out</Text>
+          <Text style={styles.signOutText}>{t('common.signOut')}</Text>
         </TouchableOpacity>
       </View>
     );

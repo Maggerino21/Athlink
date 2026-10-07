@@ -21,6 +21,8 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { FadeIn, FadeOut, LinearTransition, Easing } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
+import i18n from '../../i18n';
 import PressableScale from '../../components/ui/PressableScale';
 import haptics from '../../utils/haptics';
 import {
@@ -28,6 +30,7 @@ import {
   type ToDoItem, type TaskItem, type FeedbackItem,
 } from '../../components/athlete/useToDo';
 import { eventAccent, eventMeta } from '../../components/athlete/eventTypes';
+import { weekdayLong, dayMonth } from '../../utils/format';
 import { SURFACE, TEXT, RADIUS } from '../../utils/tokens';
 import { DISPLAY_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR } from '../../utils/type';
 import type { AthleteStackParamList } from '../../navigation/RootNavigator';
@@ -78,7 +81,7 @@ function OpenList({ onClose }: { onClose: () => void }) {
 
   return (
     <View style={styles.root}>
-      <Header title="To do" onClose={onClose} />
+      <Header title={i18n.t('todo.title')} onClose={onClose} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
@@ -95,7 +98,7 @@ function OpenList({ onClose }: { onClose: () => void }) {
         {/* Waits for the last card's fade, or the two overlap for a few frames. */}
         {loaded && visible.length === 0 && (
           <Animated.Text entering={FadeIn.delay(160).duration(200)} style={styles.allDone}>
-            All done.
+            {i18n.t('todo.allDone')}
           </Animated.Text>
         )}
       </ScrollView>
@@ -127,7 +130,7 @@ function SingleItem({ initial, onClose }: { initial: ToDoItem; onClose: () => vo
 
   return (
     <View style={styles.root}>
-      <Header title={item.kind === 'task' ? 'Task' : 'Feedback'} onClose={onClose} />
+      <Header title={i18n.t(item.kind === 'task' ? 'todo.task' : 'todo.feedback')} onClose={onClose} />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 24 }]}
@@ -156,6 +159,7 @@ function Header({ title, onClose }: { title: string; onClose: () => void }) {
  * category ink, the card itself stays opaque grey like every other card.
  */
 function ToDoCard({ item, onAct }: { item: ToDoItem; onAct: () => void }) {
+  const { t } = useTranslation();
   const accent = eventAccent(item.kind);
   const meta = eventMeta(item.kind);
   const when = item.kind === 'task' ? dueLabel(item.due) : sentLabel(item.sentAt);
@@ -166,7 +170,7 @@ function ToDoCard({ item, onAct }: { item: ToDoItem; onAct: () => void }) {
         <View style={styles.kindRow}>
           <Ionicons name={meta.icon as any} size={14} color={accent.ink} />
           <Text style={[styles.kind, { color: accent.ink }]}>
-            {item.kind === 'task' ? 'Task' : 'Feedback'}
+            {t(item.kind === 'task' ? 'todo.task' : 'todo.feedback')}
           </Text>
         </View>
         {when ? <Text style={styles.when}>{when}</Text> : null}
@@ -174,7 +178,7 @@ function ToDoCard({ item, onAct }: { item: ToDoItem; onAct: () => void }) {
 
       {item.kind === 'task' ? <TaskBody item={item} /> : <FeedbackBody item={item} />}
 
-      <Text style={styles.from}>From {item.from}</Text>
+      <Text style={styles.from}>{t('todo.from', { name: item.from })}</Text>
 
       <ActionButton item={item} onPress={onAct} />
     </View>
@@ -194,12 +198,12 @@ function FeedbackBody({ item }: { item: FeedbackItem }) {
   const accent = eventAccent('feedback');
   return (
     <>
-      <Text style={styles.cardTitle}>{item.title ?? 'Feedback'}</Text>
+      <Text style={styles.cardTitle}>{item.title ?? i18n.t('todo.feedback')}</Text>
       {item.about ? <Text style={styles.about}>{item.about}</Text> : null}
       <Text style={styles.body}>{item.body}</Text>
       {item.actionPoint ? (
         <View style={styles.focus}>
-          <Text style={[styles.focusLabel, { color: accent.ink }]}>Your focus</Text>
+          <Text style={[styles.focusLabel, { color: accent.ink }]}>{i18n.t('todo.yourFocus')}</Text>
           <Text style={styles.focusText}>{item.actionPoint}</Text>
         </View>
       ) : null}
@@ -213,7 +217,7 @@ function FeedbackBody({ item }: { item: FeedbackItem }) {
  */
 function ActionButton({ item, onPress }: { item: ToDoItem; onPress: () => void }) {
   const done = item.done;
-  const label = item.kind === 'task' ? 'Done' : done ? 'Seen' : 'Got it';
+  const label = i18n.t(item.kind === 'task' ? 'todo.done' : done ? 'todo.seen' : 'todo.gotIt');
   const inert = done && item.kind === 'feedback';
   return (
     <PressableScale
@@ -243,21 +247,17 @@ function daysFromToday(iso: string): number {
 function dueLabel(iso: string | null): string | null {
   if (!iso) return null;
   const days = daysFromToday(iso);
-  if (days < 0) return 'Overdue';
-  if (days === 0) return 'Due today';
-  if (days === 1) return 'Due tomorrow';
-  const d = new Date(iso);
-  if (days < 7) return `Due ${d.toLocaleDateString('en-GB', { weekday: 'long' })}`;
-  return `Due ${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`;
+  if (days < 0) return i18n.t('todo.overdue');
+  if (days === 0) return i18n.t('todo.dueToday');
+  if (days === 1) return i18n.t('todo.dueTomorrow');
+  return i18n.t('todo.dueOn', { day: days < 7 ? weekdayLong(iso) : dayMonth(iso) });
 }
 
 function sentLabel(iso: string): string {
   const days = daysFromToday(iso);
-  if (days === 0) return 'Today';
-  if (days === -1) return 'Yesterday';
-  const d = new Date(iso);
-  if (days > -7) return d.toLocaleDateString('en-GB', { weekday: 'long' });
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  if (days === 0) return i18n.t('common.today');
+  if (days === -1) return i18n.t('common.yesterday');
+  return days > -7 ? weekdayLong(iso) : dayMonth(iso);
 }
 
 // ── Styles ───────────────────────────────────────────────────────────────────
