@@ -11,6 +11,9 @@ import BriefingScreen from '../screens/athlete/BriefingScreen';
 import GiveFineScreen from '../screens/athlete/GiveFineScreen';
 import ToDoScreen from '../screens/athlete/ToDoScreen';
 import PayFineScreen from '../screens/athlete/PayFineScreen';
+import WheelsScreen from '../screens/athlete/WheelsScreen';
+import WheelEditorScreen from '../screens/athlete/WheelEditorScreen';
+import SpinWheelScreen from '../screens/athlete/SpinWheelScreen';
 import { SURFACE } from '../utils/tokens';
 import type { CalEvent } from '../components/athlete/eventTypes';
 import type { ToDoItem } from '../components/athlete/useToDo';
@@ -36,6 +39,12 @@ export type AthleteStackParamList = {
   GiveFine: undefined;
   /** Everything you still owe. Reads the fine box itself — no params. */
   PayFine: undefined;
+  /** The botsjef's saved wheels (prototype — see useWheels). */
+  Wheels: undefined;
+  /** Make a wheel, or change one when given its id. */
+  WheelEditor: { wheelId?: string };
+  /** One spin. With `spinId` it is a spin the botsjef gave you, used up when it lands. */
+  SpinWheel: { wheelId: string; spinId?: string };
   /**
    * What the staff sent you. From Home: everything still open (no params).
    * From Schedule: the one item tapped, passed whole like `EventDetail`'s event.
@@ -146,6 +155,23 @@ function AthleteNavigator() {
           name="PayFine"
           component={PayFineScreen}
           options={{ presentation: 'modal', contentStyle: { backgroundColor: SURFACE.base } }}
+        />
+        {/* The wheel screens: page sheets, like the rest of the fine box. */}
+        <AthleteStack.Screen
+          name="Wheels"
+          component={WheelsScreen}
+          options={{ presentation: 'modal', contentStyle: { backgroundColor: SURFACE.base } }}
+        />
+        <AthleteStack.Screen
+          name="WheelEditor"
+          component={WheelEditorScreen}
+          options={{ presentation: 'modal', contentStyle: { backgroundColor: SURFACE.base } }}
+        />
+        <AthleteStack.Screen
+          name="SpinWheel"
+          component={SpinWheelScreen}
+          // No swipe-away mid-spin: the result has to land.
+          options={{ presentation: 'modal', gestureEnabled: false, contentStyle: { backgroundColor: SURFACE.base } }}
         />
         <AthleteStack.Screen
           name="ToDo"

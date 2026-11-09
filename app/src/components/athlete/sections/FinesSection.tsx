@@ -33,6 +33,9 @@ import { SURFACE, TEXT, RADIUS } from '../../../utils/tokens';
 import { DISPLAY_FONT, THIN_FONT, LIGHT_FONT, UI_FONT, UI_FONT_REGULAR, FLOURISH_FONT } from '../../../utils/type';
 import { useAuth } from '../../../context/AuthContext';
 import { useFineBox, REACTIONS, type Reaction } from '../useFineBox';
+import { useWheels } from '../useWheels';
+import WheelGraphic from '../WheelGraphic';
+import { Ionicons } from '@expo/vector-icons';
 import { weekdayShort, dayMonth } from '../../../utils/format';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -88,6 +91,13 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
   const insets = useSafeAreaInsets();
   const { profile } = useAuth();
   const { box, reload, react: writeReaction } = useFineBox(isActive);
+  const { wheels, pending } = useWheels();
+  const myId = useAuth().profile?.id;
+  // Spins the botsjef gave me, waiting to be spun. (Prototype: in memory.)
+  const mySpins = pending
+    .filter(p => p.athleteId === myId)
+    .map(p => ({ spin: p, wheel: wheels.find(w => w.id === p.wheelId) }))
+    .filter((x): x is { spin: typeof x.spin; wheel: NonNullable<typeof x.wheel> } => !!x.wheel);
   const navigation = useNavigation<NativeStackNavigationProp<AthleteStackParamList>>();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -197,6 +207,26 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
               </View>
             )}
           </View>
+
+          {/* A spin waiting for you. First thing on the tab, because it is the
+              one thing here you are being asked to do. */}
+          {mySpins.map(({ spin, wheel }) => (
+            <Animated.View key={spin.id} entering={FadeIn.duration(260)} exiting={FadeOut.duration(200)}>
+              <PressableScale
+                style={[styles.card, styles.spinCard]}
+                scaleTo={0.98}
+                haptic="medium"
+                onPress={() => navigation.navigate('SpinWheel', { wheelId: wheel.id, spinId: spin.id })}
+              >
+                <WheelGraphic items={wheel.items} size={52} labels={false} />
+                <View style={styles.spinText}>
+                  <Text style={styles.label}>{t('wheel.youHaveSpin')}</Text>
+                  <Text style={styles.emptyText} numberOfLines={1}>{wheel.name}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={TEXT.tertiary} />
+              </PressableScale>
+            </Animated.View>
+          ))}
 
           {/* You. Owed first, because that is what you came to check. */}
           <View style={styles.row}>
@@ -373,14 +403,24 @@ export default function FinesSection({ isActive }: { isActive?: boolean }) {
 
         {/* Only the botsjef sees this. Everything they can do lives behind it. */}
         {box.isFineManager && (
-          <PressableScale
-            style={[styles.fab, { bottom: insets.bottom + TAB_BAR + 16 }]}
-            scaleTo={0.96}
-            haptic="medium"
-            onPress={() => navigation.navigate('GiveFine')}
-          >
-            <Text style={styles.fabText}>{t('fines.giveFine')}</Text>
-          </PressableScale>
+          <View style={[styles.fabRow, { bottom: insets.bottom + TAB_BAR + 16 }]}>
+            <PressableScale
+              style={[styles.fab, styles.fabQuiet]}
+              scaleTo={0.96}
+              haptic="medium"
+              onPress={() => navigation.navigate('Wheels')}
+            >
+              <Text style={styles.fabQuietText}>{t('wheel.title')}</Text>
+            </PressableScale>
+            <PressableScale
+              style={styles.fab}
+              scaleTo={0.96}
+              haptic="medium"
+              onPress={() => navigation.navigate('GiveFine')}
+            >
+              <Text style={styles.fabText}>{t('fines.giveFine')}</Text>
+            </PressableScale>
+          </View>
         )}
       </Reveal>
     </View>
@@ -539,10 +579,14 @@ const styles = StyleSheet.create({
   reactionEmoji: { fontSize: 15 },
   reactionCount: { fontFamily: UI_FONT_REGULAR, fontSize: 13, color: TEXT.primary },
 
+  fabRow: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', gap: 8 },
   fab: {
-    position: 'absolute', alignSelf: 'center',
     paddingHorizontal: 22, paddingVertical: 13,
     borderRadius: RADIUS.pill, backgroundColor: TEXT.primary,
   },
   fabText: { fontFamily: UI_FONT, fontSize: 15, color: SURFACE.base },
+  fabQuiet: { backgroundColor: SURFACE.active },
+  fabQuietText: { fontFamily: UI_FONT, fontSize: 15, color: TEXT.primary },
+  spinCard: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  spinText: { flex: 1, minWidth: 0 },
 });
