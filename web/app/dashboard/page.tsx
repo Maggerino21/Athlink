@@ -16,7 +16,7 @@ export default async function DashboardPage() {
       clubName={profile.clubs?.name ?? 'Your Club'}
       clubColor={profile.clubs?.primary_color ?? '#6366F1'}
       inviteCode={profile.clubs?.invite_code ?? null}
-      staffInviteCode={profile.clubs?.staff_invite_code ?? null}
+      staffInviteCode={profile.staff_invite_code}
       isClubManager={profile.is_club_manager}
       externalTeamId={profile.clubs?.external_team_id ?? null}
       externalSyncedAt={profile.clubs?.external_synced_at ?? null}

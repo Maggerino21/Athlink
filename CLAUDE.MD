@@ -353,6 +353,20 @@ no policy changes at all.**
 > `full_name, avatar_url, language, push_token`. **Any new privileged column on `profiles`
 > is protected by default — never add it to that grant.**
 
+> **The same trap applies to reads on `clubs`** (fixed by
+> `supabase/migrations/20261110120000_security_pass_1.sql`). Every member can
+> read their club row, so `staff_invite_code` was readable by every athlete —
+> who could then sign up a second account as staff. `authenticated` now holds
+> SELECT on a column list that excludes it; staff read it through
+> `my_staff_invite_code()`. **A new column on `clubs` is unreadable until added
+> to that grant** — add it unless it is a secret.
+>
+> `join_club_by_code` and `create_club_for_user` are legacy RPCs with their
+> EXECUTE revoked. `join_club_by_code` moved the caller into any club without
+> touching their role, so a staff account from a throwaway club became manager
+> of any club whose athlete code it knew. Joining happens only through
+> `handle_new_user`. Don't re-grant them.
+
 ## Supabase Edge Functions
 
 | Function | Purpose |

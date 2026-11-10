@@ -11,11 +11,16 @@ type SessionProfile = {
   club_id: string | null;
   is_club_manager: boolean;
   created_at: string;
+  /**
+   * Staff only, and never read off `clubs`: athletes have no SELECT on that
+   * column, so it comes from `my_staff_invite_code()`, which returns null for
+   * anyone who is not staff.
+   */
+  staff_invite_code: string | null;
   clubs: {
     name: string;
     primary_color: string;
     invite_code: string;
-    staff_invite_code: string;
     /** Linked provider team; drives the fixture sync. */
     external_team_id: number | null;
     external_synced_at: string | null;
@@ -38,11 +43,21 @@ export const getSessionProfile = cache(async (): Promise<SessionProfile | null> 
   // PostgREST refuses it with PGRST201 and the dashboard loads no profile.
   const { data } = await supabase
     .from('profiles')
-    .select('id, full_name, role, language, club_id, is_club_manager, created_at, clubs!profiles_club_id_fkey(name, primary_color, invite_code, staff_invite_code, external_team_id, external_synced_at)')
+    .select('id, full_name, role, language, club_id, is_club_manager, created_at, clubs!profiles_club_id_fkey(name, primary_color, invite_code, external_team_id, external_synced_at)')
     .eq('id', user.id)
     .single();
 
   if (!data) return null;
 
-  return { ...(data as unknown as Omit<SessionProfile, 'email'>), email: user.email ?? '' };
+  let staffInviteCode: string | null = null;
+  if (data.role === 'staff') {
+    const { data: code } = await supabase.rpc('my_staff_invite_code');
+    staffInviteCode = (code as string | null) ?? null;
+  }
+
+  return {
+    ...(data as unknown as Omit<SessionProfile, 'email' | 'staff_invite_code'>),
+    staff_invite_code: staffInviteCode,
+    email: user.email ?? '',
+  };
 });
